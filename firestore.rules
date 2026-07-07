@@ -1,0 +1,359 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Milestone 2: data peribadi owner-only + events append-only +
+    // daily_usage terikat kepada uid dalam ID dokumen.
+    // Peraturan penuh (places_cache server-only, algo_configs, dll) di Milestone 3.
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    // Ahli grup (untuk kawalan baca poll/status/feed grup).
+    function isGroupMember(groupId) {
+      return signedIn() && exists(
+        /databases/$(database)/documents/groups/$(groupId)/members/$(request.auth.uid)
+      );
+    }
+
+    match /users/{uid} {
+      allow read, write: if isOwner(uid);
+
+      match /suggestions/{suggestionId} {
+        allow read, write: if isOwner(uid);
+      }
+
+      match /meals/{mealId} {
+        allow read, write: if isOwner(uid);
+      }
+    }
+
+    match /user_profiles/{uid} {
+      allow read, write: if isOwner(uid);
+    }
+
+    // ID dokumen: {uid}_{yyyyMMdd} - mesti milik pengguna sendiri.
+    match /daily_usage/{docId} {
+      allow read, write: if signedIn()
+        && docId.matches('^' + request.auth.uid + '_[0-9]{8}$');
+    }
+
+    // Events: append-only. Tidak boleh edit/padam sejarah.
+    match /events/{eventId} {
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid;
+      allow read, update, delete: if false;
+    }
+
+    // Sesi cadangan milik pengguna yang menciptanya.
+    match /suggestion_sessions/{sessionId} {
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid;
+      allow read, update: if signedIn()
+        && resource.data.userId == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // Milestone 3: koleksi kawalan pelayan.
+    // Ditulis HANYA oleh Cloud Functions (Admin SDK memintas rules).
+    match /algo_configs/{configId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /places_cache/{cacheId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /place_details/{placeId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    match /brain_metrics/{date} {
+      allow read, write: if false;
+    }
+
+    // Feed Makan komuniti: baca oleh pengguna log masuk.
+    // Siaran 'private' hanya boleh dibaca oleh pemiliknya.
+    // Cipta/like HANYA melalui Cloud Functions (createFeedPost/toggleLike).
+    // Pengguna boleh padam siaran sendiri.
+    match /feed_posts/{postId} {
+      allow read: if signedIn()
+        && (!('visibility' in resource.data)
+            || resource.data.visibility != 'private'
+            || resource.data.authorUid == request.auth.uid);
+      allow create, update: if false;
+      allow delete: if signedIn()
+        && resource.data.authorUid == request.auth.uid;
+
+      // Komen (V2): tulis terus dari client dengan validasi ketat.
+      match /comments/{commentId} {
+        allow read: if signedIn();
+        allow create: if signedIn()
+          && request.resource.data.authorUid == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 300;
+        allow update: if false;
+        allow delete: if signedIn()
+          && resource.data.authorUid == request.auth.uid;
+      }
+    }
+
+    // Grup komuniti (Group Hub V4): baca oleh pengguna log masuk.
+    // Cipta/kemaskini/peranan/keahlian HANYA melalui Cloud Functions
+    // (createGroupV2, joinGroupV2, addGroupMember, changeGroupRole, dll).
+    match /groups/{groupId} {
+      allow read: if signedIn();
+      allow create, update, delete: if false;
+
+      // Keahlian + peranan: server sahaja (elak self-assign owner/admin).
+      match /members/{memberId} {
+        allow read: if signedIn();
+        allow write: if false;
+      }
+
+      // Undian grup: baca oleh ahli; undi melalui Cloud Function.
+      match /polls/{pollId} {
+        allow read: if isGroupMember(groupId);
+        allow write: if false;
+
+        match /votes/{voterId} {
+          allow read: if isGroupMember(groupId);
+          allow write: if false;
+        }
+      }
+
+      // Status dikongsi ahli: baca oleh ahli; tulis melalui setGroupStatus.
+      match /status/{statusUid} {
+        allow read: if isGroupMember(groupId);
+        allow write: if false;
+      }
+    }
+
+    // ---------- V4 Social: profil awam, follow, blok, mute, laporan ----------
+
+    // Profil makanan awam: baca oleh pengguna log masuk; tulis server sahaja
+    // (updateFoodProfile / updateProfile / kiraan follow).
+    match /public_profiles/{uid} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // Follow: baca (untuk senarai pengikut/diikuti); tulis server sahaja.
+    match /follows/{followId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // Blok: baca milik sendiri sahaja; tulis melalui blockUser.
+    match /blocks/{blockId} {
+      allow read: if signedIn()
+        && resource.data.blockerUid == request.auth.uid;
+      allow write: if false;
+    }
+
+    // Mute: baca milik sendiri sahaja; tulis melalui muteUser.
+    match /mutes/{muteId} {
+      allow read: if signedIn()
+        && resource.data.muterUid == request.auth.uid;
+      allow write: if false;
+    }
+
+    // Laporan moderasi: server tulis, admin baca (Console/Functions).
+    match /reports/{reportId} {
+      allow read, write: if false;
+    }
+
+    match /user_brain_profiles/{uid} {
+      allow read: if isOwner(uid);
+      allow write: if false;
+    }
+
+    // MakanMana Fit Coach: data kesihatan/kecergasan owner-only.
+    match /fitness_profiles/{uid} {
+      allow read, write: if isOwner(uid);
+    }
+
+    match /sport_preferences/{uid} {
+      allow read, write: if isOwner(uid);
+    }
+
+    match /health_permissions/{uid} {
+      allow read, write: if isOwner(uid);
+    }
+
+    match /fitness_metrics/{docId} {
+      allow read, write: if signedIn()
+        && docId.matches('^' + request.auth.uid + '_[0-9]{8}$');
+    }
+
+    match /activity_daily/{docId} {
+      allow read, write: if signedIn()
+        && docId.matches('^' + request.auth.uid + '_[0-9]{8}$');
+    }
+
+    match /meal_logs/{mealId} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /workout_sessions/{sessionId} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /menu_recommendations/{recommendationId} {
+      allow read: if signedIn() && resource.data.userId == request.auth.uid;
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /weekly_reports/{docId} {
+      allow read, write: if signedIn()
+        && docId.matches('^' + request.auth.uid + '_[0-9]{8}$');
+    }
+
+    match /body_measurements/{uid} {
+      allow read, write: if isOwner(uid);
+
+      match /entries/{entryId} {
+        allow read, write: if isOwner(uid);
+      }
+    }
+
+    // Ulasan kedai: baca oleh pengguna log masuk (client tapis approved),
+    // tulis HANYA melalui Cloud Function submitReview (verified/pending).
+    match /place_reviews/{reviewId} {
+      allow read: if signedIn();
+      allow create, update: if false;
+      allow delete: if signedIn()
+        && resource.data.authorUid == request.auth.uid;
+    }
+
+    // Check-in lokasi: kawalan pelayan sepenuhnya.
+    match /checkins/{checkinId} {
+      allow read, write: if false;
+    }
+
+    // Username unik: baca untuk semak ketersediaan; tulis server sahaja.
+    match /usernames/{username} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // Kegemaran pengguna (Save - ciri Plus, gate di client).
+    match /users/{uid}/favorites/{placeId} {
+      allow read, write: if isOwner(uid);
+    }
+
+    // Group Decision: sesi undian makan ramai-ramai.
+    match /group_sessions/{sessionId} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.createdBy == request.auth.uid;
+      allow update, delete: if signedIn()
+        && resource.data.createdBy == request.auth.uid;
+
+      // Satu undi per pengguna (doc id = uid).
+      match /votes/{voterId} {
+        allow read: if signedIn();
+        allow create, update: if signedIn()
+          && voterId == request.auth.uid;
+        allow delete: if false;
+      }
+    }
+
+    // V3 tambahan: sambungan wearable & check-in coach.
+    match /wearable_connections/{uid} {
+      allow read, write: if isOwner(uid);
+    }
+
+    match /coach_checkins/{docId} {
+      allow read, write: if signedIn()
+        && docId.matches('^' + request.auth.uid + '_[0-9]{8}$');
+    }
+
+    // ---------- V4: Meal Wallet + Budget + Tong-Tong ----------
+
+    // Belanja makan: owner sahaja, tulis terus dari client.
+    match /meal_expenses/{expenseId} {
+      allow read, delete: if signedIn()
+        && resource.data.userId == request.auth.uid;
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid;
+      allow update: if signedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid;
+    }
+
+    match /meal_items/{itemId} {
+      allow read, delete: if signedIn()
+        && resource.data.userId == request.auth.uid;
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid;
+      allow update: if false;
+    }
+
+    // Profil bajet & tempoh: peribadi (Budget Coach tidak pernah awam).
+    match /budget_profiles/{uid} {
+      allow read, write: if isOwner(uid);
+    }
+    match /budget_periods/{docId} {
+      allow read, write: if signedIn()
+        && docId.matches('^' + request.auth.uid + '_.*$');
+    }
+    match /budget_alerts/{alertId} {
+      allow read, write: if signedIn()
+        && (resource == null
+            || resource.data.userId == request.auth.uid);
+    }
+
+    // Tong-Tong Bill: baca oleh host + peserta sahaja.
+    // Host boleh edit semua; peserta kemaskini status bayaran sendiri.
+    match /group_bills/{billId} {
+      allow read: if signedIn()
+        && request.auth.uid in resource.data.participantUids;
+      allow create: if signedIn()
+        && request.resource.data.hostId == request.auth.uid;
+      // Host: kawalan penuh. Peserta: hanya kemaskini senarai peserta
+      // (status bayaran) tanpa ubah host/total.
+      allow update: if signedIn()
+        && request.auth.uid in resource.data.participantUids
+        && (resource.data.hostId == request.auth.uid
+            || (request.resource.data.hostId == resource.data.hostId
+                && request.resource.data.totalAmount
+                    == resource.data.totalAmount));
+      allow delete: if signedIn()
+        && resource.data.hostId == request.auth.uid;
+
+      match /settlements/{settlementId} {
+        allow read: if signedIn();
+        allow create, update: if signedIn();
+        allow delete: if false;
+      }
+    }
+
+    // Untuk query collection-group "grup mana saya sertai".
+    match /{path=**}/members/{memberId} {
+      allow read: if signedIn();
+    }
+
+    // Tutup semua yang lain secara lalai.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

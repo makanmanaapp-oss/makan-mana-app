@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1097613804556",
+    "project_id": "makanmana-c59f3",
+    "storage_bucket": "makanmana-c59f3.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1097613804556:android:278fcd9174dd1cf4601a29",
+        "android_client_info": {
+          "package_name": "com.makanmana.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB_xtQQsF4eIDZILzRf-Xbm1xX76JPWs28"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
