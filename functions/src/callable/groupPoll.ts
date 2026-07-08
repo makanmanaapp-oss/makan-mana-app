@@ -39,7 +39,8 @@ async function roleOf(groupId: string, uid: string): Promise<string | null> {
 }
 
 /** Cipta undian dalam grup (owner/admin/member; bukan viewer). */
-export const createGroupPoll = onCall(async (request) => {
+// Memori rendah (128MiB) untuk jimat kuota CPU Cloud Run region.
+export const createGroupPoll = onCall({memory: "128MiB"}, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Sila log masuk.");
   const {groupId, question, type, options} = (request.data ?? {}) as {

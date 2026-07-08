@@ -114,7 +114,8 @@ export const joinGroupV2 = onCall(async (request) => {
 });
 
 /** Owner/admin tambah ahli ikut uid. */
-export const addGroupMember = onCall(async (request) => {
+// Memori rendah (128MiB) untuk jimat kuota CPU Cloud Run region.
+export const addGroupMember = onCall({memory: "128MiB"}, async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Sila log masuk.");
   const {groupId, targetUid, role} = (request.data ?? {}) as {
