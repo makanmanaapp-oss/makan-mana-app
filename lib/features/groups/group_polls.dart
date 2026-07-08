@@ -28,17 +28,13 @@ String pollTypeLabel(AppLocalizations l, String type) => switch (type) {
       _ => type,
     };
 
-/// Sheet cipta undian.
+/// Skrin cipta undian (halaman penuh - lebih boleh dipercayai untuk borang
+/// dengan papan kekunci berbanding modal bottom sheet).
 Future<void> showCreatePollSheet(BuildContext context, String groupId) {
-  return showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: AppColors.creamBackground,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-    ),
+  return Navigator.of(context).push(MaterialPageRoute<void>(
+    fullscreenDialog: true,
     builder: (ctx) => _CreatePollSheet(groupId: groupId),
-  );
+  ));
 }
 
 class _CreatePollSheet extends ConsumerStatefulWidget {
@@ -95,107 +91,121 @@ class _CreatePollSheetState extends ConsumerState<_CreatePollSheet> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-          20, 18, 20, MediaQuery.of(context).viewInsets.bottom + 20),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(l.t('createPoll'),
-                style:
-                    const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
-            const SizedBox(height: 14),
-            TextField(
-              controller: _question,
-              maxLength: 120,
-              decoration: InputDecoration(
-                hintText: l.t('pollQuestionHint'),
-                filled: true,
-                fillColor: AppColors.cardWhite,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(l.t('pollType'),
-                style:
-                    const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final t in kPollTypes)
-                  ChoiceChip(
-                    selected: _type == t,
-                    label: Text(pollTypeLabel(l, t)),
-                    selectedColor: AppColors.primaryRed,
-                    labelStyle: TextStyle(
-                        color: _type == t ? Colors.white : AppColors.darkText,
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700),
-                    onSelected: (_) => setState(() => _type = t),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Text(l.t('pollOptions'),
-                style:
-                    const TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-            const SizedBox(height: 8),
-            for (var i = 0; i < _options.length; i++)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: TextField(
-                  controller: _options[i],
-                  maxLength: 60,
-                  decoration: InputDecoration(
-                    counterText: '',
-                    hintText: '${l.t('pollOption')} ${i + 1}',
-                    filled: true,
-                    fillColor: AppColors.cardWhite,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: BorderSide.none,
+    return Scaffold(
+      backgroundColor: AppColors.creamBackground,
+      appBar: AppBar(
+        backgroundColor: AppColors.creamBackground,
+        title: Text(l.t('createPoll')),
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                    const SizedBox(height: 2),
+                    TextField(
+                      controller: _question,
+                      maxLength: 120,
+                      decoration: InputDecoration(
+                        hintText: l.t('pollQuestionHint'),
+                        filled: true,
+                        fillColor: AppColors.cardWhite,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
                     ),
+                    const SizedBox(height: 6),
+                    Text(l.t('pollType'),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 13)),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final t in kPollTypes)
+                          ChoiceChip(
+                            selected: _type == t,
+                            label: Text(pollTypeLabel(l, t)),
+                            selectedColor: AppColors.primaryRed,
+                            labelStyle: TextStyle(
+                                color: _type == t
+                                    ? Colors.white
+                                    : AppColors.darkText,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700),
+                            onSelected: (_) => setState(() => _type = t),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Text(l.t('pollOptions'),
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w700, fontSize: 13)),
+                    const SizedBox(height: 8),
+                    for (var i = 0; i < _options.length; i++)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: TextField(
+                          controller: _options[i],
+                          maxLength: 60,
+                          decoration: InputDecoration(
+                            counterText: '',
+                            hintText: '${l.t('pollOption')} ${i + 1}',
+                            filled: true,
+                            fillColor: AppColors.cardWhite,
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (_options.length < 8)
+                      TextButton.icon(
+                        onPressed: () => setState(
+                            () => _options.add(TextEditingController())),
+                        icon: const Icon(Icons.add, size: 18),
+                        label: Text(l.t('addOption')),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton(
+                    onPressed: _sending ? null : _create,
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primaryRed,
+                      minimumSize: const Size(0, 50),
+                    ),
+                    child: _sending
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white))
+                        : Text(l.t('createPoll'),
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w800, fontSize: 15)),
                   ),
                 ),
-              ),
-            if (_options.length < 8)
-              TextButton.icon(
-                onPressed: () => setState(
-                    () => _options.add(TextEditingController())),
-                icon: const Icon(Icons.add, size: 18),
-                label: Text(l.t('addOption')),
-              ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                onPressed: _sending ? null : _create,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primaryRed,
-                  minimumSize: const Size(0, 50),
-                ),
-                child: _sending
-                    ? const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
-                    : Text(l.t('createPoll'),
-                        style: const TextStyle(
-                            fontWeight: FontWeight.w800, fontSize: 15)),
               ),
             ),
           ],
         ),
-      ),
-    );
+      );
   }
 }
 
