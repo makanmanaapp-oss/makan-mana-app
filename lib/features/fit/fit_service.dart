@@ -267,6 +267,57 @@ class FitService {
 
   // ---------- Penjana pelan harian ----------
 
+  /// Blok memanaskan badan yang dikongsi semua mood bukan-pemulihan.
+  /// name/detail ialah teks kanonik stabil; paparan guna nameKey/detailKey.
+  static const List<WorkoutBlock> _kWarmupBlocks = [
+    WorkoutBlock(
+      id: 'briskWalk',
+      name: 'Jalan pantas / jog ringan',
+      detail: '5 min',
+      nameKey: 'sportWarmupBriskWalkName',
+      detailKey: 'sportWarmupBriskWalkDetail',
+    ),
+    WorkoutBlock(
+      id: 'jointMobility',
+      name: 'Mobiliti sendi',
+      detail: 'Buku lali, pinggul, bahu - 3 min',
+      nameKey: 'sportWarmupJointMobilityName',
+      detailKey: 'sportWarmupJointMobilityDetail',
+    ),
+    WorkoutBlock(
+      id: 'dynamicStretch',
+      name: 'Dynamic stretch',
+      detail: 'Leg swing, arm circle - 2 min',
+      nameKey: 'sportWarmupDynamicStretchName',
+      detailKey: 'sportWarmupDynamicStretchDetail',
+    ),
+  ];
+
+  /// Blok menyejukkan badan yang dikongsi semua mood bukan-pemulihan.
+  static const List<WorkoutBlock> _kCooldownBlocks = [
+    WorkoutBlock(
+      id: 'hamstring',
+      name: 'Hamstring stretch',
+      detail: '2 x 30 saat',
+      nameKey: 'sportCooldownHamstringName',
+      detailKey: 'sportCooldownHamstringDetail',
+    ),
+    WorkoutBlock(
+      id: 'quadCalf',
+      name: 'Quad + calf stretch',
+      detail: '2 x 30 saat',
+      nameKey: 'sportCooldownQuadCalfName',
+      detailKey: 'sportCooldownQuadCalfDetail',
+    ),
+    WorkoutBlock(
+      id: 'breathing',
+      name: 'Pernafasan perlahan',
+      detail: '2 min',
+      nameKey: 'sportCooldownBreathingName',
+      detailKey: 'sportCooldownBreathingDetail',
+    ),
+  ];
+
   /// Pelan deterministik dari Sport Mood + profil.
   /// Skala volum ikut tahap; potong intensiti jika ada kecederaan.
   DailyPlan generateDailyPlan(FitnessProfile profile, {DateTime? day}) {
@@ -281,15 +332,15 @@ class FitService {
       final rest = sportMoodById('restDayNutrition');
       return DailyPlan(
         moodId: rest.id,
-        workoutName: rest.name,
+        workoutName: rest.canonicalName,
+        workoutNameKey: rest.titleKey,
         durationMinutes: 20,
         intensity: 'low',
         warmup: const [],
         main: rest.mainWork,
         cooldown: const [],
-        foodFocus: rest.foodFocus,
-        coachNote:
-            'Hari rehat pun penting. Protein kekal, tidur cukup - badan membina semasa rehat.',
+        foodFocusKey: rest.foodFocusKey,
+        coachNoteKey: 'fitCoachNoteRestDay',
         isRestDay: true,
       );
     }
@@ -310,47 +361,30 @@ class FitService {
         .clamp(15, profile.sessionDurationMinutes.toDouble())
         .round();
 
-    final warmup = mood.isRecovery
-        ? const <WorkoutBlock>[]
-        : const [
-            WorkoutBlock(name: 'Jalan pantas / jog ringan', detail: '5 min'),
-            WorkoutBlock(
-                name: 'Mobiliti sendi',
-                detail: 'Buku lali, pinggul, bahu - 3 min'),
-            WorkoutBlock(
-                name: 'Dynamic stretch',
-                detail: 'Leg swing, arm circle - 2 min'),
-          ];
-    final cooldown = mood.isRecovery
-        ? const <WorkoutBlock>[]
-        : const [
-            WorkoutBlock(name: 'Hamstring stretch', detail: '2 x 30 saat'),
-            WorkoutBlock(name: 'Quad + calf stretch', detail: '2 x 30 saat'),
-            WorkoutBlock(name: 'Pernafasan perlahan', detail: '2 min'),
-          ];
+    final warmup = mood.isRecovery ? const <WorkoutBlock>[] : _kWarmupBlocks;
+    final cooldown =
+        mood.isRecovery ? const <WorkoutBlock>[] : _kCooldownBlocks;
 
-    var note = switch (profile.mainGoal) {
-      'fatLoss' =>
-        'Konsisten kalahkan sempurna. Habiskan sesi ini, kemudian pilih makan malam berprotein.',
-      'muscleGain' =>
-        'Fokus teknik dan tambah beban sedikit demi sedikit. Makan cukup hari ini.',
-      _ => 'Gerak hari ini, sekejap pun jadi. Badan esok akan berterima kasih.',
+    var noteKey = switch (profile.mainGoal) {
+      'fatLoss' => 'fitCoachNoteFatLoss',
+      'muscleGain' => 'fitCoachNoteMuscleGain',
+      _ => 'fitCoachNoteDefault',
     };
     if (hasInjury) {
-      note =
-          'Ada rekod kecederaan - intensiti diturunkan. Berhenti serta-merta jika sakit dan jumpa profesional bertauliah jika berlarutan.';
+      noteKey = 'fitCoachNoteInjury';
     }
 
     return DailyPlan(
       moodId: mood.id,
-      workoutName: mood.name,
+      workoutName: mood.canonicalName,
+      workoutNameKey: mood.titleKey,
       durationMinutes: duration,
       intensity: intensity,
       warmup: warmup,
       main: mood.mainWork,
       cooldown: cooldown,
-      foodFocus: mood.foodFocus,
-      coachNote: note,
+      foodFocusKey: mood.foodFocusKey,
+      coachNoteKey: noteKey,
       isRestDay: false,
     );
   }

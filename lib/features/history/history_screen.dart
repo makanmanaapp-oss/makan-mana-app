@@ -3,10 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/localization/app_localizations.dart';
+import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/widgets/mm_icons.dart';
 import '../../core/providers.dart';
 import '../../core/widgets/place_image.dart';
 import '../../models/meal.dart';
+import '../fit/sport_mood_display.dart';
 import '../fit/fit_charts.dart';
 import '../fit/fit_log_sheets.dart';
 import '../fit/fit_models.dart';
@@ -31,7 +34,7 @@ class HistoryScreen extends ConsumerWidget {
             isScrollable: true,
             tabAlignment: TabAlignment.start,
             labelColor: AppColors.primaryRed,
-            unselectedLabelColor: AppColors.mutedText,
+            unselectedLabelColor: context.mm.onCardMuted,
             indicatorColor: AppColors.primaryRed,
             labelStyle: const TextStyle(
                 fontWeight: FontWeight.w800, fontSize: 13.5),
@@ -69,7 +72,7 @@ class _MealsTab extends ConsumerWidget {
     return mealsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, st) => Center(
-        child: Text('😕 $e', style: const TextStyle(fontSize: 13)),
+        child: Text(l.t('cvError'), style: const TextStyle(fontSize: 13)),
       ),
       data: (meals) {
         final now = DateTime.now();
@@ -86,19 +89,19 @@ class _MealsTab extends ConsumerWidget {
             Container(
               padding: const EdgeInsets.all(18),
               decoration: BoxDecoration(
-                color: AppColors.cardWhite,
+                color: context.mm.card,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppColors.softBorder),
+                border: Border.all(color: context.mm.border),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
                     l.t('weeklySummary'),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
-                      color: AppColors.darkText,
+                      color: context.mm.onCard,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -106,17 +109,17 @@ class _MealsTab extends ConsumerWidget {
                     mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
                       _StatBox(
-                        emoji: '🍽️',
+                        icon: MmIconType.mealHistory,
                         value: '${weekMeals.length}',
                         label: l.t('statMeals'),
                       ),
                       _StatBox(
-                        emoji: '💸',
+                        icon: MmIconType.bajet,
                         value: '~RM${spend.round()}',
                         label: l.t('statSpend'),
                       ),
                       _StatBox(
-                        emoji: '📍',
+                        icon: MmIconType.berhampiran,
                         value: '$places',
                         label: l.t('statPlaces'),
                       ),
@@ -129,14 +132,15 @@ class _MealsTab extends ConsumerWidget {
             if (meals.isEmpty) ...[
               const SizedBox(height: 24),
               const Center(
-                  child: Text('🕰️', style: TextStyle(fontSize: 56))),
+                  child: MmIcon(MmIconType.history,
+                      size: 56, color: AppColors.fadedText)),
               const SizedBox(height: 16),
               Center(
                 child: Text(
                   l.t('historyEmpty'),
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: AppColors.mutedText,
+                  style: TextStyle(
+                    color: context.mm.onCardMuted,
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
                   ),
@@ -181,8 +185,8 @@ class _FitnessTab extends ConsumerWidget {
           ),
           child: mealLogs.isEmpty
               ? Text(l.t('fitNoLogsToday'),
-                  style: const TextStyle(
-                      color: AppColors.mutedText,
+                  style: TextStyle(
+                      color: context.mm.onCardMuted,
                       fontSize: 12.5,
                       fontWeight: FontWeight.w600))
               : Column(
@@ -192,24 +196,25 @@ class _FitnessTab extends ConsumerWidget {
                                 const EdgeInsets.symmetric(vertical: 4),
                             child: Row(
                               children: [
-                                const Icon(Icons.restaurant,
+                                Icon(Icons.restaurant,
                                     size: 16,
-                                    color: AppColors.mutedText),
+                                    color: context.mm.iconMuted),
                                 const SizedBox(width: 9),
                                 Expanded(
                                   child: Text(
                                     '${m['menuName'] ?? '-'}',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                         fontSize: 13,
+                                        color: context.mm.onCard,
                                         fontWeight: FontWeight.w700),
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 ),
                                 Text(
                                   '${m['caloriesEstimate'] ?? 0} kcal',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                       fontSize: 12,
-                                      color: AppColors.mutedText,
+                                      color: context.mm.onCardMuted,
                                       fontWeight: FontWeight.w700),
                                 ),
                               ],
@@ -224,8 +229,8 @@ class _FitnessTab extends ConsumerWidget {
           title: l.t('fitRecentWorkouts'),
           child: workouts.isEmpty
               ? Text(l.t('fitNoWorkoutYet'),
-                  style: const TextStyle(
-                      color: AppColors.mutedText,
+                  style: TextStyle(
+                      color: context.mm.onCardMuted,
                       fontSize: 12.5,
                       fontWeight: FontWeight.w600))
               : Column(
@@ -247,18 +252,25 @@ class _FitnessTab extends ConsumerWidget {
                           const SizedBox(width: 10),
                           Expanded(
                             child: Text(
-                              '${w['workoutName'] ?? 'Workout'}',
-                              style: const TextStyle(
+                              // Rekod legasi: ID stabil diutamakan,
+                              // jatuh balik ke petikan teks tersimpan.
+                              resolveSportMoodTitle(
+                                l,
+                                moodId: w['sportMood'] as String?,
+                                legacyName: w['workoutName'] as String?,
+                              ),
+                              style: TextStyle(
                                   fontSize: 13,
+                                  color: context.mm.onCard,
                                   fontWeight: FontWeight.w700),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           Text(
                             _dateLabel('${w['date'] ?? ''}'),
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontSize: 11.5,
-                                color: AppColors.mutedText,
+                                color: context.mm.onCardMuted,
                                 fontWeight: FontWeight.w600),
                           ),
                         ],
@@ -408,18 +420,18 @@ class _ReportsTab extends ConsumerWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
                   _StatBox(
-                    emoji: '🏋️',
+                    icon: MmIconType.fitCoach,
                     value:
                         '${report?['trainingCompleted'] ?? 4}/${report?['trainingPlanned'] ?? 5}',
                     label: l.t('fitTrainingDone'),
                   ),
                   _StatBox(
-                    emoji: '👟',
+                    icon: MmIconType.berhampiran,
                     value: _fmt(report?['averageSteps'] ?? 7850),
                     label: l.t('fitAvgSteps'),
                   ),
                   _StatBox(
-                    emoji: '🥩',
+                    icon: MmIconType.healthy,
                     value: '${report?['proteinHitRate'] ?? 71}%',
                     label: l.t('fitProteinHit'),
                   ),
@@ -468,13 +480,15 @@ class _MealTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // SP10.2: kad theme-aware — tajuk/sari kata jelas dua-dua mod.
+    final mm = context.mm;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: ListTile(
-        tileColor: AppColors.cardWhite,
+        tileColor: mm.card,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: AppColors.softBorder),
+          side: BorderSide(color: mm.border),
         ),
         leading: PlaceImage(
           name: meal.placeNameSnapshot,
@@ -485,16 +499,17 @@ class _MealTile extends StatelessWidget {
         ),
         title: Text(
           meal.placeNameSnapshot,
-          style: const TextStyle(fontWeight: FontWeight.w700),
+          style:
+              TextStyle(fontWeight: FontWeight.w700, color: mm.onCard),
         ),
         subtitle: Text(
           '${meal.cuisine} • ${_formatTime(meal.mealTime)} • ${meal.timeSlot}',
-          style: const TextStyle(fontSize: 12.5),
+          style: TextStyle(fontSize: 12.5, color: mm.onCardMuted),
         ),
         // Sudah dinilai: tunjuk bintang. Belum: butang Bagi rating.
         trailing: meal.satisfactionRating != null
             ? Text(
-                '⭐' * meal.satisfactionRating!,
+                '★' * meal.satisfactionRating!,
                 style: const TextStyle(fontSize: 12),
               )
             : meal.id.isNotEmpty
@@ -516,7 +531,7 @@ class _MealTile extends StatelessWidget {
                           const EdgeInsets.symmetric(horizontal: 10),
                     ),
                     child: Text(
-                      '⭐ ${AppLocalizations.of(context).t('rateShort')}',
+                      '★ ${AppLocalizations.of(context).t('rateShort')}',
                       style: const TextStyle(
                           fontSize: 12, fontWeight: FontWeight.w700),
                     ),
@@ -529,32 +544,33 @@ class _MealTile extends StatelessWidget {
 
 class _StatBox extends StatelessWidget {
   const _StatBox({
-    required this.emoji,
+    required this.icon,
     required this.value,
     required this.label,
   });
 
-  final String emoji;
+  final MmIconType icon;
   final String value;
   final String label;
 
   @override
   Widget build(BuildContext context) {
+    final mm = context.mm;
     return Column(
       children: [
-        Text(emoji, style: const TextStyle(fontSize: 24)),
+        MmIcon(icon, size: 24, color: AppColors.primaryRed),
         const SizedBox(height: 6),
         Text(
           value,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w800,
-            color: AppColors.darkText,
+            color: mm.onCard,
           ),
         ),
         Text(
           label,
-          style: const TextStyle(fontSize: 12, color: AppColors.mutedText),
+          style: TextStyle(fontSize: 12, color: mm.onCardMuted),
         ),
       ],
     );

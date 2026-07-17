@@ -265,16 +265,43 @@ class DailyMetrics {
 }
 
 /// Satu blok senaman dalam pelan harian.
+///
+/// [name] dan [detail] ialah teks kanonik yang stabil - ia kekal sebagai
+/// muatan persistence dan TIDAK pernah diterjemah. [nameKey] / [detailKey]
+/// ialah medan masa-jalan sahaja untuk paparan; ia sengaja dikecualikan
+/// daripada [toMap] supaya format tersimpan kekal sama seperti sebelum ini.
 class WorkoutBlock {
-  const WorkoutBlock({required this.name, required this.detail});
+  const WorkoutBlock({
+    required this.name,
+    required this.detail,
+    this.id,
+    this.nameKey,
+    this.detailKey,
+  });
 
   final String name;
   final String detail;
 
+  /// ID stabil blok (masa-jalan sahaja).
+  final String? id;
+
+  /// Kunci localization tajuk blok (masa-jalan sahaja).
+  final String? nameKey;
+
+  /// Kunci localization butiran blok (masa-jalan sahaja).
+  final String? detailKey;
+
+  /// Muatan persistence - kekal {name, detail} sahaja.
   Map<String, dynamic> toMap() => {'name': name, 'detail': detail};
 }
 
 /// Pelan latihan harian dijana dari Sport Mood + profil.
+///
+/// Pelan ini TIDAK disimpan ke Firestore - ia dijana semula pada masa-jalan
+/// daripada profil. Satu-satunya medan pelan yang ditulis ke Firestore ialah
+/// {sportMood, workoutName, durationMinutes, intensity} dalam
+/// `workout_sessions` (lihat FitService.logWorkout). Oleh itu [workoutName]
+/// mesti kekal teks kanonik English dan bukan label terjemahan.
 class DailyPlan {
   const DailyPlan({
     required this.moodId,
@@ -284,21 +311,29 @@ class DailyPlan {
     required this.warmup,
     required this.main,
     required this.cooldown,
-    required this.foodFocus,
-    required this.coachNote,
     required this.isRestDay,
+    this.workoutNameKey,
+    this.foodFocusKey,
+    this.coachNoteKey,
   });
 
+  /// ID Sport Mood stabil - sumber kebenaran untuk paparan berbilang bahasa.
   final String moodId;
+
+  /// Nama kanonik (English) - ditulis ke workout_sessions.workoutName.
   final String workoutName;
+
   final int durationMinutes;
   final String intensity;
   final List<WorkoutBlock> warmup;
   final List<WorkoutBlock> main;
   final List<WorkoutBlock> cooldown;
-  final String foodFocus;
-  final String coachNote;
   final bool isRestDay;
+
+  /// Kunci paparan (masa-jalan sahaja - tidak pernah disimpan).
+  final String? workoutNameKey;
+  final String? foodFocusKey;
+  final String? coachNoteKey;
 }
 
 /// Cadangan menu dengan MenuFitScore.

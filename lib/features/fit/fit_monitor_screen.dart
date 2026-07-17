@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/localization/app_localizations.dart';
+import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
 import 'fit_charts.dart';
 import 'fit_models.dart';
+import 'sport_mood_display.dart';
 import 'fit_providers.dart';
 import 'fit_widgets.dart';
 
@@ -30,6 +32,7 @@ class FitMonitorScreen extends ConsumerWidget {
       ),
       body: LockedProOverlay(
         locked: locked,
+        paywallArgs: fitPaywallArgs('pro_monitor', 'pro_monitor'),
         child: _MonitorBody(preview: locked),
       ),
     );
@@ -127,11 +130,11 @@ class _MonitorBody extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
-                '🔥 $streak ${l.t('fitStreakDays')}',
-                style: const TextStyle(
+                '$streak ${l.t('fitStreakDays')}',
+                style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w800,
-                  color: AppColors.darkText,
+                  color: builderContext.mm.onCard,
                 ),
               ),
             );
@@ -174,8 +177,8 @@ class _MonitorBody extends ConsumerWidget {
           child: weight.length < 2
               ? Text(
                   l.t('fitBodyTrendEmpty'),
-                  style: const TextStyle(
-                    color: AppColors.mutedText,
+                  style: TextStyle(
+                    color: context.mm.onCardMuted,
                     fontWeight: FontWeight.w600,
                   ),
                 )
@@ -206,7 +209,7 @@ class _MonitorBody extends ConsumerWidget {
           child: workouts.isEmpty
               ? Text(
                   l.t('fitNoWorkoutYet'),
-                  style: const TextStyle(color: AppColors.mutedText),
+                  style: TextStyle(color: context.mm.onCardMuted),
                 )
               : Column(
                   children: workouts
@@ -308,14 +311,25 @@ class _WorkoutRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final status = data['status'] as String?;
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: const Icon(Icons.fitness_center, color: AppColors.primaryRed),
       title: Text(
-        '${data['workoutName'] ?? 'Workout'}',
+        // Rekod legasi: ID stabil diutamakan, jatuh balik ke petikan teks.
+        resolveSportMoodTitle(
+          l,
+          moodId: data['sportMood'] as String?,
+          legacyName: data['workoutName'] as String?,
+        ),
         style: const TextStyle(fontWeight: FontWeight.w800),
       ),
-      subtitle: Text('${data['status'] ?? '-'}'),
+      subtitle: Text(switch (status) {
+        'completed' => l.t('fitStatusCompleted'),
+        'skipped' => l.t('fitStatusSkipped'),
+        _ => status ?? '-',
+      }),
       trailing: Text('${data['durationMinutes'] ?? '-'} min'),
     );
   }

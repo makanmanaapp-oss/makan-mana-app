@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../app/localization/app_localizations.dart';
+import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/widgets/place_image.dart';
 import '../fit/fit_charts.dart';
@@ -187,8 +188,8 @@ class MealWalletScreen extends ConsumerWidget {
               padding: const EdgeInsets.symmetric(vertical: 24),
               child: Center(
                 child: Text(l.t('walletNoLog'),
-                    style: const TextStyle(
-                        color: AppColors.mutedText,
+                    style: TextStyle(
+                        color: context.mm.onCardMuted,
                         fontWeight: FontWeight.w600)),
               ),
             )
@@ -234,10 +235,11 @@ class _ExpenseTile extends ConsumerWidget {
       padding: const EdgeInsets.only(bottom: 10),
       child: ListTile(
         onTap: () => _showDetail(context, ref),
-        tileColor: AppColors.cardWhite,
+        // SP10.5: PERATURAN KAD — bg token, teks eksplisit token.
+        tileColor: context.mm.card,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: AppColors.softBorder),
+          side: BorderSide(color: context.mm.border),
         ),
         leading: PlaceImage(
           name: name,
@@ -250,17 +252,18 @@ class _ExpenseTile extends ConsumerWidget {
         title: Text(name,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontWeight: FontWeight.w700)),
+            style: TextStyle(
+                fontWeight: FontWeight.w700, color: context.mm.onCard)),
         subtitle: Text(
           '${_dateLabel(e.dateKey)} • ${e.mealType}'
           '${e.isGroupMeal ? ' • Tong-Tong' : ''}',
-          style: const TextStyle(fontSize: 12),
+          style: TextStyle(fontSize: 12, color: context.mm.onCardMuted),
         ),
         trailing: Text(_rm(e.totalSpend),
-            style: const TextStyle(
+            style: TextStyle(
                 fontWeight: FontWeight.w800,
                 fontSize: 14.5,
-                color: AppColors.darkText)),
+                color: context.mm.onCard)),
       ),
     );
   }
@@ -274,7 +277,7 @@ class _ExpenseTile extends ConsumerWidget {
     final e = expense;
     showModalBottomSheet<void>(
       context: context,
-      backgroundColor: AppColors.creamBackground,
+      backgroundColor: context.mm.appBackground,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -308,8 +311,8 @@ class _ExpenseTile extends ConsumerWidget {
               Text(
                 '${_dateLabel(e.dateKey)} • ${e.mealType} • '
                 '${e.paymentMethod}${e.notes != null ? '\n${e.notes}' : ''}',
-                style: const TextStyle(
-                    color: AppColors.mutedText,
+                style: TextStyle(
+                    color: sheetContext.mm.onCardMuted,
                     fontSize: 12.5,
                     fontWeight: FontWeight.w600),
               ),
@@ -323,7 +326,7 @@ class _ExpenseTile extends ConsumerWidget {
                               ? Icons.local_cafe_outlined
                               : Icons.restaurant,
                           size: 15,
-                          color: AppColors.mutedText,
+                          color: sheetContext.mm.iconMuted,
                         ),
                         const SizedBox(width: 8),
                         Expanded(
@@ -505,7 +508,7 @@ class _BudgetSettingsScreenState
     );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Budget Coach')),
+      appBar: AppBar(title: Text(l.t('budgetCoachTitle'))),
       body: access == WalletAccess.free
           ? LockedProOverlay(locked: true, child: body)
           : body,
@@ -521,7 +524,7 @@ class _BudgetSettingsScreenState
             labelText: label,
             prefixText: 'RM ',
             filled: true,
-            fillColor: AppColors.creamBackground,
+            fillColor: context.mm.chipBackground,
             border:
                 OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
           ),
@@ -626,7 +629,7 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.creamBackground,
+      backgroundColor: context.mm.appBackground,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -652,7 +655,7 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> {
                 decoration: InputDecoration(
                   hintText: l.t('walletItemNameHint'),
                   filled: true,
-                  fillColor: AppColors.cardWhite,
+                  fillColor: context.mm.card,
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12)),
                 ),
@@ -665,7 +668,7 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> {
                 decoration: InputDecoration(
                   hintText: l.t('walletPriceHint'),
                   filled: true,
-                  fillColor: AppColors.cardWhite,
+                  fillColor: context.mm.card,
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12)),
                 ),
@@ -737,7 +740,7 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> {
             decoration: InputDecoration(
               labelText: l.t('walletPlaceOptional'),
               filled: true,
-              fillColor: AppColors.cardWhite,
+              fillColor: context.mm.card,
               border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14)),
             ),
@@ -752,7 +755,7 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> {
             decoration: InputDecoration(
               labelText: l.t('walletTotalRequired'),
               filled: true,
-              fillColor: AppColors.cardWhite,
+              fillColor: context.mm.card,
               border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14)),
             ),
@@ -776,8 +779,8 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> {
             child: _items.isEmpty
                 ? Text(
                     l.t('walletItemHint'),
-                    style: const TextStyle(
-                        color: AppColors.mutedText,
+                    style: TextStyle(
+                        color: context.mm.onCardMuted,
                         fontSize: 12.5,
                         fontWeight: FontWeight.w600))
                 : Column(
@@ -805,9 +808,9 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> {
                                       _total.text = _itemsTotal
                                           .toStringAsFixed(2);
                                     }),
-                                    icon: const Icon(Icons.close,
+                                    icon: Icon(Icons.close,
                                         size: 16,
-                                        color: AppColors.mutedText),
+                                        color: context.mm.iconMuted),
                                   ),
                                 ],
                               ),
@@ -896,8 +899,8 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> {
             child: access == WalletAccess.free
                 ? Text(
                     l.t('walletPhotoUpsell'),
-                    style: const TextStyle(
-                        color: AppColors.mutedText,
+                    style: TextStyle(
+                        color: context.mm.onCardMuted,
                         fontSize: 12.5,
                         fontWeight: FontWeight.w600))
                 : Row(
@@ -949,7 +952,7 @@ class _AddExpenseScreenState extends ConsumerState<AddExpenseScreen> {
             decoration: InputDecoration(
               labelText: l.t('walletNoteOptional'),
               filled: true,
-              fillColor: AppColors.cardWhite,
+              fillColor: context.mm.card,
               border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14)),
             ),

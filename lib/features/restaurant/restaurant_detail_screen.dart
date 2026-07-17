@@ -4,12 +4,16 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/localization/app_localizations.dart';
+import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/entitlement/entitlement.dart';
+import '../../core/entitlement/plan_tier.dart';
 import '../../core/providers.dart';
+import '../../core/utils/place_actions.dart';
+import '../../core/widgets/location_preview_card.dart';
 import '../../core/widgets/place_image.dart';
 import '../../models/place_summary.dart';
 import '../reviews/rating_page.dart';
@@ -28,22 +32,9 @@ class _RestaurantDetailScreenState
     extends ConsumerState<RestaurantDetailScreen> {
   String get placeId => widget.placeId;
 
-  /// Tempat Google sebenar: pautan tepat guna query_place_id.
-  /// Tempat dummy: carian ikut nama sahaja.
-  Future<void> _openMap(WidgetRef ref, PlaceSummary place) async {
-    final query = Uri.encodeComponent('${place.name} ${place.address}');
-    final idParam = place.placeId.startsWith('dummy_')
-        ? ''
-        : '&query_place_id=${place.placeId}';
-    final uri = Uri.parse(
-      'https://www.google.com/maps/search/?api=1&query=$query$idParam',
-    );
-    // Log ke AI Brain: open_map ialah isyarat minat yang kuat.
-    ref.read(spinControllerProvider).logAppEvent('open_map');
-    await launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
-
   Future<void> _share(BuildContext context, PlaceSummary place) async {
+    // Selesaikan sebelum jurang async - context mungkin hilang selepas await.
+    final copiedMessage = AppLocalizations.of(context).t('copiedToClipboard');
     final text = '🍽️ ${place.name} (${place.cuisine}) — ⭐ ${place.rating}\n'
         'Jom makan sini! Dicadangkan oleh MakanMana 😋\n'
         'https://www.google.com/maps/search/?api=1&query='
@@ -56,7 +47,7 @@ class _RestaurantDetailScreenState
       await Clipboard.setData(ClipboardData(text: text));
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('📋 Disalin! Paste untuk kongsi.')),
+          SnackBar(content: Text(copiedMessage)),
         );
       }
     }
@@ -69,7 +60,7 @@ class _RestaurantDetailScreenState
     if (pos == null) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('📡 ${l.t('postFailed')}')),
+          SnackBar(content: Text(l.t('postFailed'))),
         );
       }
       return;
@@ -90,7 +81,7 @@ class _RestaurantDetailScreenState
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('📡 ${l.t('postFailed')}')),
+          SnackBar(content: Text(l.t('postFailed'))),
         );
       }
     }
@@ -99,12 +90,19 @@ class _RestaurantDetailScreenState
   /// Simpan/buang kegemaran (ciri Plus - gate lembut ke paywall).
   Future<void> _toggleFavorite(PlaceSummary place, bool isFav) async {
     final l = AppLocalizations.of(context);
-    final plan = ref.read(userPlanProvider).value ?? 'free';
-    if (plan == 'free') {
+    final ent = ref.read(entitlementProvider);
+    if (!ent.isPlusOrAbove) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(l.t('lockedPlus'))),
       );
-      context.push(RoutePaths.paywall);
+      context.push(
+        RoutePaths.paywall,
+        extra: ent.buildPaywallArgs(
+          featureId: FeatureId.favoritesFull,
+          sourceScreen: 'restaurant_detail',
+          requiredPlan: PlanTier.plus,
+        ),
+      );
       return;
     }
     final uid = ref.read(authRepositoryProvider).currentUser?.uid ?? '';
@@ -157,7 +155,7 @@ class _RestaurantDetailScreenState
     if (place == null) {
       return Scaffold(
         appBar: AppBar(),
-        body: const Center(child: Text('😕')),
+        body: const Center(child: Icon(Icons.error_outline)),
       );
     }
 
@@ -182,10 +180,10 @@ class _RestaurantDetailScreenState
                 Expanded(
                   child: Text(
                     place.name,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 23,
                       fontWeight: FontWeight.w800,
-                      color: AppColors.darkText,
+                      color: context.mm.onCard,
                     ),
                   ),
                 ),
@@ -205,7 +203,7 @@ class _RestaurantDetailScreenState
                       fontSize: 12,
                       color: place.isOpen
                           ? AppColors.openGreen
-                          : AppColors.mutedText,
+                          : context.mm.onCardMuted,
                     ),
                   ),
                 ),
@@ -213,10 +211,10 @@ class _RestaurantDetailScreenState
             ),
             const SizedBox(height: 6),
             Text(
-              '${place.cuisine} • ⭐ ${place.rating} '
+              '${place.cuisine} • ★ ${place.rating} '
               '(${place.userRatingCount}) • ${place.distanceKm} km',
-              style: const TextStyle(
-                color: AppColors.mutedText,
+              style: TextStyle(
+                color: context.mm.onCardMuted,
                 fontWeight: FontWeight.w600,
               ),
             ),
@@ -237,7 +235,7 @@ class _RestaurantDetailScreenState
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Text(
-                          '✅ $rating ${l.t('communityRatingLabel')}'
+                          '★ $rating ${l.t('communityRatingLabel')}'
                           ' (${count ?? 0})',
                           style: const TextStyle(
                             fontSize: 13,
@@ -255,7 +253,8 @@ class _RestaurantDetailScreenState
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () => _openMap(ref, place),
+                    onPressed: () => openPlaceInMaps(ref, place,
+                        source: 'restaurant_detail'),
                     icon: const Icon(Icons.map_outlined, size: 20),
                     label: Text(l.t('openMap')),
                   ),
@@ -353,26 +352,26 @@ class _RestaurantDetailScreenState
                     minimumSize: const Size(0, 46)),
                 icon: const Icon(
                     Icons.account_balance_wallet_outlined, size: 20),
-                label: const Text('Log belanja ke Meal Wallet',
-                    style: TextStyle(fontWeight: FontWeight.w700)),
+                label: Text(l.t('logSpendToWallet'),
+                    style: const TextStyle(fontWeight: FontWeight.w700)),
               ),
             ),
             const SizedBox(height: 22),
             Text(
               l.t('quickInfo'),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
-                color: AppColors.darkText,
+                color: context.mm.onCard,
               ),
             ),
             const SizedBox(height: 10),
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: AppColors.cardWhite,
+                color: context.mm.card,
                 borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: AppColors.softBorder),
+                border: Border.all(color: context.mm.border),
               ),
               child: Column(
                 children: [
@@ -387,10 +386,10 @@ class _RestaurantDetailScreenState
             const SizedBox(height: 22),
             Text(
               l.t('whyFits'),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
-                color: AppColors.darkText,
+                color: context.mm.onCard,
               ),
             ),
             const SizedBox(height: 10),
@@ -411,10 +410,10 @@ class _RestaurantDetailScreenState
             // Ulasan komuniti (verified MakanMana).
             Text(
               l.t('reviewsTitle'),
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
-                color: AppColors.darkText,
+                color: context.mm.onCard,
               ),
             ),
             const SizedBox(height: 10),
@@ -423,8 +422,8 @@ class _RestaurantDetailScreenState
                     if (reviews.isEmpty) {
                       return Text(
                         l.t('noReviews'),
-                        style: const TextStyle(
-                          color: AppColors.mutedText,
+                        style: TextStyle(
+                          color: context.mm.onCardMuted,
                           fontSize: 13.5,
                         ),
                       );
@@ -439,25 +438,8 @@ class _RestaurantDetailScreenState
                   orElse: () => const SizedBox.shrink(),
                 ),
             const SizedBox(height: 18),
-            // Placeholder peta mini (Milestone 4: peta sebenar / pautan Places).
-            Container(
-              height: 120,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: AppColors.softYellow,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(color: AppColors.softBorder),
-              ),
-              child: Center(
-                child: Text(
-                  '🗺️ ${l.t('mapPlaceholder')}',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.mutedText,
-                  ),
-                ),
-              ),
-            ),
+            // Prompt 4: kad lokasi jujur (ganti placeholder peta palsu).
+            LocationPreviewCard(place: place, source: 'restaurant_detail'),
           ],
         ),
       ),
@@ -477,13 +459,14 @@ class _ReviewTile extends StatelessWidget {
     final text = review['text'] as String?;
     final source = review['source'] as String?;
 
+    final mm = context.mm;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: AppColors.cardWhite,
+        color: mm.card,
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppColors.softBorder),
+        border: Border.all(color: mm.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -493,19 +476,25 @@ class _ReviewTile extends StatelessWidget {
               Expanded(
                 child: Text(
                   name,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 13.5,
+                    color: mm.onCard,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
               if (source != 'delivery')
-                const Text('✅ ', style: TextStyle(fontSize: 12)),
+                const Padding(
+                  padding: EdgeInsets.only(right: 3),
+                  child: Icon(Icons.verified_outlined,
+                      size: 13, color: AppColors.openGreen),
+                ),
               Text(
-                '⭐' * rating,
-                style: const TextStyle(fontSize: 12),
+                '★' * rating,
+                style: const TextStyle(
+                    fontSize: 12, color: AppColors.warmYellow),
               ),
             ],
           ),
@@ -513,7 +502,8 @@ class _ReviewTile extends StatelessWidget {
             const SizedBox(height: 5),
             Text(
               text,
-              style: const TextStyle(fontSize: 13.5, height: 1.3),
+              style: TextStyle(
+                  fontSize: 13.5, height: 1.3, color: mm.onCardMuted),
             ),
           ],
         ],
@@ -537,11 +527,11 @@ class _RoundAction extends StatelessWidget {
         height: 52,
         width: 52,
         decoration: BoxDecoration(
-          color: AppColors.cardWhite,
+          color: context.mm.card,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.softBorder),
+          border: Border.all(color: context.mm.border),
         ),
-        child: Icon(icon, color: AppColors.darkText),
+        child: Icon(icon, color: context.mm.onCard),
       ),
     );
   }
@@ -559,7 +549,10 @@ class _InfoRow extends StatelessWidget {
       children: [
         Icon(icon, size: 20, color: AppColors.primaryRed),
         const SizedBox(width: 10),
-        Expanded(child: Text(text)),
+        // SP10.4: alamat/bajet WAJIB warna eksplisit atas kad.
+        Expanded(
+            child:
+                Text(text, style: TextStyle(color: context.mm.onCard))),
       ],
     );
   }

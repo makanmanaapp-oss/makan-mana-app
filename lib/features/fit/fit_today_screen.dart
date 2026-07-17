@@ -10,6 +10,7 @@ import 'fit_log_sheets.dart';
 import 'fit_models.dart';
 import 'fit_providers.dart';
 import 'fit_widgets.dart';
+import 'sport_mood_display.dart';
 
 class FitTodayScreen extends ConsumerWidget {
   const FitTodayScreen({super.key});
@@ -23,6 +24,7 @@ class FitTodayScreen extends ConsumerWidget {
         appBar: AppBar(title: Text(l.t('fitCoachTitle'))),
         body: LockedProOverlay(
           locked: true,
+          paywallArgs: fitPaywallArgs('fit_coach', 'fit_coach'),
           child: _SampleToday(l: l),
         ),
       );
@@ -265,19 +267,21 @@ class _WorkoutCard extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            plan.workoutName,
+            resolveSportMoodTitle(l,
+                moodId: plan.moodId, legacyName: plan.workoutName),
             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 4),
           Text(
-            '${plan.durationMinutes} min - ${plan.intensity}',
+            '${plan.durationMinutes} min - '
+            '${resolveIntensityLabel(l, plan.intensity)}',
             style: const TextStyle(
               color: AppColors.mutedText,
               fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 10),
-          Text(plan.coachNote,
+          Text(l.t(plan.coachNoteKey ?? 'fitCoachNoteDefault'),
               style: const TextStyle(height: 1.4, fontWeight: FontWeight.w600)),
           const SizedBox(height: 12),
           ...[
@@ -301,6 +305,13 @@ class _WorkoutCard extends ConsumerWidget {
               ),
             ],
           ),
+          const SizedBox(height: 10),
+          // Prompt 12: penafian keselamatan (bukan nasihat perubatan).
+          Text(
+            l.t('fitSafetyNote'),
+            style: const TextStyle(
+                fontSize: 11, color: AppColors.mutedText, height: 1.3),
+          ),
         ],
       ),
     );
@@ -314,6 +325,7 @@ class _BlockRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -324,11 +336,11 @@ class _BlockRow extends StatelessWidget {
           Expanded(
             child: Text.rich(
               TextSpan(
-                text: block.name,
+                text: resolveWorkoutBlockName(l, block),
                 style: const TextStyle(fontWeight: FontWeight.w800),
                 children: [
                   TextSpan(
-                    text: ' - ${block.detail}',
+                    text: ' - ${resolveWorkoutBlockDetail(l, block)}',
                     style: const TextStyle(
                       fontWeight: FontWeight.w500,
                       color: AppColors.mutedText,

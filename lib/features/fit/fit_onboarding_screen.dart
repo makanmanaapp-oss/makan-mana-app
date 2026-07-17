@@ -3,9 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/localization/app_localizations.dart';
+import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/events/event_types.dart';
+import '../../core/providers.dart';
+import '../../core/providers/makanmana_user_context_provider.dart';
 import 'fit_models.dart';
 import 'fit_providers.dart';
+import 'sport_mood_display.dart';
 import 'sport_moods_data.dart';
 
 class FitOnboardingScreen extends ConsumerStatefulWidget {
@@ -81,6 +86,25 @@ class _FitOnboardingScreenState extends ConsumerState<FitOnboardingScreen> {
       selectedSportMood: _mood,
     );
     await ref.read(fitServiceProvider).saveProfile(profile);
+    // Prompt 12: segerakkan fitGoal + sportMood ke konteks global supaya
+    // Meal Plan / AI Food Coach / getSuggestions dapat isyarat terkini.
+    // updateFitGoal log fit_goal_updated; updateSportMood log sport_mood_selected.
+    final notifier = ref.read(makanManaUserContextProvider.notifier);
+    await notifier.updateFitGoal(profile.mainGoal);
+    final sm = profile.selectedSportMood;
+    if (sm != null && sm.isNotEmpty) {
+      notifier.updateSportMood(sm);
+    }
+    // Event profil Fit dikemas kini (changedFields sahaja, tiada data sensitif).
+    ref.read(eventLoggerProvider).logEvent(
+      EventType.fitProfileUpdated,
+      sourceScreen: 'fit_onboarding',
+      metadata: {
+        'changedFields': ['fitGoal', 'fitnessLevel', 'trainingDays', 'stepTarget'],
+        'fitnessLevel': profile.fitnessLevel,
+        'trainingDaysPerWeek': profile.trainingDaysPerWeek,
+      },
+    );
     if (!mounted) return;
     setState(() => _saving = false);
     context.go('/fit/today');
@@ -182,9 +206,9 @@ class _FitOnboardingScreenState extends ConsumerState<FitOnboardingScreen> {
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: Icon(mood.icon, color: AppColors.primaryRed),
-                title: Text(mood.name,
+                title: Text(resolveSportMoodTitle(l, moodId: mood.id),
                     style: const TextStyle(fontWeight: FontWeight.w800)),
-                subtitle: Text(mood.purpose),
+                subtitle: Text(l.t(mood.purposeKey)),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: () async {
                   final picked = await context.push<String>('/fit/sport-moods');
@@ -234,11 +258,11 @@ class _FitOnboardingScreenState extends ConsumerState<FitOnboardingScreen> {
           labelText: label,
           suffixText: suffix.isEmpty ? null : suffix,
           filled: true,
-          fillColor: AppColors.cardWhite,
+          fillColor: context.mm.card,
           border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(14),
-            borderSide: const BorderSide(color: AppColors.softBorder),
+            borderSide: BorderSide(color: context.mm.border),
           ),
         ),
       ),
@@ -303,9 +327,9 @@ class _Section extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.cardWhite,
+        color: context.mm.card,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.softBorder),
+        border: Border.all(color: context.mm.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -341,11 +365,11 @@ class _ChoiceMenu extends StatelessWidget {
       decoration: InputDecoration(
         labelText: label,
         filled: true,
-        fillColor: AppColors.cardWhite,
+        fillColor: context.mm.card,
         border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: const BorderSide(color: AppColors.softBorder),
+          borderSide: BorderSide(color: context.mm.border),
         ),
       ),
       items: items
@@ -379,7 +403,7 @@ class _ChoiceWrap extends StatelessWidget {
                 selected: value == o.$1,
                 label: Text(o.$2),
                 selectedColor: AppColors.softYellow,
-                side: const BorderSide(color: AppColors.softBorder),
+                side: BorderSide(color: context.mm.border),
                 onSelected: (_) => onChanged(o.$1),
               ))
           .toList(),
