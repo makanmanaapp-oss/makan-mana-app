@@ -18,6 +18,8 @@ export interface PlaceCandidate {
   address: string;
   matchScore: number;
   matchReasonKeys: string[];
+  /** Isyarat negatif jujur (cth. possible_allergy_conflict, price_unknown). */
+  negativeSignals?: string[];
   priceEstimate: string;
   /** URL foto sebenar (googleusercontent, dicache bersama tempat). */
   photoUrl?: string | null;
@@ -27,4 +29,12 @@ export interface PlaceCandidate {
    * null = jadual tidak diketahui (anggap buka).
    */
   openingPeriods?: OpeningPeriod[] | null;
+  /**
+   * Phase 1.14G — sumber data (kohort dalaman sahaja; awam tidak menerima medan
+   * ini). "canonical" = ditindih dari penerbitan kanonikal server-mediated;
+   * "legacy" = data legasi place_details/Google. Tidak hadir = laluan awam biasa.
+   */
+  dataSource?: "canonical" | "legacy";
+  /** Phase 1.14G — ID kanonikal (kohort sahaja) untuk penghalaan stabil. */
+  canonicalPlaceId?: string;
 }

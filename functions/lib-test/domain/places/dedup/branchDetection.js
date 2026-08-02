@@ -1,0 +1,63 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.phonesOverlap = phonesOverlap;
+exports.hasExactIdentity = hasExactIdentity;
+exports.assessBranch = assessBranch;
+/** Phase 1.4 — pengesanan cawangan (jangan gabung rangkaian ikut jenama sahaja). */
+const config_1 = require("./config");
+const geo_1 = require("./geo");
+const nameSimilarity_1 = require("./nameSimilarity");
+function phonesOverlap(a, b) {
+    return a.some((p) => b.includes(p));
+}
+function hasExactIdentity(a, b) {
+    return (!!(a.providerPlaceId && a.providerPlaceId === b.providerPlaceId) ||
+        !!(a.merchantRegistrationId &&
+            a.merchantRegistrationId === b.merchantRegistrationId));
+}
+function assessBranch(a, b, config = config_1.DEFAULT_DEDUP_CONFIG) {
+    const nameSim = (0, nameSimilarity_1.nameSimilarity)(a.normalizedName, b.normalizedName);
+    const brandLikelySame = nameSim >= config.brandSameNameSimilarity;
+    const geo = (0, geo_1.geoProximity)(a, b, config.geoThresholds);
+    const reasons = [];
+    if (a.branchName && b.branchName && a.branchName !== b.branchName) {
+        reasons.push("branch_name_differs");
+    }
+    if (a.postalCode && b.postalCode && a.postalCode !== b.postalCode) {
+        reasons.push("postal_differs");
+    }
+    if (geo.valid && geo.distanceMeters > config.geoThresholds.moderateM) {
+        reasons.push("coordinates_separated");
+    }
+    if (a.phoneDigits.length > 0 &&
+        b.phoneDigits.length > 0 &&
+        !phonesOverlap(a.phoneDigits, b.phoneDigits)) {
+        reasons.push("phone_differs");
+    }
+    if (a.providerPlaceId && b.providerPlaceId && a.providerPlaceId !== b.providerPlaceId) {
+        reasons.push("provider_id_differs");
+    }
+    const addrSim = (0, nameSimilarity_1.tokenSetSimilarity)(a.addressTokens, b.addressTokens);
+    if (a.addressTokens.length > 0 &&
+        b.addressTokens.length > 0 &&
+        addrSim < config.addressConflictMaxSimilarity) {
+        reasons.push("address_differs");
+    }
+    // Token nama unik (cth. locality "shah alam" vs "bangi") bila jenama sama.
+    const uniqA = a.nameTokens.filter((t) => !b.nameTokens.includes(t));
+    const uniqB = b.nameTokens.filter((t) => !a.nameTokens.includes(t));
+    if (brandLikelySame && (uniqA.length > 0 || uniqB.length > 0)) {
+        reasons.push("distinct_name_tokens");
+    }
+    const exactId = hasExactIdentity(a, b);
+    // Telefon sepadan menindih "cawangan berbeza" — venue yang berpindah/dinamakan
+    // semula MENGEKALKAN telefonnya. Halakan ke review (bukan pisah automatik).
+    const phoneMatches = a.phoneDigits.length > 0 &&
+        b.phoneDigits.length > 0 &&
+        phonesOverlap(a.phoneDigits, b.phoneDigits);
+    const isLikelySeparateBranch = brandLikelySame && reasons.length >= 1 && !exactId && !phoneMatches;
+    const confidence = isLikelySeparateBranch
+        ? Math.min(1, Math.round((reasons.length / 3) * 100) / 100)
+        : 0;
+    return { isLikelySeparateBranch, confidence, reasons };
+}

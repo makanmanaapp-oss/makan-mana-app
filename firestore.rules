@@ -80,27 +80,269 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // ---------- PART 1 (Phase 1.3): Place Staging & Provenance ----------
+    // Koleksi staging kedai — SEPENUHNYA server-only (Admin SDK). Pengguna
+    // biasa TIDAK boleh baca/tulis. Data staging TIDAK PERNAH diterbitkan ke
+    // app mobile. Deny eksplisit ini SETARA dengan catch-all deny di bawah —
+    // ia menjelaskan niat & memudahkan audit, TANPA melonggarkan apa-apa.
+    match /place_import_batches/{batchId} {
+      allow read, write: if false;
+    }
+
+    match /place_source_snapshots/{snapshotId} {
+      allow read, write: if false;
+    }
+
+    match /place_staging/{stagingId} {
+      allow read, write: if false;
+
+      match /audit/{auditId} {
+        allow read, write: if false;
+      }
+    }
+
+    // ---------- PART 1 (Phase 1.4): Dedup, Alias & Merge ----------
+    // Baris gilir duplikat, peta alias & pelan merge — SEPENUHNYA server-only
+    // (Admin SDK). Pengguna biasa TIDAK boleh baca/tulis/query. Deny eksplisit
+    // ini SETARA dengan catch-all deny — TANPA melonggarkan apa-apa.
+    match /place_merge_queue/{duplicateCandidateId} {
+      allow read, write: if false;
+    }
+
+    match /place_aliases/{aliasId} {
+      allow read, write: if false;
+    }
+
+    match /place_merge_plans/{mergePlanId} {
+      allow read, write: if false;
+
+      match /audit/{auditId} {
+        allow read, write: if false;
+      }
+    }
+
+    // ---------- PART 1 (Phase 1.5): Canonical Tag Taxonomy ----------
+    // Definisi tag canonical & set tag kedai (+ bukti/audit) — SEPENUHNYA
+    // server-only (Admin SDK). Pengguna biasa TIDAK boleh baca/tulis/query.
+    // Deny eksplisit SETARA catch-all — TANPA melonggarkan apa-apa.
+    match /place_tag_definitions/{tagId} {
+      allow read, write: if false;
+    }
+
+    match /place_tag_sets/{placeId} {
+      allow read, write: if false;
+
+      match /evidence/{tagId} {
+        allow read, write: if false;
+      }
+
+      match /audit/{auditId} {
+        allow read, write: if false;
+      }
+    }
+
+    // ---------- PART 1 (Phase 1.6): Freshness, Publication & Rollback ----------
+    // Versi penerbitan, penunjuk aktif, rollback, audit status dan signal
+    // invalidasi cache — SEPENUHNYA server-only (Admin SDK). Pengguna biasa
+    // DAN pengguna tanpa auth TIDAK boleh baca/tulis/query/terbit/rollback
+    // atau mengubah penunjuk aktif. Deny eksplisit ini SETARA dengan
+    // catch-all deny di bawah — ia menjelaskan niat & memudahkan audit,
+    // TANPA melonggarkan apa-apa. TIADA akses terus browser-admin.
+    match /place_publications/{publicationId} {
+      allow read, write: if false;
+    }
+
+    match /place_publication_heads/{placeId} {
+      allow read, write: if false;
+    }
+
+    match /place_publication_rollbacks/{rollbackId} {
+      allow read, write: if false;
+
+      match /audit/{auditId} {
+        allow read, write: if false;
+      }
+    }
+
+    match /place_status_audit/{auditId} {
+      allow read, write: if false;
+    }
+
+    match /place_cache_invalidations/{eventId} {
+      allow read, write: if false;
+    }
+
+    // ---------- PART 1 (Phase 1.7): Shared Place Database & Coverage ----------
+    // Sel liputan, keahlian kedai, metrik, baris gilir discovery dan cache
+    // kawasan — SEPENUHNYA server-only (Admin SDK). Pengguna biasa DAN
+    // pengguna tanpa auth TIDAK boleh baca/tulis/query, enqueue discovery,
+    // mengubah versi liputan, menulis cache atau mengubah metrik.
+    //
+    // Bacaan mobile masa hadapan akan melalui backend dipercayai, BUKAN query
+    // koleksi luas terus dari klien. Deny eksplisit ini SETARA dengan
+    // catch-all deny di bawah — TANPA melonggarkan apa-apa. TIADA akses
+    // terus browser-admin.
+    match /food_coverage_cells/{cellId} {
+      allow read, write: if false;
+    }
+
+    match /place_coverage_memberships/{membershipId} {
+      allow read, write: if false;
+    }
+
+    match /coverage_metrics/{cellId} {
+      allow read, write: if false;
+    }
+
+    match /place_discovery_queue/{requestId} {
+      allow read, write: if false;
+    }
+
+    match /area_place_cache/{cacheKey} {
+      allow read, write: if false;
+    }
+
+    // ---------- PART 1 (Phase 1.11): Pembetulan & Laporan Pengguna ----------
+    // Penghantaran pembetulan, bukti, audit, keputusan dan had kadar —
+    // SEPENUHNYA server-only (Admin SDK) dalam fasa ini. Klien Flutter
+    // menggunakan penyesuai tempatan/mock, jadi TIADA tulisan klien langsung
+    // diperlukan atau dibenarkan.
+    //
+    // Ini menguatkuasakan setiap peraturan privasi fasa: seorang pengguna
+    // tidak boleh membaca laporan pengguna lain, tidak boleh query luas,
+    // tidak boleh menukar submittedBy/placeId/snapshot asal/medan penyemak/
+    // medan keputusan/status di luar penarikan balik sendiri, dan tidak boleh
+    // menulis audit, keputusan atau rujukan staging.
+    //
+    // Deny eksplisit ini SETARA dengan catch-all deny di bawah — TANPA
+    // melonggarkan apa-apa. TIADA akses terus browser-admin.
+    match /place_correction_submissions/{submissionId} {
+      allow read, write: if false;
+
+      match /evidence/{evidenceId} {
+        allow read, write: if false;
+      }
+
+      match /audit/{auditId} {
+        allow read, write: if false;
+      }
+    }
+
+    match /place_correction_decisions/{decisionId} {
+      allow read, write: if false;
+    }
+
+    match /place_correction_rate_limits/{key} {
+      allow read, write: if false;
+    }
+
+    // -----------------------------------------------------------------
+    // PART 1 Phase 1.12 — koleksi asas migrasi legasi (DIPERCAYAI SAHAJA).
+    //
+    // Koleksi ini memegang inventori legasi, calon migrasi, pelan, checkpoint,
+    // alias, audit, perbandingan bacaan bayangan dan penanda penyiapan.
+    //
+    // Pengguna biasa DAN pengguna tanpa auth TIDAK boleh membaca, query,
+    // cipta, kemas kini atau padam mana-mana daripadanya. Khususnya mereka
+    // tidak boleh mengubah checkpoint, menulis alias, atau menetapkan penanda
+    // penyiapan — itu akan membenarkan klien mendakwa migrasi telah selesai
+    // dan mencetuskan bacaan canonical.
+    //
+    // Admin pelayar juga TIDAK mempunyai akses terus: Control Center
+    // beroperasi dalam mod mock sepenuhnya untuk fasa ini.
+    //
+    // Deny eksplisit ini SETARA dengan catch-all deny di bawah — TANPA
+    // melonggarkan apa-apa.
+    match /place_migration_inventory/{legacyRecordId} {
+      allow read, write: if false;
+    }
+
+    match /place_migration_candidates/{candidateId} {
+      allow read, write: if false;
+    }
+
+    match /place_migration_plans/{migrationPlanId} {
+      allow read, write: if false;
+    }
+
+    match /place_migration_checkpoints/{checkpointId} {
+      allow read, write: if false;
+    }
+
+    match /place_migration_aliases/{aliasId} {
+      allow read, write: if false;
+    }
+
+    match /place_migration_audit/{auditId} {
+      allow read, write: if false;
+    }
+
+    match /place_read_comparisons/{comparisonId} {
+      allow read, write: if false;
+    }
+
+    match /migration_completion_markers/{markerId} {
+      allow read, write: if false;
+    }
+
+    // Rekod kerja emulator sahaja — tiada laluan pengeluaran wujud.
+    match /place_migration_emulator_canonical/{canonicalPlaceId} {
+      allow read, write: if false;
+    }
+
+    match /place_migration_rollback_plans/{rollbackPlanId} {
+      allow read, write: if false;
+    }
+
     // Feed Makan komuniti: baca oleh pengguna log masuk.
     // Siaran 'private' hanya boleh dibaca oleh pemiliknya.
     // Cipta/like HANYA melalui Cloud Functions (createFeedPost/toggleLike).
     // Pengguna boleh padam siaran sendiri.
     match /feed_posts/{postId} {
-      allow read: if signedIn()
-        && (!('visibility' in resource.data)
-            || resource.data.visibility != 'private'
-            || resource.data.authorUid == request.auth.uid);
+      // SP9: keterlihatan dikuatkuasa di rules (group_only=ahli,
+      // private=pemilik). Query awam/following/profil menapis groupId
+      // supaya group_only tidak dipulangkan kepada bukan-ahli.
+      allow read: if signedIn() && canReadPostData(resource.data);
       allow create, update: if false;
       allow delete: if signedIn()
         && resource.data.authorUid == request.auth.uid;
 
       // Komen (V2): tulis terus dari client dengan validasi ketat.
+      // SP9: komen mesti ikut privasi post induk — pembaca perlu boleh
+      // baca post induk (kecuali pengarang komen sendiri, untuk "Komen
+      // Saya"). Cipta perlu boleh baca induk + commentEnabled != false.
       match /comments/{commentId} {
-        allow read: if signedIn();
+        // Closeout keselamatan: bukan-pengarang TIDAK boleh baca komen
+        // deleted, dan induk hidden/deleted menutup akses komen.
+        allow read: if signedIn()
+          && (resource.data.get('authorUid', '') == request.auth.uid
+              || (resource.data.get('status', '') != 'deleted'
+                  && exists(/databases/$(database)/documents/feed_posts/$(postId))
+                  && get(/databases/$(database)/documents/feed_posts/$(postId))
+                      .data.get('status', 'active') != 'deleted'
+                  && get(/databases/$(database)/documents/feed_posts/$(postId))
+                      .data.get('status', 'active') != 'hidden'
+                  && canReadPostData(
+                      get(/databases/$(database)/documents/feed_posts/$(postId)).data)));
         allow create: if signedIn()
           && request.resource.data.authorUid == request.auth.uid
+          // ISSUE 005: medan denormalisasi PILIHAN mesti BENAR jika hadir
+          // (postId = induk sebenar; parentVisibility = visibility induk
+          // sebenar). Klien lama tanpa medan ini kekal diterima.
+          && (!request.resource.data.keys().hasAny(
+                  ['postId', 'parentVisibility'])
+              || (request.resource.data.get('postId', '') == postId
+                  && request.resource.data.get('parentVisibility', '')
+                      == get(/databases/$(database)/documents/feed_posts/$(postId))
+                          .data.get('visibility', 'public')))
           && request.resource.data.text is string
           && request.resource.data.text.size() > 0
-          && request.resource.data.text.size() <= 300;
+          && request.resource.data.text.size() <= 300
+          && exists(/databases/$(database)/documents/feed_posts/$(postId))
+          && canReadPostData(
+              get(/databases/$(database)/documents/feed_posts/$(postId)).data)
+          && get(/databases/$(database)/documents/feed_posts/$(postId))
+              .data.get('commentEnabled', true) != false;
         allow update: if false;
         allow delete: if signedIn()
           && resource.data.authorUid == request.auth.uid;
@@ -175,6 +417,11 @@ service cloud.firestore {
     match /user_brain_profiles/{uid} {
       allow read: if isOwner(uid);
       allow write: if false;
+      // Phase 2.4 — audit reset/correction: owner boleh baca; DITULIS pelayan sahaja.
+      match /brain_audit/{auditId} {
+        allow read: if isOwner(uid);
+        allow write: if false;
+      }
     }
 
     // MakanMana Fit Coach: data kesihatan/kecergasan owner-only.
