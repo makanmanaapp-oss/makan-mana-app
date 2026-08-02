@@ -277,6 +277,22 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Phase A1 — these three hold live production data and previously relied on
+    // Firestore default denial alone. Every sibling Place Data collection is
+    // explicitly server-only; these now match. The Admin SDK is unaffected: it
+    // does not evaluate client rules.
+    match /place_registry/{canonicalPlaceId} {
+      allow read, write: if false;
+    }
+
+    match /places_pool_v3/{cellId} {
+      allow read, write: if false;
+    }
+
+    match /place_migration_batches/{batchId} {
+      allow read, write: if false;
+    }
+
     match /place_read_comparisons/{comparisonId} {
       allow read, write: if false;
     }
