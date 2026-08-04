@@ -18,6 +18,7 @@ import {
   ClosureAuditEvent,
   ClosureDecision,
   ClosureEvidence,
+  ClosureRejection,
   ClosureRequest,
   ClosureTarget,
   DEFAULT_CLOSURE_TARGET,
@@ -34,23 +35,147 @@ const C_PUBLICATIONS = "place_publications";
 const C_HEADS = "place_publication_heads";
 const C_ALIASES = "place_migration_aliases";
 
-async function countForBatch(
+/** Firestore `in` accepts up to 30 values; 10 keeps us comfortably bounded. */
+const IN_CHUNK = 10;
+
+function chunk<T>(arr: readonly T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+/** Count docs carrying an explicit batch field (registry/aliases → migrationBatchId,
+ * audit → batchId). These collections ARE batch-tagged in production. */
+async function countByField(
   db: Firestore,
   collection: string,
+  field: "migrationBatchId" | "batchId",
   batchId: string,
 ): Promise<number> {
-  // where(migrationBatchId==) covers registry/publications/heads/aliases; the
-  // audit collection uses `batchId`. Try both fields and take whichever matches.
-  const byMigrationBatch = await db
-    .collection(collection)
-    .where("migrationBatchId", "==", batchId)
-    .get();
-  if (!byMigrationBatch.empty) return byMigrationBatch.size;
-  const byBatchId = await db
-    .collection(collection)
-    .where("batchId", "==", batchId)
-    .get();
-  return byBatchId.size;
+  const snap = await db.collection(collection).where(field, "==", batchId).get();
+  return snap.size;
+}
+
+interface MembershipResult {
+  registryCount: number;
+  publicationCount: number;
+  publicationHeadCount: number;
+  canonicalPlaceIds: string[];
+  blockers: ClosureRejection[];
+}
+
+/**
+ * A2.1 — resolve publication/head membership by the DEPLOYED relationship model.
+ *
+ * Production `place_publications` and `place_publication_heads` do NOT carry a
+ * batch field. They belong to the pilot through their canonical `placeId`:
+ *   1. the pilot's registry docs ARE batch-tagged (migrationBatchId);
+ *   2. their canonicalPlaceIds define the membership set (must be 25 unique);
+ *   3. publications belong via `placeId` ∈ set;
+ *   4. heads belong via `placeId` ∈ set, and each head's `activePublicationId`
+ *      must reference an existing publication for the SAME place.
+ *
+ * All reads are single-field equality / `in` (no composite index). Records
+ * outside the registry set are never fetched, so they are ignored, not counted.
+ * No migrationBatchId is required or backfilled on publications/heads; if the
+ * field happens to exist and disagrees, that is a fail-closed mismatch.
+ */
+async function resolveMembership(
+  db: Firestore,
+  batchId: string,
+): Promise<MembershipResult> {
+  const blockers: ClosureRejection[] = [];
+
+  // 1. Registry — the only batch-tagged anchor. Derive canonical place IDs.
+  const regSnap = await db.collection(C_REGISTRY).where("migrationBatchId", "==", batchId).get();
+  const registryCount = regSnap.size;
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  for (const doc of regSnap.docs) {
+    const cid = (doc.data()["canonicalPlaceId"] as string | undefined) ?? doc.id;
+    if (seen.has(cid)) blockers.push("duplicate_canonical_id");
+    else { seen.add(cid); ids.push(cid); }
+  }
+  const set = new Set(ids);
+  if (ids.length === 0) {
+    return { registryCount, publicationCount: 0, publicationHeadCount: 0, canonicalPlaceIds: ids, blockers };
+  }
+
+  // 2. Publications — membership by placeId ∈ set.
+  const pubsByPlace = new Map<string, number>();
+  const pubPlaceById = new Map<string, string>();
+  let publicationCount = 0;
+  for (const c of chunk(ids, IN_CHUNK)) {
+    const snap = await db.collection(C_PUBLICATIONS).where("placeId", "in", c).get();
+    for (const doc of snap.docs) {
+      const data = doc.data();
+      const placeId = data["placeId"] as string;
+      if (!set.has(placeId)) continue; // ignore anything outside the set
+      publicationCount += 1;
+      pubsByPlace.set(placeId, (pubsByPlace.get(placeId) ?? 0) + 1);
+      pubPlaceById.set((data["publicationId"] as string | undefined) ?? doc.id, placeId);
+      if ("migrationBatchId" in data && data["migrationBatchId"] !== batchId) {
+        blockers.push("mismatched_optional_batch");
+      }
+    }
+  }
+  for (const cid of ids) {
+    const n = pubsByPlace.get(cid) ?? 0;
+    if (n === 0) blockers.push("missing_publication");
+    else if (n > 1) blockers.push("duplicate_publication");
+  }
+
+  // 3. Heads — membership by placeId ∈ set; each references an active publication.
+  const headsByPlace = new Map<string, number>();
+  const headActiveByPlace = new Map<string, string[]>();
+  let publicationHeadCount = 0;
+  for (const c of chunk(ids, IN_CHUNK)) {
+    const snap = await db.collection(C_HEADS).where("placeId", "in", c).get();
+    for (const doc of snap.docs) {
+      const data = doc.data();
+      const placeId = data["placeId"] as string;
+      if (!set.has(placeId)) continue;
+      publicationHeadCount += 1;
+      headsByPlace.set(placeId, (headsByPlace.get(placeId) ?? 0) + 1);
+      const active = (data["activePublicationId"] as string | undefined) ?? "";
+      const list = headActiveByPlace.get(placeId) ?? [];
+      list.push(active);
+      headActiveByPlace.set(placeId, list);
+      if ("migrationBatchId" in data && data["migrationBatchId"] !== batchId) {
+        blockers.push("mismatched_optional_batch");
+      }
+    }
+  }
+  for (const cid of ids) {
+    const n = headsByPlace.get(cid) ?? 0;
+    if (n === 0) blockers.push("missing_head");
+    else if (n > 1) blockers.push("duplicate_head");
+  }
+
+  // 4. Head → active publication integrity (bounded point reads for misses).
+  for (const [placeId, actives] of headActiveByPlace) {
+    for (const activeId of actives) {
+      if (!activeId) { blockers.push("missing_active_publication"); continue; }
+      const knownPlace = pubPlaceById.get(activeId);
+      if (knownPlace !== undefined) {
+        if (knownPlace !== placeId) blockers.push("wrong_place_head");
+        continue;
+      }
+      // Not among the batch's publications — distinguish dangling vs wrong-place.
+      const pubDoc = await db.collection(C_PUBLICATIONS).doc(activeId).get();
+      if (!pubDoc.exists) blockers.push("dangling_head");
+      else if ((pubDoc.data()!["placeId"] as string) !== placeId) blockers.push("wrong_place_head");
+      else blockers.push("record_outside_registry");
+    }
+  }
+
+  return {
+    registryCount,
+    publicationCount,
+    publicationHeadCount,
+    canonicalPlaceIds: ids,
+    blockers: [...new Set(blockers)],
+  };
 }
 
 function toBatchView(
@@ -117,13 +242,17 @@ export async function gatherClosureEvidence(
   }
   const data = batchSnap.data() as Record<string, unknown>;
 
-  const [registry, publications, heads, aliases, audit] = await Promise.all([
-    countForBatch(db, C_REGISTRY, batchId),
-    countForBatch(db, C_PUBLICATIONS, batchId),
-    countForBatch(db, C_HEADS, batchId),
-    countForBatch(db, C_ALIASES, batchId),
-    countForBatch(db, C_AUDIT, batchId),
+  // Registry + publications + heads resolved by canonical placeId membership
+  // (publications/heads are NOT batch-tagged in production). Aliases and audit
+  // ARE batch-tagged, so they are counted by their explicit field.
+  const [membership, aliases, audit] = await Promise.all([
+    resolveMembership(db, batchId),
+    countByField(db, C_ALIASES, "migrationBatchId", batchId),
+    countByField(db, C_AUDIT, "batchId", batchId),
   ]);
+  const registry = membership.registryCount;
+  const publications = membership.publicationCount;
+  const heads = membership.publicationHeadCount;
   // The batch document itself is the +1 that brings the pilot total to 126.
   const writeTotal = registry + publications + heads + aliases + audit + 1;
 
@@ -157,6 +286,7 @@ export async function gatherClosureEvidence(
       branchConflictCount: opts.branchConflictCount ?? 0,
     },
     legacySourceUnchanged: opts.legacySourceUnchanged,
+    membershipBlockers: membership.blockers,
   };
 }
 

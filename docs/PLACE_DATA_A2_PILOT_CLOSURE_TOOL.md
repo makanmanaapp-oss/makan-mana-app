@@ -112,3 +112,25 @@ node lib/scripts/placePilotClosure.js \
   no canonical/publication/head/alias/legacy change, write count = 2, dry-run
   zero writes, tampered-batch refusal. Runs in an isolated emulator project
   namespace so it never pollutes sibling suites.
+
+---
+
+## A2.1 update — production membership resolution
+
+The evidence gatherer no longer counts publications/heads by a batch field
+(they carry none in production). It resolves them by **canonical `placeId`
+membership**:
+
+- registry (batch-tagged) → the set of 25 canonical place ids;
+- publications counted by `placeId ∈ set` (one per place);
+- heads counted by `placeId ∈ set`, each referencing an existing publication for
+  the same place.
+
+New fail-closed integrity blockers: `duplicate_canonical_id`,
+`missing_publication`, `duplicate_publication`, `missing_head`, `duplicate_head`,
+`dangling_head`, `wrong_place_head`, `missing_active_publication`,
+`mismatched_optional_batch`. Records outside the registry set are ignored.
+
+Queries are single-field equality + `in` (chunks ≤ 10) → **0 composite indexes**.
+No `migrationBatchId` is required or backfilled on publications/heads. See
+`PLACE_DATA_A2_PRODUCTION_SCHEMA_MEMBERSHIP_FIX.md`.

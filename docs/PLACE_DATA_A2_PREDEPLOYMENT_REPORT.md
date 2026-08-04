@@ -117,3 +117,30 @@ uniqueness check filters in memory.
    field, reversible to `pending_post_write` only through an explicit recovery
    workflow (never the normal closure path). Data rollback is out of scope and
    must not be triggered by a rules issue.
+
+---
+
+## A2.1 update — production membership fix (supersedes the count method above)
+
+The A2 production dry-run failed closed because the evidence gatherer counted
+`place_publications` and `place_publication_heads` by a batch field those
+collections do not carry in production (0/25 each, `writeTotal` 76 ≠ 126). A2.1
+fixes the gatherer to resolve those two collections by **canonical `placeId`
+membership** anchored on the batch-tagged registry.
+
+- Deployed relationship model (confirmed read-only): registry & aliases are
+  `migrationBatchId`-tagged; audit carries `batchId`; publications link by
+  `placeId` (doc id = `publicationId`); heads link by `placeId` (doc id =
+  `placeId`) + `activePublicationId`. Total 126 = 25/25/25/25/25/1.
+- Membership method + fail-closed cases: see
+  `PLACE_DATA_A2_PRODUCTION_SCHEMA_MEMBERSHIP_FIX.md`.
+- **Active composite indexes required: 0** (single-field equality + `in`).
+- **No schema backfill**; publications/heads are read without requiring, and
+  never written a, `migrationBatchId`.
+- Expected production write scope is unchanged: **one batch metadata update +
+  one audit event**; `globalCompletion` stays `false`, `rollbackStatus` stays
+  `available`.
+
+Backend suite after A2.1: **608 unit / 64 emulator (twice consecutively) / 155
+rules**, all green; 0 skipped. No deploy and no production write were performed
+in the A2.1 session.

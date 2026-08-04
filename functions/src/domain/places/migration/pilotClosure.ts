@@ -82,6 +82,13 @@ export interface ClosureEvidence {
   };
   /** Sumber legasi kekal tidak berubah menurut kontrak migrasi. */
   legacySourceUnchanged: boolean;
+  /**
+   * A2.1 — penolakan integriti keahlian yang dikira oleh penghimpun bukti
+   * (adapter Firestore) daripada perhubungan sebenar yang digunakan produksi:
+   * publications/heads diselesaikan mengikut canonical placeId, bukan medan
+   * batch. Kosong = tiada isu integriti. Penilai menambahnya kepada blockers.
+   */
+  membershipBlockers?: ClosureRejection[];
 }
 
 export interface ClosureRequest {
@@ -124,6 +131,18 @@ export const CLOSURE_REJECTIONS = [
   "candidate_checksum_mismatch",
   "backup_reference_missing",
   "legacy_source_changed",
+  // A2.1 — production membership integrity (publications/heads are NOT
+  // batch-tagged in production; membership is resolved by canonical placeId).
+  "duplicate_canonical_id",
+  "missing_publication",
+  "duplicate_publication",
+  "missing_head",
+  "duplicate_head",
+  "dangling_head",
+  "wrong_place_head",
+  "missing_active_publication",
+  "record_outside_registry",
+  "mismatched_optional_batch",
 ] as const;
 export type ClosureRejection = (typeof CLOSURE_REJECTIONS)[number];
 
@@ -305,6 +324,12 @@ export function evaluateClosure(
 
   // Sumber legasi mesti tidak berubah.
   if (!evidence.legacySourceUnchanged) blockers.push("legacy_source_changed");
+
+  // A2.1 — penolakan integriti keahlian (dikira oleh adapter daripada
+  // perhubungan placeId sebenar). Fail-closed: mana-mana satu menyekat.
+  if (evidence.membershipBlockers && evidence.membershipBlockers.length > 0) {
+    blockers.push(...evidence.membershipBlockers);
+  }
 
   if (blockers.length > 0) return deny(blockers);
 
