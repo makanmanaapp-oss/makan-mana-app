@@ -5,6 +5,7 @@
  * terus bila perlu.
  */
 export * from "./migrationTypes";
+export * from "./verificationResult";
 export * from "./legacyInventory";
 export * from "./referenceImpact";
 export * from "./migrationAlias";
