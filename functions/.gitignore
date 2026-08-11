@@ -1,4 +1,9 @@
 node_modules/
 lib/
+lib-test/
 *.log
 .env
+
+# Project/local environment files
+.env.*
+!.env.example

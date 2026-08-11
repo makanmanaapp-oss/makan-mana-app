@@ -10,6 +10,7 @@ class FoodProfile {
     required this.displayName,
     this.username,
     this.photoUrl,
+    this.avatarPreset,
     this.bio = '',
     this.favouriteFood = '',
     this.favouriteCuisine = '',
@@ -22,12 +23,16 @@ class FoodProfile {
     this.followingCount = 0,
     this.postsCount = 0,
     this.reviewsCount = 0,
+    this.exists = false,
   });
 
   final String uid;
   final String displayName;
   final String? username;
   final String? photoUrl;
+
+  /// SP10: avatar default bertema MakanMana (fallback bila tiada photo).
+  final String? avatarPreset;
   final String bio;
   final String favouriteFood;
   final String favouriteCuisine;
@@ -41,7 +46,13 @@ class FoodProfile {
   final int postsCount;
   final int reviewsCount;
 
+  /// ISSUE 004: true hanya bila dokumen public_profiles benar-benar wujud.
+  /// Penyelesai identiti live memerlukan ini untuk membezakan "profil hidup"
+  /// daripada nilai lalai 'Foodie' (yang TIDAK boleh menimpa snapshot).
+  final bool exists;
+
   static FoodProfile fromMap(String uid, Map<String, dynamic>? m) {
+    final docExists = m != null && m.isNotEmpty;
     m ??= const {};
     return FoodProfile(
       uid: uid,
@@ -50,6 +61,7 @@ class FoodProfile {
           : 'Foodie',
       username: m['username'] as String?,
       photoUrl: m['photoUrl'] as String?,
+      avatarPreset: m['avatarPreset'] as String?,
       bio: m['bio'] as String? ?? '',
       favouriteFood: m['favouriteFood'] as String? ?? '',
       favouriteCuisine: m['favouriteCuisine'] as String? ?? '',
@@ -62,6 +74,7 @@ class FoodProfile {
       followingCount: (m['followingCount'] as num?)?.toInt() ?? 0,
       postsCount: (m['postsCount'] as num?)?.toInt() ?? 0,
       reviewsCount: (m['reviewsCount'] as num?)?.toInt() ?? 0,
+      exists: docExists,
     );
   }
 }

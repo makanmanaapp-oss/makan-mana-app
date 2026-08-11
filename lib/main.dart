@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app/app.dart';
 import 'core/providers.dart';
+import 'core/security/app_check_bootstrap.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
@@ -20,6 +21,12 @@ Future<void> main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
     firebaseReady = true;
+
+    // Phase 1.14B.2: aktifkan App Check SELEPAS initializeApp, SEBELUM runApp.
+    // Pelancaran MONITORING: kegagalan TIDAK meranapkan app (laluan legasi kekal
+    // selamat; callable dipercayai kekal dimatikan sehingga status `ready`).
+    // Debug → provider debug; release/profile → Play Integrity. TIADA penguatkuasaan.
+    await FirebaseAppCheckBootstrap.activate();
 
     // Crashlytics (M6): tangkap semua ralat Flutter & platform.
     // Dimatikan dalam debug supaya laporan hanya dari pengguna sebenar.

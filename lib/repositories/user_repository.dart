@@ -15,12 +15,32 @@ class UserRepository {
 
   /// Jangan biar UI tergantung jika backend lambat/belum sedia:
   /// SDK Firestore akan beratur tulisan secara offline dan sync kemudian.
-  Future<void> upsertUser(AppUser user) async {
+  ///
+  /// PAY-01: medan pelan (plan/planStatus) TIDAK dihantar dari klien —
+  /// rules Firestore menolak tulisan pelan klien. Pengguna tanpa medan plan
+  /// dianggap 'free' (PlanTier.parse fallback). Pelan hanya diubah melalui
+  /// Firebase Console (QA internal) / Cloud Functions / IAP disahkan pelayan.
+  /// SP10.4: peta selamat untuk upsert (tulen, diuji unit).
+  /// - Buang medan pelan (PAY-01 — pelan dikawal pelayan sahaja).
+  /// - Buang SEMUA nilai null — merge dengan null MENIMPA medan media
+  ///   sedia ada (displayName/photoUrl hilang setiap login — bug 10.3).
+  static Map<String, dynamic> sanitizedUserMap(AppUser user) =>
+      user.toMap()
+        ..remove('plan')
+        ..remove('planStatus')
+        ..removeWhere((key, value) => value == null);
+
+  /// [extra] (SP10.1B): medan tambahan selamat (cth. phoneNumber,
+  /// providerIds) — pemanggil WAJIB pastikan tiada protected/null.
+  Future<void> upsertUser(AppUser user,
+      {Map<String, dynamic>? extra}) async {
     if (!firebaseReady) return;
+    final map = sanitizedUserMap(user);
     try {
       await _users.doc(user.uid).set(
         {
-          ...user.toMap(),
+          ...map,
+          ...?extra,
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         },

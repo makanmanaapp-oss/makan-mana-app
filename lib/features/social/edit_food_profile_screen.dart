@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/localization/app_localizations.dart';
+import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/providers.dart';
 import 'food_profile.dart';
@@ -100,14 +101,14 @@ class _EditFoodProfileScreenState
           decoration: InputDecoration(
             hintText: hint,
             filled: true,
-            fillColor: AppColors.cardWhite,
+            fillColor: context.mm.card,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: AppColors.softBorder),
+              borderSide: BorderSide(color: context.mm.border),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(14),
-              borderSide: const BorderSide(color: AppColors.softBorder),
+              borderSide: BorderSide(color: context.mm.border),
             ),
           ),
         ),
@@ -133,8 +134,8 @@ class _EditFoodProfileScreenState
                 _field(l.t('foodMoodLabel'), _mood),
                 const Divider(height: 28),
                 Text(l.t('optionalPrivacyNote'),
-                    style: const TextStyle(
-                        fontSize: 12, color: AppColors.mutedText)),
+                    style: TextStyle(
+                        fontSize: 12, color: context.mm.onCardMuted)),
                 const SizedBox(height: 10),
                 _field(l.t('dietPrefLabel'), _diet),
                 SwitchListTile(
@@ -156,8 +157,8 @@ class _EditFoodProfileScreenState
                 ),
                 const SizedBox(height: 8),
                 Text(l.t('privateNote'),
-                    style: const TextStyle(
-                        fontSize: 11.5, color: AppColors.mutedText)),
+                    style: TextStyle(
+                        fontSize: 11.5, color: context.mm.onCardMuted)),
                 const SizedBox(height: 18),
                 ElevatedButton(
                   onPressed: _saving ? null : _save,

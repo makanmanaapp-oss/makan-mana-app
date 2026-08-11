@@ -1,9 +1,12 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers.dart';
+import '../../core/providers/location_context_provider.dart';
+import '../../core/providers/makanmana_user_context_provider.dart';
 import '../../core/utils/time_slot_utils.dart';
 import '../../models/event_log.dart';
 import '../../models/meal.dart';
@@ -42,6 +45,18 @@ class SpinController {
   /// Calon dari pelayan (tempat Google sebenar) untuk reject-chain.
   List<PlaceSummary> _remoteCandidates = [];
 
+  /// Phase 2.2D — contextHash opaque (kohort) untuk Reject/Next authoritative.
+  String? _contextHash;
+  String? get contextHash => _contextHash;
+
+  /// Getter awam untuk SuggestionActionController (Prompt 7): baca id sesi
+  /// spin semasa supaya skrin cadangan boleh kekalkan sessionId/suggestionId.
+  String? get sessionId => _sessionId;
+  String? get currentSuggestionId => _currentSuggestionId;
+  bool get isRemoteSession => _remoteSession;
+  List<PlaceSummary> get remoteCandidates =>
+      List<PlaceSummary>.unmodifiable(_remoteCandidates);
+
   String get _uid =>
       _ref.read(authRepositoryProvider).currentUser?.uid ?? '';
   String get _plan => _ref.read(userPlanProvider).value ?? 'free';
@@ -74,22 +89,39 @@ class SpinController {
   /// Cuba Cloud Function dahulu (pelayan = penguat kuasa sebenar);
   /// fallback ke logik tempatan jika Functions belum sedia.
   Future<SpinOutcome> spin({String? mood}) async {
-    // Lokasi sebenar peranti (null = pelayan guna lalai KL).
-    final position =
-        await _ref.read(locationServiceProvider).getPosition();
-    final remote = await _ref.read(cloudSuggestionServiceProvider).getSuggestions(
-          mood: mood,
-          languageCode: _language,
-          lat: position?.latitude,
-          lng: position?.longitude,
-          radius: 3000,
-        );
+    // LOCATION CONSISTENCY HOTFIX — lokasi dari konteks AUTHORITATIF yang SAMA
+    // dengan Home & Explore (provider menyelesaikan GPS + kemas kini Core Spine).
+    // Menggantikan getPosition langsung supaya Spin, Home & Explore konsisten.
+    final loc = await _ref.read(locationContextProvider.future);
+    // Prompt 6: payload PENUH dari MakanManaUserContext (mood, radius,
+    // budget, diet, allergy, cuisine, food memory) — sama seperti Home.
+    // buildSuggestionRequestBase sudah mengandungi lat/lng/radius dari konteks
+    // (dikemas kini oleh locationContextProvider), jadi konsisten dengan Home.
+    final payload = _ref
+        .read(makanManaUserContextProvider)
+        .buildSuggestionRequestBase();
+    payload['languageCode'] = _language;
+    if (mood != null) payload['selectedMood'] = mood;
+    if (loc.hasLocation) {
+      payload['lat'] = loc.lat;
+      payload['lng'] = loc.lng;
+    }
+    debugPrint('MM-LOC spin: lat=${loc.maskedLatLng()} '
+        'radiusM=${loc.radiusMeters} cell=${loc.locationGrid} src=${loc.source}');
+    final remote = await _ref
+        .read(cloudSuggestionServiceProvider)
+        .getSuggestions(payload: payload, mode: 'spin');
     if (remote != null) {
       if (remote.paywallRequired) return const SpinOutcome.blocked();
       _remoteSession = true;
       _sessionId = remote.sessionId;
       _currentSuggestionId = remote.suggestionId;
       _remoteCandidates = remote.candidates;
+      _contextHash = remote.contextHash;
+      // Phase 2.2D — jejak: sahkan contextHash authoritative diterima dari server.
+      debugPrint('MM-A2 spin.remote: contextHash='
+          '${remote.contextHash == null ? "NULL" : "SET(${remote.contextHash!.length})"} '
+          'candidates=${remote.candidates.length} source=${remote.source}');
       _shownPlaceIds
         ..clear()
         ..add(remote.place!.placeId);
@@ -162,7 +194,14 @@ class SpinController {
           ),
         );
     await _ref.read(eventRepositoryProvider).log(
-          _event('accept', place: place),
+          _event('suggestion_accept', place: place),
+        );
+    _ref.read(eventLoggerProvider).logMealLogged(
+          source: 'suggestion',
+          placeId: place.placeId,
+          placeNameSnapshot: place.name,
+          sourceMode: 'spin',
+          fromSuggestion: true,
         );
     await _updateSession(finalAction: 'accept', acceptedPlaceId: place.placeId);
     _sessionId = null; // sesi tamat
@@ -203,7 +242,8 @@ class SpinController {
             reason: reasonKey,
           );
       await _ref.read(eventRepositoryProvider).log(
-            _event('reject', place: place, metadata: {'reason': reasonKey}),
+            _event('suggestion_reject',
+                place: place, metadata: {'reason': reasonKey}),
           );
       await _recordShown(next);
     }());
@@ -213,7 +253,8 @@ class SpinController {
 
   PlaceSummary _pickCandidate({String? excludePlaceId}) {
     // Sesi remote: guna calon Google sebenar dari pelayan dahulu.
-    final source = _remoteSession && _remoteCandidates.length > 1
+    final fromRemote = _remoteSession && _remoteCandidates.length > 1;
+    final source = fromRemote
         ? _remoteCandidates
         : _ref.read(dummySuggestionServiceProvider).nearby(limit: 100);
     final all = source
@@ -228,7 +269,10 @@ class SpinController {
         ? fresh
         : all.where((p) => !_rejectedPlaceIds.contains(p.placeId)).toList();
     final safePool = pool.isNotEmpty ? pool : all;
-    return safePool[_random.nextInt(safePool.length)];
+    final picked = safePool[_random.nextInt(safePool.length)];
+    // NET-01: calon dari pool tempatan WAJIB dicop sebagai fallback offline
+    // supaya UI label jujur & AI Brain tidak belajar ia sebagai live.
+    return fromRemote ? picked : picked.copyWithSource('offline_fallback');
   }
 
   Future<void> _recordShown(PlaceSummary place, {String? mood}) async {
@@ -251,7 +295,15 @@ class SpinController {
         );
     await _updateSession();
     await _ref.read(eventRepositoryProvider).log(
-          _event('suggestion_shown', place: place, mood: mood),
+          _event(
+            'suggestion_shown',
+            place: place,
+            mood: mood,
+            // NET-01: tanda sample supaya AI Brain tidak anggap ia live.
+            metadata: place.isSample
+                ? {'isSample': true, 'source': place.source}
+                : const {},
+          ),
         );
   }
 

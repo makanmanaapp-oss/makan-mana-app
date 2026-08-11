@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MakanMana — Group Invitation</title>
+  <link rel="stylesheet" href="/style.css" />
+  <style>
+    body { font-family: -apple-system, Roboto, Arial, sans-serif; background:#0A0A0A; color:#fff; margin:0; }
+    .wrap { max-width:420px; margin:0 auto; padding:64px 24px; text-align:center; }
+    .logo { font-size:40px; }
+    h1 { font-size:22px; margin:18px 0 6px; }
+    p { color:#9a9a9a; line-height:1.5; }
+    .btn { display:block; margin:22px auto 10px; max-width:280px; background:#E83A32; color:#fff;
+           text-decoration:none; padding:14px 20px; border-radius:14px; font-weight:800; }
+    .muted { font-size:13px; color:#7a7a7a; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="logo">🍜</div>
+    <h1>MakanMana</h1>
+    <p><strong>Group invitation</strong></p>
+    <p>Open this invite in the MakanMana app to preview the group and join.</p>
+    <!-- The Android App Link opens the app directly when installed. This page is
+         only shown as a browser fallback (app not installed / link unverified).
+         It never exposes group data — the token is validated server-side only
+         inside the app. -->
+    <a class="btn" href="intent://open#Intent;scheme=makanmana;package=com.makanmana.apps;end">Open MakanMana</a>
+    <p class="muted">Don't have the app yet? Install MakanMana, then open the
+      invite link again.</p>
+  </div>
+</body>
+</html>

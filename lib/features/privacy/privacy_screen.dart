@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/localization/app_localizations.dart';
 import '../../app/theme.dart';
+import '../../core/constants/app_colors.dart';
 
 /// PROMPT 11: Polisi Privasi penuh in-app (kandungan BM — pasaran
 /// utama; terjemahan selepas beta). Kandungan sama akan dihoskan di
@@ -107,6 +108,26 @@ class PrivacyScreen extends StatelessWidget {
               color: mm.onCard,
             ),
           ),
+          // ISSUE 001.3: hanya teks Melayu diluluskan secara rasmi. UI bukan
+          // Melayu mesti diberitahu secara jelas, bukan diam-diam paparkan BM.
+          if (Localizations.localeOf(context).languageCode != 'ms')
+            Container(
+              margin: const EdgeInsets.only(top: 12),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.softYellow,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Text(
+                l.t('legalMalayOnlyNotice'),
+                style: const TextStyle(
+                  fontSize: 13,
+                  height: 1.45,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.darkText,
+                ),
+              ),
+            ),
           for (final s in _sections) ...[
             if (s.$1.isNotEmpty)
               Padding(

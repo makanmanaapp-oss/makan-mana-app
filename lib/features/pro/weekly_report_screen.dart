@@ -1,29 +1,77 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../app/localization/app_localizations.dart';
+import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/widgets/mm_icons.dart';
+import '../../core/constants/app_constants.dart';
+import '../../core/entitlement/entitlement.dart';
+import '../../core/entitlement/plan_tier.dart';
+import '../../core/providers.dart';
+import '../../core/widgets/app_states.dart';
 import 'pro_providers.dart';
 
 /// 📊 Laporan Makan Mingguan (Pro): analisis 7 hari dari data sebenar.
+/// Prompt 13: gate Pro + keadaan loading/empty/error/retry (tiada spinner
+/// kosong / kunci keras).
 class WeeklyReportScreen extends ConsumerWidget {
   const WeeklyReportScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l = AppLocalizations.of(context);
+    final ent = ref.watch(entitlementProvider);
+
+    // Free/Plus: preview terkunci + paywall (tidak panggil backend).
+    if (!ent.canUseFeature(FeatureId.weeklyFoodReport)) {
+      return Scaffold(
+        appBar: AppBar(title: Text(l.t('proReportTitle'))),
+        body: AppLockedPreviewState(
+          title: l.t('proReportTitle'),
+          message: l.t('wrLockedBody'),
+          ctaLabel: l.t('upgradePro'),
+          onUnlock: () => context.push(
+            RoutePaths.paywall,
+            extra: ent.buildPaywallArgs(
+              featureId: FeatureId.weeklyFoodReport,
+              sourceScreen: 'weekly_report',
+              requiredPlan: PlanTier.pro,
+            ),
+          ),
+        ),
+      );
+    }
+
     final reportAsync = ref.watch(weeklyReportProvider);
 
     return Scaffold(
       appBar: AppBar(title: Text(l.t('proReportTitle'))),
       body: reportAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, st) => Center(
-            child: Text('📡 ${l.t('postFailed')}',
-                style: const TextStyle(fontSize: 13))),
+        loading: () => AppLoadingState(message: l.t('wrLoading')),
+        error: (e, st) => AppErrorState(
+          message: l.t('wrError'),
+          retryLabel: l.t('retry'),
+          onRetry: () => ref.invalidate(weeklyReportProvider),
+        ),
         data: (r) {
           if (r['status'] != 'OK') {
-            return Center(child: Text(l.t('lockedPro')));
+            // Pro tapi backend tolak (jarang) -> retry, bukan kunci keras.
+            return AppErrorState(
+              message: l.t('wrError'),
+              retryLabel: l.t('retry'),
+              onRetry: () => ref.invalidate(weeklyReportProvider),
+            );
+          }
+          final totalMeals = (r['totalMeals'] as num?)?.toInt() ?? 0;
+          if (totalMeals == 0) {
+            return AppEmptyState(
+              icon: MmIconType.foodMatch,
+              title: l.t('wrEmpty'),
+              ctaLabel: l.t('spinNow'),
+              onCta: () => context.go(RoutePaths.home),
+            );
           }
           final topCuisines = (r['topCuisines'] as List? ?? [])
               .map((c) => Map<String, dynamic>.from(c as Map))
@@ -42,19 +90,19 @@ class WeeklyReportScreen extends ConsumerWidget {
               Row(
                 children: [
                   _StatTile(
-                    emoji: '🍽️',
+                    icon: MmIconType.mealHistory,
                     value: '${r['totalMeals']}',
                     label: l.t('statMeals'),
                   ),
                   const SizedBox(width: 10),
                   _StatTile(
-                    emoji: '💸',
+                    icon: MmIconType.bajet,
                     value: '~RM${r['estSpend']}',
                     label: l.t('statSpend'),
                   ),
                   const SizedBox(width: 10),
                   _StatTile(
-                    emoji: '🥗',
+                    icon: MmIconType.healthy,
                     value: '${r['healthyPct']}%',
                     label: l.t('healthyLabel'),
                   ),
@@ -64,13 +112,13 @@ class WeeklyReportScreen extends ConsumerWidget {
               Row(
                 children: [
                   _StatTile(
-                    emoji: '🌈',
+                    icon: MmIconType.cuisine,
                     value: '${r['variety']}',
                     label: l.t('varietyLabel'),
                   ),
                   const SizedBox(width: 10),
                   _StatTile(
-                    emoji: '⭐',
+                    icon: MmIconType.highRating,
                     value: r['avgSatisfaction'] == null
                         ? '—'
                         : '${r['avgSatisfaction']}/5',
@@ -98,6 +146,7 @@ class WeeklyReportScreen extends ConsumerWidget {
                           style: const TextStyle(
                             fontWeight: FontWeight.w700,
                             fontSize: 14,
+                            color: AppColors.darkText,
                           ),
                         ),
                       ),
@@ -108,18 +157,18 @@ class WeeklyReportScreen extends ConsumerWidget {
               const SizedBox(height: 20),
               Text(
                 l.t('topCuisinesLabel'),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
-                  color: AppColors.darkText,
+                  color: context.mm.onCard,
                 ),
               ),
               const SizedBox(height: 10),
               if (topCuisines.isEmpty)
                 Text(
                   l.t('historyEmpty'),
-                  style: const TextStyle(
-                      color: AppColors.mutedText, fontSize: 13),
+                  style: TextStyle(
+                      color: context.mm.onCardMuted, fontSize: 13),
                 )
               else
                 ...topCuisines.map((c) {
@@ -146,7 +195,7 @@ class WeeklyReportScreen extends ConsumerWidget {
                             child: LinearProgressIndicator(
                               value: count / maxCount,
                               minHeight: 12,
-                              backgroundColor: AppColors.softBorder,
+                              backgroundColor: context.mm.border,
                               valueColor:
                                   const AlwaysStoppedAnimation<Color>(
                                 AppColors.warmYellow,
@@ -176,12 +225,12 @@ class WeeklyReportScreen extends ConsumerWidget {
 
 class _StatTile extends StatelessWidget {
   const _StatTile({
-    required this.emoji,
+    required this.icon,
     required this.value,
     required this.label,
   });
 
-  final String emoji;
+  final MmIconType icon;
   final String value;
   final String label;
 
@@ -191,27 +240,27 @@ class _StatTile extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 14),
         decoration: BoxDecoration(
-          color: AppColors.cardWhite,
+          color: context.mm.card,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.softBorder),
+          border: Border.all(color: context.mm.border),
         ),
         child: Column(
           children: [
-            Text(emoji, style: const TextStyle(fontSize: 22)),
+            MmIcon(icon, size: 22, color: AppColors.primaryRed),
             const SizedBox(height: 4),
             Text(
               value,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w800,
-                color: AppColors.darkText,
+                color: context.mm.onCard,
               ),
             ),
             Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11,
-                color: AppColors.mutedText,
+                color: context.mm.onCardMuted,
               ),
             ),
           ],

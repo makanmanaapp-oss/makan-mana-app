@@ -1,35 +1,180 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../app/localization/app_localizations.dart';
+import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
+import 'post_media.dart';
+import 'saved_posts.dart';
+import 'live_identity.dart';
 import 'social_providers.dart';
 
-/// /profile/activity - My Posts, My Comments (kawalan kandungan sendiri).
+/// /profile/activity - My Posts, My Comments, Disimpan.
 class MyActivityScreen extends ConsumerWidget {
   const MyActivityScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Scaffold(
         appBar: AppBar(
           title: const Text('Aktiviti Saya'),
-          bottom: const TabBar(
+          bottom: TabBar(
+            // QA akhir: scrollable — label tab terklip pudar pada skala 1.30.
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
             labelColor: AppColors.primaryRed,
-            unselectedLabelColor: AppColors.mutedText,
+            unselectedLabelColor: context.mm.onCardMuted,
             indicatorColor: AppColors.primaryRed,
             labelStyle:
-                TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+                const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
             tabs: [
-              Tab(text: 'Post Saya'),
-              Tab(text: 'Komen Saya'),
+              const Tab(text: 'Post Saya'),
+              const Tab(text: 'Komen Saya'),
+              Tab(text: l.t('savedTab')),
             ],
           ),
         ),
         body: const TabBarView(
-          children: [_MyPostsTab(), _MyCommentsTab()],
+          children: [_MyPostsTab(), _MyCommentsTab(), _SavedTab()],
         ),
+      ),
+    );
+  }
+}
+
+/// Social Prompt 3: tab post yang disimpan (bookmark).
+class _SavedTab extends ConsumerWidget {
+  const _SavedTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
+    final refs = ref.watch(mySavedRefsProvider);
+    return refs.when(
+      loading: () => const Center(child: CircularProgressIndicator()),
+      error: (e, st) =>
+          _Empty(icon: Icons.bookmark_border, text: l.t('savedEmpty')),
+      data: (list) {
+        if (list.isEmpty) {
+          return _Empty(icon: Icons.bookmark_border, text: l.t('savedEmpty'));
+        }
+        return ListView(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
+          children: list.map((s) => _SavedPostTile(savedRef: s)).toList(),
+        );
+      },
+    );
+  }
+}
+
+class _SavedPostTile extends ConsumerWidget {
+  const _SavedPostTile({required this.savedRef});
+
+  /// Dokumen users/{uid}/saved_posts/{postId} (id = postId).
+  final FeedPostData savedRef;
+
+  Future<void> _unsave(
+      BuildContext context, WidgetRef ref, Map<String, dynamic> data) async {
+    final l = AppLocalizations.of(context);
+    try {
+      await toggleSavePost(
+        ref,
+        postId: savedRef.id,
+        postData: data,
+        currentlySaved: true,
+        sourceScreen: 'my_activity_saved',
+      );
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(l.t('saveFailed'))));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
+    final postAsync = ref.watch(postByIdProvider(savedRef.id));
+    final post = postAsync.valueOrNull;
+    // Post dipadam / tidak lagi boleh dibaca (rules keterlihatan kekal
+    // dihormati) → tile jujur + boleh buang simpanan.
+    final unavailable =
+        post == null && (!postAsync.isLoading || postAsync.hasError);
+    final data = post?.data ?? const <String, dynamic>{};
+    final text = data['text'] as String? ?? '';
+    // ISSUE 004: nama pengarang live (snapshot post lama fallback).
+    final name = post == null
+        ? ''
+        : resolveAuthorIdentity(
+            ref,
+            l,
+            uid: data['authorUid'] as String? ?? '',
+            snapshotName: data['displayName'] as String?,
+          ).displayName;
+    final urls = post == null ? const <String>[] : postMediaUrls(data);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: context.mm.card,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: context.mm.border),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            unavailable ? Icons.hide_image_outlined : Icons.bookmark,
+            size: 20,
+            color: unavailable ? context.mm.iconMuted : AppColors.primaryRed,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: unavailable
+                ? Text(l.t('savedGone'),
+                    style: TextStyle(
+                        fontSize: 13.5,
+                        color: context.mm.onCardMuted,
+                        fontWeight: FontWeight.w600))
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (name.isNotEmpty)
+                        Text(name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                                fontSize: 12.5,
+                                color: context.mm.onCardMuted,
+                                fontWeight: FontWeight.w700)),
+                      Text(
+                        text.isNotEmpty ? text : '📷',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            fontSize: 13.5, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+          ),
+          if (urls.isNotEmpty)
+            IconButton(
+              onPressed: () =>
+                  context.push('/post/${savedRef.id}/media', extra: post),
+              icon: Icon(Icons.open_in_full,
+                  size: 18, color: context.mm.iconMuted),
+            ),
+          IconButton(
+            onPressed: () => _unsave(context, ref, data),
+            icon: Icon(Icons.bookmark_remove_outlined,
+                size: 20, color: context.mm.iconMuted),
+          ),
+        ],
       ),
     );
   }
@@ -40,15 +185,14 @@ class _MyPostsTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final l = AppLocalizations.of(context);
     final posts = ref.watch(myPostsProvider);
     return posts.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, st) => Center(child: Text('😕 $e')),
       data: (list) {
         if (list.isEmpty) {
-          return const _Empty(
-              icon: Icons.article_outlined,
-              text: 'Belum ada post. Kongsi makan best kau di Feed!');
+          return _Empty(icon: Icons.article_outlined, text: l.t('feedEmpty'));
         }
         return ListView(
           padding: const EdgeInsets.fromLTRB(20, 12, 20, 40),
@@ -74,9 +218,9 @@ class _MyPostCard extends ConsumerWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.cardWhite,
+        color: context.mm.card,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.softBorder),
+        border: Border.all(color: context.mm.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -85,18 +229,17 @@ class _MyPostCard extends ConsumerWidget {
             Text(text,
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                    fontSize: 14, fontWeight: FontWeight.w600)),
+                style:
+                    const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
           Row(
             children: [
-              const Icon(Icons.favorite,
-                  size: 15, color: AppColors.primaryRed),
+              const Icon(Icons.favorite, size: 15, color: AppColors.primaryRed),
               const SizedBox(width: 4),
               Text('$likeCount',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 12.5,
-                      color: AppColors.mutedText,
+                      color: context.mm.onCardMuted,
                       fontWeight: FontWeight.w700)),
               const SizedBox(width: 12),
               Icon(
@@ -106,7 +249,7 @@ class _MyPostCard extends ConsumerWidget {
                   _ => Icons.public,
                 },
                 size: 14,
-                color: AppColors.mutedText,
+                color: context.mm.iconMuted,
               ),
               const SizedBox(width: 4),
               Text(
@@ -115,9 +258,9 @@ class _MyPostCard extends ConsumerWidget {
                   'followers' => 'Pengikut',
                   _ => 'Awam',
                 },
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 12.5,
-                    color: AppColors.mutedText,
+                    color: context.mm.onCardMuted,
                     fontWeight: FontWeight.w700),
               ),
               const Spacer(),
@@ -131,7 +274,7 @@ class _MyPostCard extends ConsumerWidget {
 
   Widget _menuButton(BuildContext context, WidgetRef ref) {
     return PopupMenuButton<String>(
-      icon: const Icon(Icons.more_horiz, color: AppColors.mutedText),
+      icon: Icon(Icons.more_horiz, color: context.mm.iconMuted),
       onSelected: (v) async {
         final service = ref.read(socialServiceProvider);
         switch (v) {
@@ -149,8 +292,7 @@ class _MyPostCard extends ConsumerWidget {
       itemBuilder: (menuContext) => [
         const PopupMenuItem(value: 'edit', child: Text('Edit kapsyen')),
         const PopupMenuItem(value: 'public', child: Text('Jadikan Awam')),
-        const PopupMenuItem(
-            value: 'followers', child: Text('Pengikut sahaja')),
+        const PopupMenuItem(value: 'followers', child: Text('Pengikut sahaja')),
         const PopupMenuItem(value: 'private', child: Text('Peribadi')),
         const PopupMenuItem(value: 'delete', child: Text('Padam post')),
       ],
@@ -163,7 +305,7 @@ class _MyPostCard extends ConsumerWidget {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.creamBackground,
+      backgroundColor: context.mm.appBackground,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -179,8 +321,7 @@ class _MyPostCard extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('Edit kapsyen',
-                style:
-                    TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
             const SizedBox(height: 12),
             TextField(
               controller: controller,
@@ -189,15 +330,16 @@ class _MyPostCard extends ConsumerWidget {
               maxLength: 500,
               decoration: InputDecoration(
                 filled: true,
-                fillColor: AppColors.cardWhite,
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                fillColor: context.mm.card,
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
             FilledButton(
               onPressed: () async {
-                await ref.read(socialServiceProvider).editPost(
-                    postId: post.id, text: controller.text.trim());
+                await ref
+                    .read(socialServiceProvider)
+                    .editPost(postId: post.id, text: controller.text.trim());
                 if (sheetContext.mounted) Navigator.pop(sheetContext);
               },
               style: FilledButton.styleFrom(
@@ -251,14 +393,14 @@ class _MyCommentCard extends ConsumerWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.cardWhite,
+        color: context.mm.card,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.softBorder),
+        border: Border.all(color: context.mm.border),
       ),
       child: Row(
         children: [
-          const Icon(Icons.mode_comment_outlined,
-              size: 18, color: AppColors.mutedText),
+          Icon(Icons.mode_comment_outlined,
+              size: 18, color: context.mm.iconMuted),
           const SizedBox(width: 10),
           Expanded(
             child: Text(text,
@@ -268,8 +410,7 @@ class _MyCommentCard extends ConsumerWidget {
                     fontSize: 13.5, fontWeight: FontWeight.w600)),
           ),
           PopupMenuButton<String>(
-            icon: const Icon(Icons.more_horiz,
-                color: AppColors.mutedText, size: 20),
+            icon: Icon(Icons.more_horiz, color: context.mm.iconMuted, size: 20),
             onSelected: (v) async {
               final service = ref.read(socialServiceProvider);
               if (v == 'edit') {
@@ -298,7 +439,7 @@ class _MyCommentCard extends ConsumerWidget {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.creamBackground,
+      backgroundColor: context.mm.appBackground,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -314,8 +455,7 @@ class _MyCommentCard extends ConsumerWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('Edit komen',
-                style:
-                    TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
             const SizedBox(height: 12),
             TextField(
               controller: controller,
@@ -324,9 +464,9 @@ class _MyCommentCard extends ConsumerWidget {
               maxLength: 300,
               decoration: InputDecoration(
                 filled: true,
-                fillColor: AppColors.cardWhite,
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                fillColor: context.mm.card,
+                border:
+                    OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
             FilledButton(
@@ -387,12 +527,12 @@ class _Empty extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 54, color: AppColors.mutedText),
+            Icon(icon, size: 54, color: context.mm.iconMuted),
             const SizedBox(height: 14),
             Text(text,
                 textAlign: TextAlign.center,
-                style: const TextStyle(
-                    color: AppColors.mutedText,
+                style: TextStyle(
+                    color: context.mm.onCardMuted,
                     fontWeight: FontWeight.w600)),
           ],
         ),

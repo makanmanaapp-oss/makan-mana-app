@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
 
 /// Carta ringan custom-paint untuk MakanMana Monitor.
@@ -29,6 +30,8 @@ class FitScoreRing extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // SP10.2: nombor skor & trek ikut mod (gelap: teks cerah).
+    final mm = context.mm;
     return SizedBox(
       width: size,
       height: size,
@@ -36,7 +39,7 @@ class FitScoreRing extends StatelessWidget {
         painter: _RingPainter(
           progress: (score / 100).clamp(0.0, 1.0),
           color: _color,
-          trackColor: AppColors.softBorder,
+          trackColor: mm.border,
           strokeWidth: size * 0.085,
         ),
         child: Center(
@@ -48,7 +51,7 @@ class FitScoreRing extends StatelessWidget {
                 style: TextStyle(
                   fontSize: size * 0.27,
                   fontWeight: FontWeight.w800,
-                  color: AppColors.darkText,
+                  color: mm.onCard,
                   height: 1.05,
                 ),
               ),
@@ -57,7 +60,7 @@ class FitScoreRing extends StatelessWidget {
                 style: TextStyle(
                   fontSize: size * 0.095,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.mutedText,
+                  color: mm.onCardMuted,
                 ),
               ),
             ],
@@ -131,6 +134,7 @@ class TargetBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final pct = target <= 0 ? 0.0 : (value / target).clamp(0.0, 1.0);
+    final mm = context.mm;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 6),
       child: Column(
@@ -139,16 +143,29 @@ class TargetBar extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(label,
-                  style: const TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.mutedText)),
-              Text('${_fmt(value)} / ${_fmt(target)} $unit',
-                  style: const TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.darkText)),
+              // Expanded: label terjemahan panjang pada skala teks besar
+              // mesti dipotong elok, bukan melimpah (QA ISSUE 001.3).
+              Expanded(
+                child: Text(label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: mm.onCardMuted)),
+              ),
+              const SizedBox(width: 8),
+              // Flexible: pada skala teks ekstrem nilai dipotong elok dan
+              // bukan melimpah; pada fon peranti sebenar ia sentiasa muat.
+              Flexible(
+                child: Text('${_fmt(value)} / ${_fmt(target)} $unit',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: mm.onCard)),
+              ),
             ],
           ),
           const SizedBox(height: 5),
@@ -157,7 +174,7 @@ class TargetBar extends StatelessWidget {
             child: LinearProgressIndicator(
               value: pct,
               minHeight: 8,
-              backgroundColor: AppColors.softBorder.withValues(alpha: 0.6),
+              backgroundColor: mm.border.withValues(alpha: 0.6),
               valueColor: AlwaysStoppedAnimation(color),
             ),
           ),
@@ -194,6 +211,7 @@ class WeeklyBarChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final mm = context.mm;
     return SizedBox(
       height: height,
       child: CustomPaint(
@@ -204,6 +222,9 @@ class WeeklyBarChart extends StatelessWidget {
           target: target,
           color: color,
           todayIndex: DateTime.now().weekday - 1,
+          labelColor: mm.onCard,
+          labelMuted: mm.onCardMuted,
+          emptyBarColor: mm.border,
         ),
       ),
     );
@@ -216,6 +237,9 @@ class _BarPainter extends CustomPainter {
     required this.labels,
     required this.color,
     required this.todayIndex,
+    required this.labelColor,
+    required this.labelMuted,
+    required this.emptyBarColor,
     this.target,
   });
 
@@ -224,6 +248,9 @@ class _BarPainter extends CustomPainter {
   final double? target;
   final Color color;
   final int todayIndex;
+  final Color labelColor;
+  final Color labelMuted;
+  final Color emptyBarColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -242,7 +269,7 @@ class _BarPainter extends CustomPainter {
       final isToday = i == todayIndex;
       final paint = Paint()
         ..color = values[i] <= 0
-            ? AppColors.softBorder.withValues(alpha: 0.7)
+            ? emptyBarColor.withValues(alpha: 0.7)
             : (isToday ? color : color.withValues(alpha: 0.45));
       final barH = math.max(h, 4.0);
       canvas.drawRRect(
@@ -259,7 +286,7 @@ class _BarPainter extends CustomPainter {
           style: TextStyle(
             fontSize: 10.5,
             fontWeight: isToday ? FontWeight.w800 : FontWeight.w600,
-            color: isToday ? AppColors.darkText : AppColors.mutedText,
+            color: isToday ? labelColor : labelMuted,
           ),
         ),
         textDirection: TextDirection.ltr,
@@ -271,7 +298,7 @@ class _BarPainter extends CustomPainter {
     if (target != null && target! > 0) {
       final y = chartH - (target! / safeMax) * (chartH - 8);
       final dash = Paint()
-        ..color = AppColors.mutedText.withValues(alpha: 0.55)
+        ..color = labelMuted.withValues(alpha: 0.75)
         ..strokeWidth = 1.2;
       var x = 0.0;
       while (x < size.width) {
@@ -320,6 +347,7 @@ class TrendLineChart extends StatelessWidget {
           color: color,
           secondColor: secondColor,
           labels: labels,
+          labelMuted: context.mm.onCardMuted,
         ),
       ),
     );
@@ -332,6 +360,7 @@ class _LinePainter extends CustomPainter {
     required this.color,
     required this.secondColor,
     required this.labels,
+    required this.labelMuted,
     this.secondValues,
     this.target,
   });
@@ -342,6 +371,7 @@ class _LinePainter extends CustomPainter {
   final Color color;
   final Color secondColor;
   final List<String> labels;
+  final Color labelMuted;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -408,7 +438,7 @@ class _LinePainter extends CustomPainter {
     if (target != null && target! > 0) {
       final y = chartH - ((target! - minV) / range) * (chartH - 10) - 4;
       final dash = Paint()
-        ..color = AppColors.mutedText.withValues(alpha: 0.5)
+        ..color = labelMuted.withValues(alpha: 0.7)
         ..strokeWidth = 1.2;
       var x = 0.0;
       while (x < size.width) {
@@ -425,9 +455,9 @@ class _LinePainter extends CustomPainter {
       final tp = TextPainter(
         text: TextSpan(
           text: labels[i],
-          style: const TextStyle(
+          style: TextStyle(
               fontSize: 10,
-              color: AppColors.mutedText,
+              color: labelMuted,
               fontWeight: FontWeight.w600),
         ),
         textDirection: TextDirection.ltr,
@@ -464,13 +494,14 @@ class MacroDonut extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final totalKcal = (proteinG * 4 + carbsG * 4 + fatG * 9).toDouble();
+    final mm = context.mm;
     return SizedBox(
       width: size,
       height: size,
       child: CustomPaint(
         painter: _DonutPainter(
           segments: totalKcal <= 0
-              ? const [(1.0, AppColors.softBorder)]
+              ? [(1.0, mm.border)]
               : [
                   (proteinG * 4 / totalKcal, proteinColor),
                   (carbsG * 4 / totalKcal, carbsColor),
@@ -487,12 +518,12 @@ class MacroDonut extends StatelessWidget {
                 style: TextStyle(
                     fontSize: size * 0.17,
                     fontWeight: FontWeight.w800,
-                    color: AppColors.darkText),
+                    color: mm.onCard),
               ),
               Text('kcal',
                   style: TextStyle(
                       fontSize: size * 0.1,
-                      color: AppColors.mutedText,
+                      color: mm.onCardMuted,
                       fontWeight: FontWeight.w600)),
             ],
           ),

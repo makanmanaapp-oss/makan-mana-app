@@ -30,6 +30,9 @@ export const onReviewApproved = onDocumentUpdated(
           text: after.text ?? null,
           imageUrl: after.imageUrl ?? null,
           groupId: null,
+          // Social 1.1: visibility eksplisit; dikongsi atas persetujuan
+          // pengguna (shareToFeed=true semasa hantar review).
+          visibility: "public",
           placeId: after.placeId,
           placeName: after.placeName ?? null,
           cuisine: after.cuisine ?? null,

@@ -2,7 +2,7 @@ class AppConstants {
   AppConstants._();
 
   static const appName = 'MakanMana';
-  static const packageName = 'com.makanmana.app';
+  static const packageName = 'com.makanmana.apps';
   static const defaultLanguage = 'ms';
   static const supportedLanguages = ['ms', 'en', 'zh', 'ta'];
   static const functionsRegion = 'asia-southeast1';
@@ -41,8 +41,19 @@ class RoutePaths {
   static const myActivity = '/profile/activity';
   // V4 Social + Group Hub
   static const editFoodProfile = '/edit-food-profile';
+  // Prompt 3: Profile Makanan hub + editor
+  static const profileMakanan = '/profile-makanan';
+  static const pmDietAllergy = '/pm/diet-allergy';
+  static const pmBudgetRadius = '/pm/budget-radius';
+  static const pmCuisine = '/pm/cuisine';
+  static const pmSpice = '/pm/spice';
+  static const pmMealTime = '/pm/meal-time';
   // Placeholder masa depan
   static const nutrition = '/nutrition';
+  // PART 1 Phase 1.11 — sejarah laporan/pembetulan pelapor.
+  static const placeReports = '/profile/place-reports';
   static const social = '/social';
   static const group = '/group';
+  // Front Page Redesign 1 — Notification Center.
+  static const notifications = '/notifications';
 }

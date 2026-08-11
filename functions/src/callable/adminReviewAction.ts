@@ -1,6 +1,7 @@
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 
 import {db, FieldValue} from "../config/firebase";
+import {assertAdmin} from "../utils/adminAuth";
 
 interface AdminActionInput {
   reviewId?: string;
@@ -9,18 +10,12 @@ interface AdminActionInput {
 
 /**
  * Tindakan admin pada ulasan delivery pending.
- * Hanya pengguna dengan users/{uid}.isAdmin == true.
+ * SP9.2A: admin disahkan via custom claim / ADMIN_UIDS (BUKAN lagi
+ * users/{uid}.isAdmin yang pernah client-writable).
  * approve -> trigger onReviewApproved uruskan skor + feed + push.
  */
 export const adminReviewAction = onCall(async (request) => {
-  const uid = request.auth?.uid;
-  if (!uid) {
-    throw new HttpsError("unauthenticated", "Sila log masuk dahulu.");
-  }
-  const userSnap = await db.collection("users").doc(uid).get();
-  if (userSnap.data()?.isAdmin !== true) {
-    throw new HttpsError("permission-denied", "Akses admin sahaja.");
-  }
+  const uid = assertAdmin(request);
 
   const input = (request.data ?? {}) as AdminActionInput;
   const reviewId = (input.reviewId ?? "").trim();

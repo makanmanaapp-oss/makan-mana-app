@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
 
-import '../constants/app_colors.dart';
+import '../../app/theme.dart';
 
 /// Skrin placeholder untuk laluan masa depan (/nutrition, /social, /group).
+/// BRIGHT MODE spec: ikon universal, bukan emoji sistem.
 class PlaceholderScreen extends StatelessWidget {
   const PlaceholderScreen({
     super.key,
     required this.title,
-    this.emoji = '🚧',
+    this.emoji = '',
     this.message = 'Akan datang!',
   });
 
   final String title;
+
+  /// Warisan lama — tidak lagi dipapar.
   final String emoji;
   final String message;
 
@@ -23,14 +26,15 @@ class PlaceholderScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text(emoji, style: const TextStyle(fontSize: 64)),
+            Icon(Icons.construction_outlined,
+                size: 64, color: context.mm.iconMuted),
             const SizedBox(height: 16),
             Text(
               message,
               textAlign: TextAlign.center,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 16,
-                color: AppColors.mutedText,
+                color: context.mm.onCardMuted,
                 fontWeight: FontWeight.w600,
               ),
             ),

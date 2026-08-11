@@ -1,0 +1,11 @@
+process.env.ALGO2_FLAGS="all";
+const admin=require("firebase-admin"); if(!admin.apps.length)admin.initializeApp({projectId:"makanmana-c59f3"});
+const {cohortIdFor,resolveRollout}=require("../lib/domain/rollout/rolloutResolver");
+const {getRolloutConfig}=require("../lib/config/rolloutConfig");
+(async()=>{const cfg=getRolloutConfig();const salt=cfg.salt||"nosalt";
+let m=null,pt;do{const r=await admin.auth().listUsers(1000,pt);for(const u of r.users)if(cohortIdFor(u.uid,salt)==="6eb4a05772"){m=u;break;}pt=r.pageToken;}while(pt&&!m);
+const now=Date.now();
+await admin.firestore().collection("algorithm_rollout_members").doc(m.uid).set({cohort:"beta_shadow",enabled:true,reason:"phase_2_5d_observation",expiresAt:now+3*3600*1000,createdAt:now,createdBy:"blp6g37BUVPFLsDrSGuVqHrne153",rolloutVersion:cfg.rolloutVersion});
+await admin.firestore().collection("algorithm_rollout_audit").add({action:"add_shadow_2_5d",cohortId:"6eb4a05772",reason:"phase_2_5d_observation",by:"blp6g37BUVPFLsDrSGuVqHrne153",at:now});
+const d=resolveRollout({uid:m.uid,isOwner:false,allowlistMember:{cohort:"beta_shadow",enabled:true,expiresAt:now+3*3600*1000},now,config:cfg});
+console.log(JSON.stringify({mode:d.mode,enabled:d.enabled,shadowEnabled:d.shadowEnabled}));process.exit(0);})();

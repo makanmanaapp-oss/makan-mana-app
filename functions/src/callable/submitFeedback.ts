@@ -1,7 +1,11 @@
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 
+import {algorithm2FlagActive} from "../config/algorithm2Flags";
+import {ADMIN_UIDS} from "../config/constants";
 import {db, FieldValue} from "../config/firebase";
 import {DUMMY_PLACES} from "../data/dummyPlaces";
+import {resolveCohortAuthorization} from "../domain/places/canonical/canonicalReadResolver";
+import {writeRejectMemory} from "../services/algorithm2SessionService";
 import {logEvent} from "../services/eventService";
 import {currentTimeSlot} from "../utils/timeSlot";
 
@@ -24,6 +28,12 @@ interface SubmitFeedbackInput {
   reason?: string;
   /** Snapshot tempat dari client (untuk tempat Google Places sebenar). */
   place?: PlaceSnapshot;
+  // Prompt 7: konteks tambahan (PILIHAN) untuk event AI Brain yang lebih kaya.
+  source?: string;
+  mood?: string;
+  radiusMeters?: number;
+  negativeSignals?: string[];
+  metadata?: Record<string, unknown>;
 }
 
 /** Terima maklum balas pengguna dan kemas kini AI Brain. */
@@ -38,6 +48,8 @@ export const submitFeedback = onCall(async (request) => {
     throw new HttpsError("invalid-argument", "action tidak sah.");
   }
   const placeId = input.placeId ?? null;
+  // Prompt 8: mod tindakan (spin/preview/nearby) dari metadata client.
+  const originMode = (input.metadata?.origin as string | undefined) ?? null;
   // Snapshot client diutamakan (tempat Google Places sebenar);
   // fallback ke senarai dummy pelayan.
   const dummy = DUMMY_PLACES.find((p) => p.placeId === placeId) ?? null;
@@ -73,6 +85,11 @@ export const submitFeedback = onCall(async (request) => {
           {
             status,
             ...(input.reason ? {reason: input.reason} : {}),
+            ...(input.source ? {source: input.source} : {}),
+            ...(input.mood ? {mood: input.mood} : {}),
+            ...(input.radiusMeters != null ?
+              {radiusMeters: input.radiusMeters} :
+              {}),
             updatedAt: FieldValue.serverTimestamp(),
           },
           {merge: true},
@@ -102,61 +119,89 @@ export const submitFeedback = onCall(async (request) => {
     }
   }
 
-  // Accept => rekod makan + siaran Feed Makan komuniti.
-  if (action === "accept" && place && place.placeId) {
-    await db.collection("users").doc(uid).collection("meals").add({
-      placeId: place.placeId,
-      placeNameSnapshot: place.name,
-      cuisineTags: [place.cuisine],
-      emoji: place.emoji,
-      timeSlot: currentTimeSlot(),
-      mealTime: new Date().toISOString(),
-      source: "suggestion",
-      matchScore: place.matchScore,
-      priceLevel: place.priceLevel,
-      priceEstimate: place.priceEstimate,
-      createdAt: FieldValue.serverTimestamp(),
-    });
-
-    // Feed komuniti: nama paparan sahaja, tiada uid didedahkan ke client.
-    try {
-      const userSnap = await db.collection("users").doc(uid).get();
-      const email = (userSnap.data()?.email as string | undefined) ?? "";
-      const displayName =
-        (userSnap.data()?.displayName as string | undefined) ||
-        (email.includes("@") ? email.split("@")[0] : "Foodie");
-      const photoUrl =
-        (userSnap.data()?.photoUrl as string | undefined) ?? null;
-      await db.collection("feed_posts").add({
-        type: "auto",
-        authorUid: uid,
-        displayName,
-        photoUrl,
-        text: null,
-        imageUrl: null,
-        groupId: null,
-        placeId: place.placeId,
-        placeName: place.name,
-        cuisine: place.cuisine,
-        emoji: place.emoji,
-        timeSlot: currentTimeSlot(),
-        matchScore: place.matchScore,
-        likeCount: 0,
-        likedBy: [],
-        createdAt: FieldValue.serverTimestamp(),
-      });
-    } catch (e) {
-      console.error("feed_posts gagal:", e);
+  // Phase 2.2 — reject-memory 24 jam (kohort + bendera sahaja; awam tidak terjejas).
+  if (action === "reject" && placeId) {
+    const cohort = resolveCohortAuthorization(
+      {uid, token: request.auth?.token as Record<string, unknown> | undefined},
+      {ownerAllowlist: ADMIN_UIDS},
+    );
+    if (algorithm2FlagActive("rejectMemory", cohort.canonicalCohortEligible)) {
+      await writeRejectMemory(uid, placeId, Date.now(), {reason: input.reason ?? null});
     }
   }
 
+  // Accept => rekod makan + siaran Feed Makan komuniti.
+  if (action === "accept" && place && place.placeId) {
+    const mealRef = await db
+      .collection("users")
+      .doc(uid)
+      .collection("meals")
+      .add({
+        placeId: place.placeId,
+        placeNameSnapshot: place.name,
+        cuisineTags: [place.cuisine],
+        emoji: place.emoji,
+        timeSlot: currentTimeSlot(),
+        mealTime: new Date().toISOString(),
+        source: "suggestion",
+        matchScore: place.matchScore,
+        priceLevel: place.priceLevel,
+        priceEstimate: place.priceEstimate,
+        createdAt: FieldValue.serverTimestamp(),
+      });
+
+    // Prompt 8: meal_logged dimiliki oleh backend bila backend cipta meal.
+    await logEvent({
+      userId: uid,
+      eventType: "meal_logged",
+      placeId: place.placeId,
+      placeNameSnapshot: place.name,
+      suggestionId: input.suggestionId ?? null,
+      sessionId: input.sessionId ?? null,
+      mood: input.mood ?? null,
+      sourceMode: originMode ?? undefined,
+      resultSource: input.source ?? null,
+      matchScore: place.matchScore ?? null,
+      metadata: {mealId: mealRef.id, source: "suggestion", fromSuggestion: true},
+    });
+
+    // PRIVASI (Social 1.1): auto-post feed "makan kat <kedai>" DIBUANG.
+    // Ia mendedahkan lokasi/tabiat makan secara awam tanpa persetujuan.
+    // Perkongsian ke feed kini HANYA melalui tindakan eksplisit pengguna
+    // (createFeedPost / shareToFeed review; check-in ber-visibility akan
+    // dibina dalam Social Prompt 4). Meal, event AI Brain dan status
+    // suggestion di atas tidak terjejas.
+  }
+
+  // Prompt 8: nama event kanonik (snake_case). accept -> suggestion_accept,
+  // reject -> suggestion_reject. view_details/open_map kekal (jika dipanggil).
+  const canonicalType =
+    action === "accept" ?
+      "suggestion_accept" :
+      action === "reject" ?
+        "suggestion_reject" :
+        action;
+
   await logEvent({
     userId: uid,
-    eventType: action,
+    eventType: canonicalType,
     placeId,
+    placeNameSnapshot: input.place?.name ?? null,
     suggestionId: input.suggestionId ?? null,
     sessionId: input.sessionId ?? null,
-    metadata: input.reason ? {reason: input.reason} : {},
+    mood: input.mood ?? null,
+    sourceMode: originMode ?? undefined,
+    resultSource: input.source ?? null,
+    radiusMeters: input.radiusMeters ?? null,
+    matchScore: input.place?.matchScore ?? null,
+    metadata: {
+      ...(input.metadata ?? {}),
+      ...(input.reason ? {reason: input.reason} : {}),
+      ...(input.source ? {source: input.source} : {}),
+      ...(input.negativeSignals && input.negativeSignals.length > 0 ?
+        {negativeSignals: input.negativeSignals} :
+        {}),
+    },
   });
 
   return {status: "OK"};

@@ -776,11 +776,20 @@ class FitService {
 
     var steps = 0, cal = 0, calDays = 0, proteinHit = 0, healthy = 0;
     var heavy = 0, sugary = 0, trained = 0, skipped = 0;
+    // Phase 2.16A: honest-state signals (no sample fallbacks downstream).
+    var dataDays = 0, stepsDays = 0;
     for (final d in days) {
       try {
         final snap = await _metricsDoc(d).get();
         final m = DailyMetrics.fromMap(snap.data());
         steps += m.steps;
+        if (m.steps > 0) stepsDays++;
+        final hadData = m.caloriesIn > 0 ||
+            m.mealCount > 0 ||
+            m.steps > 0 ||
+            m.workoutCompleted ||
+            m.workoutSkipped;
+        if (hadData) dataDays++;
         if (m.caloriesIn > 0) {
           cal += m.caloriesIn;
           calDays++;
@@ -812,6 +821,14 @@ class FitService {
     final report = {
       'userId': uid,
       'weekStartDate': dateKey(monday),
+      'weekEndDate': dateKey(days.isEmpty ? monday : days.last),
+      // Honest-state signals (Phase 2.16A): consumed by the UI resolver so no
+      // sample/placeholder value is ever shown for missing data.
+      'trackedDays': days.length,
+      'dataDays': dataDays,
+      'hasActivity': dataDays > 0,
+      'stepsTracked': stepsDays > 0,
+      'profileValid': true,
       'trainingCompleted': trained,
       'trainingPlanned': planned,
       'trainingSkipped': skipped,

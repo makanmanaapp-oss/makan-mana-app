@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/localization/app_localizations.dart';
+import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/providers.dart';
@@ -30,14 +31,15 @@ class LanguageScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const SizedBox(height: 24),
-              const Text('🌏', style: TextStyle(fontSize: 48)),
+              const Icon(Icons.language,
+              size: 48, color: AppColors.primaryRed),
               const SizedBox(height: 16),
               Text(
                 l.t('chooseLanguage'),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 26,
                   fontWeight: FontWeight.w800,
-                  color: AppColors.darkText,
+                  color: context.mm.onCard,
                 ),
               ),
               const SizedBox(height: 32),
@@ -58,12 +60,12 @@ class LanguageScreen extends ConsumerWidget {
                       decoration: BoxDecoration(
                         color: selected
                             ? AppColors.softYellow
-                            : AppColors.cardWhite,
+                            : context.mm.card,
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
                           color: selected
                               ? AppColors.warmYellow
-                              : AppColors.softBorder,
+                              : context.mm.border,
                           width: selected ? 2 : 1,
                         ),
                       ),
@@ -74,10 +76,14 @@ class LanguageScreen extends ConsumerWidget {
                           Expanded(
                             child: Text(
                               lang.$2,
-                              style: const TextStyle(
+                              // Kad kuning (dipilih) = teks gelap;
+                              // kad token = onCard.
+                              style: TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w700,
-                                color: AppColors.darkText,
+                                color: selected
+                                    ? AppColors.darkText
+                                    : context.mm.onCard,
                               ),
                             ),
                           ),

@@ -94,8 +94,9 @@ export const scanCalories = onCall(
       }),
     });
     if (!res.ok) {
-      const body = await res.text();
-      console.error(`Vertex ${res.status}: ${body.slice(0, 500)}`);
+      // Privacy: never log the response body — it may contain model-generated
+      // or image-derived text. Log only the status category.
+      console.error(`scanCalories vertex_error status=${res.status}`);
       throw new HttpsError(
         "unavailable",
         "Analisis gagal. Cuba sebentar lagi.",
@@ -123,7 +124,8 @@ export const scanCalories = onCall(
           cleaned,
       );
     } catch (e) {
-      console.error("Gagal parse JSON Gemini:", cleaned.slice(0, 300));
+      // Privacy: do not log the model text (may contain image-derived content).
+      console.error("scanCalories parse_error");
       throw new HttpsError("internal", "Format analisis tidak dijangka.");
     }
 

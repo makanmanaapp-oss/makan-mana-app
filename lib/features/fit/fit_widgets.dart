@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/localization/app_localizations.dart';
+import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/widgets/mm_icons.dart';
 import 'fit_charts.dart';
 import 'fit_models.dart';
 import 'fit_providers.dart';
@@ -25,13 +27,15 @@ class FitSectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // SP10.2: kad theme-aware — gelap dlm mod gelap, teks onCard.
+    final mm = context.mm;
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       padding: padding,
       decoration: BoxDecoration(
-        color: AppColors.cardWhite,
+        color: mm.card,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.softBorder),
+        border: Border.all(color: mm.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -42,14 +46,17 @@ class FitSectionCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     title!,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14.5,
                       fontWeight: FontWeight.w800,
-                      color: AppColors.darkText,
+                      color: mm.onCard,
                     ),
                   ),
                 ),
-                if (trailing != null) trailing!,
+                // Flexible: trailing (cth butang tukar mood) dengan label
+                // terjemahan panjang mesti mengecil, bukan melimpah
+                // (QA ISSUE 001.3: 12-19px overflow pada ta/zh).
+                if (trailing != null) Flexible(child: trailing!),
               ],
             ),
             const SizedBox(height: 12),
@@ -97,86 +104,119 @@ class FitCoachCard extends ConsumerWidget {
           context.push('/fit/today');
         }
       },
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(20, 4, 20, 16),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-            colors: [Color(0xFF0F766E), Color(0xFF15803D)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Row(
-          children: [
-            Container(
-              height: 46,
-              width: 46,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.16),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: const Icon(Icons.monitor_heart_outlined,
-                  color: Colors.white, size: 26),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Flexible(
-                        child: Text(
-                          l.t('fitCoachTitle'),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 15,
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      if (access != FitAccess.full) ...[
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: AppColors.warmYellow,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Text(
-                            'PRO',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w800,
-                              color: AppColors.darkText,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    subtitle,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.9),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+      // BRIGHT MODE spec: Fit Coach dalam identiti MakanMana — permukaan
+      // putih/tema, aksen merah halus, badge PRO kuning kompak. TIADA
+      // identiti hijau berasingan.
+      // Refinement: kad Fit Coach lebih bersih & premium — ikon lebih besar,
+      // permukaan tanpa sempadan tebal (bayang lembut Bright / sempadan halus
+      // Dark), badge "EXCLUSIVE" oren. Callback & plan-gating TIDAK berubah.
+      child: Builder(builder: (builderContext) {
+        final mm = builderContext.mm;
+        final dark = builderContext.isDarkMode;
+        const exclusive = Color(0xFFF59E14); // oren jenama
+        return Container(
+          margin: const EdgeInsets.fromLTRB(20, 4, 20, 16),
+          decoration: BoxDecoration(
+            color: mm.card,
+            borderRadius: BorderRadius.circular(22),
+            border: dark ? Border.all(color: mm.border) : null,
+            boxShadow: dark
+                ? null
+                : [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.06),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6),
                     ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+                  ],
+          ),
+          child: Stack(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+                child: Row(
+                  children: [
+                    // Ikon lebih besar & lebih menonjol.
+                    Container(
+                      height: 58,
+                      width: 58,
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            AppColors.primaryRed.withValues(alpha: 0.16),
+                            AppColors.primaryRed.withValues(alpha: 0.06),
+                          ],
+                        ),
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: const Center(
+                        child: MmIcon(MmIconType.fitCoach,
+                            size: 32, color: AppColors.primaryRed),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            l.t('fitCoachTitle'),
+                            style: TextStyle(
+                              color: mm.onCard,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16.5,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            subtitle,
+                            style: TextStyle(
+                              color: mm.onCardMuted,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(Icons.chevron_right, color: mm.iconMuted),
+                  ],
+                ),
               ),
-            ),
-            const Icon(Icons.chevron_right, color: Colors.white),
-          ],
-        ),
-      ),
+              // Badge EXCLUSIVE — jelas tetapi tidak terlalu besar.
+              Positioned(
+                top: 10,
+                right: 12,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: exclusive.withValues(alpha: dark ? 0.22 : 0.14),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: exclusive.withValues(alpha: 0.65), width: 1),
+                  ),
+                  child: Text(
+                    l.t('fitExclusive'),
+                    style: const TextStyle(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.4,
+                      color: exclusive,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      }),
     );
   }
 
@@ -204,14 +244,15 @@ class MetricCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final mm = context.mm;
     return GestureDetector(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: AppColors.cardWhite,
+          color: mm.card,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.softBorder),
+          border: Border.all(color: mm.border),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -222,8 +263,8 @@ class MetricCard extends StatelessWidget {
                 Icon(icon, size: 18, color: color),
                 const Spacer(),
                 if (onTap != null)
-                  const Icon(Icons.add_circle_outline,
-                      size: 17, color: AppColors.mutedText),
+                  Icon(Icons.add_circle_outline,
+                      size: 17, color: mm.iconMuted),
               ],
             ),
             const SizedBox(height: 8),
@@ -231,18 +272,18 @@ class MetricCard extends StatelessWidget {
               fit: BoxFit.scaleDown,
               child: Text(
                 value,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 17,
                   fontWeight: FontWeight.w800,
-                  color: AppColors.darkText,
+                  color: mm.onCard,
                 ),
               ),
             ),
             Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 11,
-                  color: AppColors.mutedText,
+                  color: mm.onCardMuted,
                   fontWeight: FontWeight.w600),
               overflow: TextOverflow.ellipsis,
             ),
@@ -261,13 +302,21 @@ class CoachInsightCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // DARK MODE: kad tip ini dulu HIJAU PUCAT tetap — permukaan terang
+    // menyerlah atas latar gelap. Kini permukaan/teks ikut token; aksen
+    // hijau kekal terkawal. Nilai Bright TIDAK berubah.
+    final dark = context.isDarkMode;
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFEFFAF3),
+        color: dark ? context.mm.card : const Color(0xFFEFFAF3),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFB8E6CB)),
+        border: Border.all(
+          color: dark
+              ? AppColors.healthyGreen.withValues(alpha: 0.35)
+              : const Color(0xFFB8E6CB),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -279,18 +328,21 @@ class CoachInsightCard extends StatelessWidget {
               color: AppColors.healthyGreen.withValues(alpha: 0.15),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.tips_and_updates_outlined,
-                size: 19, color: Color(0xFF15803D)),
+            child: Icon(Icons.tips_and_updates_outlined,
+                size: 19,
+                color: dark
+                    ? AppColors.healthyGreen
+                    : const Color(0xFF15803D)),
           ),
           const SizedBox(width: 11),
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 13,
                 height: 1.45,
                 fontWeight: FontWeight.w600,
-                color: Color(0xFF14532D),
+                color: dark ? context.mm.onCard : const Color(0xFF14532D),
               ),
             ),
           ),
@@ -320,13 +372,14 @@ class MenuFitCard extends StatelessWidget {
         : s.fitScore >= 55
             ? AppColors.warmYellow
             : AppColors.warningOrange;
+    final mm = context.mm;
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: AppColors.cardWhite,
+        color: mm.card,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.softBorder),
+        border: Border.all(color: mm.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -340,17 +393,19 @@ class MenuFitCard extends StatelessWidget {
                   children: [
                     Text(
                       s.menuName,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w800, fontSize: 14),
+                      style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14,
+                          color: mm.onCard),
                     ),
                     if (s.placeName != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 2),
                         child: Text(
-                          '📍 ${s.placeName}',
-                          style: const TextStyle(
+                          '${s.placeName}',
+                          style: TextStyle(
                               fontSize: 11.5,
-                              color: AppColors.mutedText,
+                              color: mm.onCardMuted,
                               fontWeight: FontWeight.w600),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -369,7 +424,10 @@ class MenuFitCard extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w800,
-                    color: Color.lerp(scoreColor, Colors.black, 0.25),
+                    // Gelap: cerahkan skor; cerah: gelapkan (kontras).
+                    color: context.isDarkMode
+                        ? Color.lerp(scoreColor, Colors.white, 0.35)
+                        : Color.lerp(scoreColor, Colors.black, 0.25),
                   ),
                 ),
               ),
@@ -379,9 +437,9 @@ class MenuFitCard extends StatelessWidget {
           Text(
             '${s.calories} kcal · P ${s.proteinG}g · C ${s.carbsG}g · '
             'L ${s.fatG}g · ~RM${s.priceEstimate}',
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 12,
-                color: AppColors.mutedText,
+                color: mm.onCardMuted,
                 fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 6),
@@ -390,13 +448,12 @@ class MenuFitCard extends StatelessWidget {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('•  ',
-                        style: TextStyle(color: AppColors.mutedText)),
+                    Text('•  ', style: TextStyle(color: mm.onCardMuted)),
                     Expanded(
                       child: Text(
                         r,
-                        style: const TextStyle(
-                            fontSize: 12, color: AppColors.darkText),
+                        style:
+                            TextStyle(fontSize: 12, color: mm.onCard),
                       ),
                     ),
                   ],
@@ -433,16 +490,27 @@ class LockedProOverlay extends StatelessWidget {
     super.key,
     required this.child,
     required this.locked,
+    this.paywallArgs,
   });
 
   final Widget child;
   final bool locked;
 
+  /// Prompt 12: bawa PaywallArgs (requiredPlan Pro) ke skrin paywall.
+  final Object? paywallArgs;
+
   @override
   Widget build(BuildContext context) {
     if (!locked) return child;
     final l = AppLocalizations.of(context);
-    return Stack(
+    final mm = context.mm;
+    // SP10.5: bila child lebih pendek daripada kandungan overlay
+    // (cth. satu kad kecil), Stack ikut saiz child dan overlay
+    // melimpah (overflow 129px di Meal Wallet). minHeight menjamin
+    // ruang cukup untuk kad kunci penuh.
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 310),
+      child: Stack(
       children: [
         // Kandungan sampel kekal nampak samar - "show value first".
         Opacity(opacity: 0.35, child: IgnorePointer(child: child)),
@@ -452,9 +520,9 @@ class LockedProOverlay extends StatelessWidget {
               margin: const EdgeInsets.symmetric(horizontal: 32),
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
-                color: AppColors.cardWhite,
+                color: mm.elevatedCard,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: AppColors.softBorder),
+                border: Border.all(color: mm.border),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.08),
@@ -480,21 +548,24 @@ class LockedProOverlay extends StatelessWidget {
                   Text(
                     l.t('fitLockedTitle'),
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w800, fontSize: 15),
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                        color: mm.onCard),
                   ),
                   const SizedBox(height: 6),
                   Text(
                     l.t('fitLockedBody'),
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12.5,
-                        color: AppColors.mutedText,
+                        color: mm.onCardMuted,
                         height: 1.4),
                   ),
                   const SizedBox(height: 14),
                   FilledButton(
-                    onPressed: () => context.push('/paywall'),
+                    onPressed: () =>
+                        context.push('/paywall', extra: paywallArgs),
                     style: FilledButton.styleFrom(
                       backgroundColor: AppColors.primaryRed,
                       minimumSize: const Size(200, 44),
@@ -508,6 +579,7 @@ class LockedProOverlay extends StatelessWidget {
           ),
         ),
       ],
+      ),
     );
   }
 }
@@ -527,6 +599,7 @@ class MacroLegend extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final mm = context.mm;
     Widget row(Color c, String label, int g) => Padding(
           padding: const EdgeInsets.symmetric(vertical: 3),
           child: Row(
@@ -538,14 +611,16 @@ class MacroLegend extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Text(label,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 12.5,
-                      color: AppColors.mutedText,
+                      color: mm.onCardMuted,
                       fontWeight: FontWeight.w600)),
               const Spacer(),
               Text('${g}g',
-                  style: const TextStyle(
-                      fontSize: 12.5, fontWeight: FontWeight.w800)),
+                  style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                      color: mm.onCard)),
             ],
           ),
         );

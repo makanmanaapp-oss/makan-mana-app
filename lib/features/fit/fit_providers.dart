@@ -1,21 +1,31 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/entitlement/entitlement.dart';
+import '../../core/entitlement/plan_tier.dart';
 import '../../core/providers.dart';
 import 'fit_models.dart';
+import 'fit_profile_validation.dart';
 import 'fit_service.dart';
 
 /// Tahap akses Fit Coach ikut pelan (paparan sahaja; kunci sebenar server).
 enum FitAccess { locked, preview, full }
 
+/// Prompt 12: guna Entitlement berpusat (Prompt 10) — Pro=penuh,
+/// Plus=preview, Free=locked. Pelan hilang/tak sah -> locked (free).
 final fitAccessProvider = Provider<FitAccess>((ref) {
-  final plan = ref.watch(userPlanProvider).value ?? 'free';
-  return switch (plan) {
-    'pro' => FitAccess.full,
-    'plus' => FitAccess.preview,
-    _ => FitAccess.locked,
-  };
+  final ent = ref.watch(entitlementProvider);
+  if (ent.isPro) return FitAccess.full;
+  if (ent.isPlusOrAbove) return FitAccess.preview;
+  return FitAccess.locked;
 });
+
+/// Args paywall untuk ciri Fit (requiredPlan: Pro).
+PaywallArgs fitPaywallArgs(String featureId, String sourceScreen) => PaywallArgs(
+      featureId: featureId,
+      requiredPlan: PlanTier.pro,
+      sourceScreen: sourceScreen,
+    );
 
 final fitServiceProvider = Provider<FitService>((ref) {
   return FitService(
@@ -56,21 +66,26 @@ final todayMetricsProvider = StreamProvider<DailyMetrics>((ref) {
 
 /// Sasaran nutrisi dikira dari profil.
 final nutritionTargetsProvider = Provider<NutritionTargets?>((ref) {
-  final profile = ref.watch(fitProfileProvider).value;
+  // BUGFIX Sport Mode auto-exit: .value melempar semula AsyncError strim
+  // profil semasa build (ranap pratonton Monitor/Today -> kelihatan seperti
+  // skrin keluar sendiri). Ralat strim dilayan sebagai "belum ada profil".
+  final profile = ref.watch(fitProfileProvider).valueOrNull;
   if (profile == null) return null;
   return NutritionTargets.fromProfile(profile);
 });
 
 /// Pelan latihan hari ini (deterministik dari mood + profil).
 final todayPlanProvider = Provider<DailyPlan?>((ref) {
-  final profile = ref.watch(fitProfileProvider).value;
+  // valueOrNull: kelas pepijat sama seperti nutritionTargetsProvider.
+  final profile = ref.watch(fitProfileProvider).valueOrNull;
   if (profile == null) return null;
   return ref.watch(fitServiceProvider).generateDailyPlan(profile);
 });
 
 /// Skor Fit hari ini.
 final dailyFitScoreProvider = Provider<int?>((ref) {
-  final profile = ref.watch(fitProfileProvider).value;
+  // valueOrNull: kelas pepijat sama seperti nutritionTargetsProvider.
+  final profile = ref.watch(fitProfileProvider).valueOrNull;
   final targets = ref.watch(nutritionTargetsProvider);
   if (profile == null || targets == null) return null;
   final metrics = ref.watch(todayMetricsProvider).value ?? const DailyMetrics();
@@ -171,8 +186,15 @@ final fitWeeklyReportProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
   final profile = ref.watch(fitProfileProvider).value;
   final targets = ref.watch(nutritionTargetsProvider);
-  if (profile == null || targets == null) {
-    return {'coachSummary': '', 'recommendations': const <String>[]};
+  // Phase 2.16A: incomplete OR invalid stored profile -> honest state, never
+  // sample values. Invalid legacy profiles (e.g. height=0) require correction
+  // before dependent targets/report are generated (no silent rewrite).
+  if (profile == null || targets == null || !isStoredProfileValid(profile)) {
+    return {
+      'state': 'profileIncomplete',
+      'profileValid': false,
+      'recommendations': const <String>[],
+    };
   }
   return ref.watch(fitServiceProvider).buildWeeklyReport(profile, targets);
 });

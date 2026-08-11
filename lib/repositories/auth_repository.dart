@@ -1,5 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 
+import '../core/services/google_auth_service.dart';
+
 /// Lapisan auth. Guna Firebase Auth bila tersedia;
 /// splash/login akan fallback ke mod dev jika Firebase belum dikonfigurasi.
 class AuthRepository {
@@ -18,6 +20,15 @@ class AuthRepository {
       _auth.createUserWithEmailAndPassword(email: email, password: password);
 
   Future<void> signOut() async {
-    if (firebaseReady) await _auth.signOut();
+    if (firebaseReady) {
+      // SP10.1B: tutup sesi Google juga supaya pemilih akaun keluar
+      // semula pada login seterusnya (tak kritikal jika gagal).
+      await GoogleAuthService.signOutGoogle();
+      await _auth.signOut();
+    }
   }
+
+  /// SP10: hantar emel reset password (akaun email/password).
+  Future<void> sendPasswordReset(String email) =>
+      _auth.sendPasswordResetEmail(email: email);
 }

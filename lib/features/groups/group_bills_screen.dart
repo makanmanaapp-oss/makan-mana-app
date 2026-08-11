@@ -3,14 +3,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/localization/app_localizations.dart';
+import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/events/event_types.dart';
 import '../../core/providers.dart';
 import '../tongtong/tongtong_service.dart';
 import 'group_providers.dart';
 
 String _rm(num v) => 'RM${v.toStringAsFixed(2)}';
 
-/// Tab bil Tong-Tong dalam Group Hub.
+/// Tab bil Tong-Tong dalam Group Hub (SP5: seksyen Aktif/Selesai +
+/// kiraan peserta/belum bayar — butiran individu kekal dalam bil).
 class GroupBillsTab extends ConsumerWidget {
   const GroupBillsTab({super.key, required this.groupId, required this.canCreate});
 
@@ -20,14 +23,30 @@ class GroupBillsTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l = AppLocalizations.of(context);
-    final bills = ref.watch(groupBillsProvider(groupId)).value ?? const [];
+    final billsAsync = ref.watch(groupBillsProvider(groupId));
+    final bills = billsAsync.value ?? const [];
+    final active =
+        bills.where((b) => (b.$2['status'] as String?) != 'settled').toList();
+    final settled =
+        bills.where((b) => (b.$2['status'] as String?) == 'settled').toList();
+
+    if (billsAsync.isLoading && bills.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
     return Scaffold(
       backgroundColor: Colors.transparent,
       floatingActionButton: canCreate
           ? FloatingActionButton.extended(
               heroTag: 'createGroupBill',
-              onPressed: () => context.push('/groups/$groupId/bills/create'),
+              onPressed: () {
+                ref.read(eventLoggerProvider).logEvent(
+                      EventType.groupBillCreateTapped,
+                      sourceScreen: 'group_bills',
+                      metadata: {'groupId': groupId},
+                    );
+                context.push('/groups/$groupId/bills/create');
+              },
               backgroundColor: AppColors.primaryRed,
               icon: const Icon(Icons.receipt_long, color: Colors.white),
               label: Text(l.t('newBill'),
@@ -41,54 +60,135 @@ class GroupBillsTab extends ConsumerWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Text('🧾', style: TextStyle(fontSize: 52)),
+                    Icon(Icons.receipt_long_outlined,
+                        size: 52, color: AppColors.threadsMuted),
                     const SizedBox(height: 14),
                     Text(l.t('noBills'),
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
+                        style: TextStyle(
                             color: AppColors.threadsMuted,
                             fontWeight: FontWeight.w600)),
                   ],
                 ),
               ),
             )
-          : ListView.separated(
+          : ListView(
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 120),
-              itemCount: bills.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
-              itemBuilder: (context, i) {
-                final (id, data) = bills[i];
-                final total = (data['totalAmount'] as num?)?.toDouble() ?? 0;
-                final settled = (data['status'] as String?) == 'settled';
-                return ListTile(
-                  onTap: () => context.push('/tong-tong/$id'),
-                  tileColor: AppColors.threadsSurface,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: const BorderSide(color: AppColors.threadsBorder),
-                  ),
-                  leading: const Text('🧾', style: TextStyle(fontSize: 26)),
-                  title: Text(data['placeNameSnapshot'] as String? ?? '-',
-                      style: const TextStyle(
-                          color: AppColors.threadsText,
-                          fontWeight: FontWeight.w700)),
-                  subtitle: Text(
-                      '${_rm(total)} • ${settled ? l.t('billSettled') : l.t('billActive')}',
-                      style: const TextStyle(
-                          color: AppColors.threadsMuted, fontSize: 12.5)),
-                  trailing: const Icon(Icons.chevron_right,
-                      color: AppColors.threadsMuted),
-                );
-              },
+              children: [
+                if (active.isNotEmpty) ...[
+                  _sectionLabel(l.t('billsActiveSection')),
+                  ...active.map((b) => _billTile(context, ref, l, b)),
+                ],
+                if (settled.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  _sectionLabel(l.t('billsSettledSection')),
+                  ...settled.map((b) => _billTile(context, ref, l, b)),
+                ],
+              ],
             ),
+    );
+  }
+
+  Widget _sectionLabel(String text) => Padding(
+        padding: const EdgeInsets.only(bottom: 8, top: 4),
+        child: Text(text,
+            style: TextStyle(
+                color: AppColors.threadsMuted,
+                fontWeight: FontWeight.w800,
+                fontSize: 12.5)),
+      );
+
+  Widget _billTile(BuildContext context, WidgetRef ref, AppLocalizations l,
+      (String, Map<String, dynamic>) bill) {
+    final (id, data) = bill;
+    final total = (data['totalAmount'] as num?)?.toDouble() ?? 0;
+    final settled = (data['status'] as String?) == 'settled';
+    final participants = ((data['participants'] as List?) ?? const [])
+        .whereType<Map>()
+        .toList();
+    final paid = participants
+        .where((p) =>
+            p['paymentStatus'] == 'paid' || p['paymentStatus'] == 'waived')
+        .length;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: ListTile(
+        onTap: () {
+          ref.read(eventLoggerProvider).logEvent(
+                EventType.groupBillViewed,
+                sourceScreen: 'group_bills',
+                metadata: {'groupId': groupId},
+              );
+          context.push('/tong-tong/$id');
+        },
+        tileColor: AppColors.threadsSurface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: AppColors.threadsBorder),
+        ),
+        leading: Icon(
+            settled ? Icons.check_circle_outline : Icons.receipt_long_outlined,
+            size: 26,
+            color: settled ? AppColors.openGreen : AppColors.warmYellow),
+        title: Text(data['placeNameSnapshot'] as String? ?? '-',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+                color: AppColors.threadsText, fontWeight: FontWeight.w700)),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+                '${_rm(total)} • ${settled ? l.t('billSettled') : l.t('billActive')}'
+                '${participants.isNotEmpty ? ' • $paid/${participants.length} ${l.t('paidOfLabel')}' : ''}',
+                style: TextStyle(
+                    color: AppColors.threadsMuted, fontSize: 12.5)),
+            // SP6: penanda post/check-in berkaitan. Deep link ke satu
+            // post belum wujud — arahkan ke tab Feed (jujur, tiada rosak).
+            if (data['linkedPostId'] != null)
+              InkWell(
+                onTap: () {
+                  ref.read(eventLoggerProvider).logEvent(
+                        EventType.billLinkedPostOpened,
+                        sourceScreen: 'group_bills',
+                        metadata: {'groupId': groupId},
+                      );
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                      content: Text(l.t('billLinkedGoFeed'))));
+                },
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(l.t('billLinkedBadge'),
+                      style: const TextStyle(
+                          color: AppColors.warmYellow,
+                          fontSize: 11.5,
+                          fontWeight: FontWeight.w700)),
+                ),
+              ),
+          ],
+        ),
+        trailing:
+            Icon(Icons.chevron_right, color: AppColors.threadsMuted),
+      ),
     );
   }
 }
 
 /// Cipta bil grup - peserta auto diisi daripada ahli grup.
+/// SP6: boleh dibuka dari check-in/post grup dengan prefill
+/// (placeName/total dari check-in, sourcePostId untuk pautan).
 class GroupCreateBillScreen extends ConsumerStatefulWidget {
-  const GroupCreateBillScreen({super.key, required this.groupId});
+  const GroupCreateBillScreen({
+    super.key,
+    required this.groupId,
+    this.prefillPlaceName,
+    this.prefillTotal,
+    this.sourcePostId,
+  });
   final String groupId;
+  final String? prefillPlaceName;
+  final double? prefillTotal;
+  final String? sourcePostId;
 
   @override
   ConsumerState<GroupCreateBillScreen> createState() =>
@@ -104,6 +204,19 @@ class _GroupCreateBillScreenState
   final _selected = <String>{}; // uid ahli yang termasuk
   bool _saving = false;
   bool _seeded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Prefill dari check-in — pengguna bebas edit (tidak overwrite).
+    if (widget.prefillPlaceName != null &&
+        widget.prefillPlaceName!.isNotEmpty) {
+      _place.text = widget.prefillPlaceName!;
+    }
+    if (widget.prefillTotal != null && widget.prefillTotal! > 0) {
+      _total.text = widget.prefillTotal!.toStringAsFixed(2);
+    }
+  }
 
   @override
   void dispose() {
@@ -138,6 +251,9 @@ class _GroupCreateBillScreenState
           participants: participants,
           items: const [],
           groupId: widget.groupId,
+          // SP6: pautkan bil ke post/check-in asal (jika dari post).
+          linkedPostId: widget.sourcePostId,
+          source: widget.sourcePostId != null ? 'group_post' : 'manual',
         );
     if (!mounted) return;
     if (id != null) {
@@ -178,10 +294,10 @@ class _GroupCreateBillScreenState
             decoration: InputDecoration(
               labelText: l.t('billPlace'),
               filled: true,
-              fillColor: AppColors.cardWhite,
+              fillColor: context.mm.card,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: AppColors.softBorder),
+                borderSide: BorderSide(color: context.mm.border),
               ),
             ),
           ),
@@ -194,10 +310,10 @@ class _GroupCreateBillScreenState
               labelText: l.t('billTotal'),
               prefixText: 'RM ',
               filled: true,
-              fillColor: AppColors.cardWhite,
+              fillColor: context.mm.card,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: AppColors.softBorder),
+                borderSide: BorderSide(color: context.mm.border),
               ),
             ),
           ),
@@ -216,7 +332,7 @@ class _GroupCreateBillScreenState
                   labelStyle: TextStyle(
                       color: _method == e.key
                           ? Colors.white
-                          : AppColors.darkText,
+                          : context.mm.chipText,
                       fontWeight: FontWeight.w700),
                   onSelected: (_) => setState(() => _method = e.key),
                 ),

@@ -29,7 +29,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.makanmana.app"
+        applicationId = "com.makanmana.apps"
         // Firebase Auth memerlukan minSdk 23.
         minSdk = maxOf(23, flutter.minSdkVersion)
         targetSdk = flutter.targetSdkVersion

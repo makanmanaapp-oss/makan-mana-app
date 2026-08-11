@@ -1,0 +1,76 @@
+:root {
+  --red: #E7352C;
+  --deep-red: #B91C1C;
+  --cream: #FFF8EC;
+  --dark: #1F1F1F;
+  --muted: #6B6B6B;
+  --border: #F1E4D1;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  background: var(--cream);
+  color: var(--dark);
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+header {
+  background: linear-gradient(135deg, var(--red), var(--deep-red));
+  color: #fff;
+  padding: 28px 20px 22px;
+}
+header .brand {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+header .logo {
+  width: 44px; height: 44px; border-radius: 12px;
+  background: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px;
+}
+header h1 { font-size: 22px; font-weight: 800; }
+header .sub { max-width: 720px; margin: 6px auto 0; font-size: 13px; opacity: .92; }
+nav {
+  background: #fff;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+nav .wrap {
+  max-width: 720px; margin: 0 auto;
+  display: flex; gap: 4px; padding: 8px 12px; white-space: nowrap;
+}
+nav a {
+  color: var(--muted); text-decoration: none;
+  font-size: 13px; font-weight: 700;
+  padding: 8px 12px; border-radius: 999px;
+}
+nav a.active { background: var(--red); color: #fff; }
+main {
+  max-width: 720px; margin: 0 auto;
+  padding: 24px 20px 60px;
+}
+main h2 {
+  font-size: 17px; font-weight: 800;
+  margin: 26px 0 8px;
+}
+main p, main li { font-size: 15px; color: #3a3a3a; }
+main ul { padding-left: 20px; margin: 6px 0; }
+main .intro { font-size: 15px; color: #3a3a3a; }
+main .updated {
+  display: inline-block; margin-top: 10px;
+  background: #FFE8A3; color: var(--dark);
+  font-size: 12px; font-weight: 700;
+  padding: 4px 12px; border-radius: 999px;
+}
+footer {
+  border-top: 1px solid var(--border);
+  padding: 22px 20px 40px;
+  text-align: center;
+  font-size: 12.5px; color: var(--muted);
+}
+footer a { color: var(--red); font-weight: 700; text-decoration: none; }

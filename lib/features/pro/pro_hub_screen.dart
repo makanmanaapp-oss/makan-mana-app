@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/localization/app_localizations.dart';
+import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/providers.dart';
@@ -90,9 +91,12 @@ class ProHubScreen extends ConsumerWidget {
               ),
               child: Text(
                 l.t('proHubTeaser'),
+                // SP10.5: banner kuning B-style — teks WAJIB gelap
+                // eksplisit (tema gelap default putih atas kuning).
                 style: const TextStyle(
                   fontWeight: FontWeight.w600,
                   fontSize: 13.5,
+                  color: AppColors.darkText,
                 ),
               ),
             ),
@@ -104,9 +108,9 @@ class ProHubScreen extends ConsumerWidget {
                   child: Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: AppColors.cardWhite,
+                      color: context.mm.card,
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: AppColors.softBorder),
+                      border: Border.all(color: context.mm.border),
                     ),
                     child: Row(
                       children: [
@@ -128,17 +132,17 @@ class ProHubScreen extends ConsumerWidget {
                             children: [
                               Text(
                                 t.$2,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontWeight: FontWeight.w800,
                                   fontSize: 15.5,
-                                  color: AppColors.darkText,
+                                  color: context.mm.onCard,
                                 ),
                               ),
                               const SizedBox(height: 2),
                               Text(
                                 t.$3,
-                                style: const TextStyle(
-                                  color: AppColors.mutedText,
+                                style: TextStyle(
+                                  color: context.mm.onCardMuted,
                                   fontSize: 12.5,
                                 ),
                               ),
@@ -150,24 +154,24 @@ class ProHubScreen extends ConsumerWidget {
                             padding: const EdgeInsets.symmetric(
                                 horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
-                              color: AppColors.softBorder,
+                              color: context.mm.border,
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
                               l.t('soonBadge'),
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w800,
-                                color: AppColors.mutedText,
+                                color: context.mm.onCardMuted,
                               ),
                             ),
                           )
                         else if (!proOk)
-                          const Icon(Icons.lock_outline,
-                              size: 20, color: AppColors.mutedText)
+                          Icon(Icons.lock_outline,
+                              size: 20, color: context.mm.iconMuted)
                         else
-                          const Icon(Icons.chevron_right,
-                              color: AppColors.mutedText),
+                          Icon(Icons.chevron_right,
+                              color: context.mm.iconMuted),
                       ],
                     ),
                   ),

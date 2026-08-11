@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/localization/app_localizations.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/providers.dart';
+import '../../core/widgets/makan_avatar.dart';
 import 'food_profile.dart';
 import 'social_providers.dart';
 
@@ -34,7 +35,7 @@ class FollowListScreen extends ConsumerWidget {
         surfaceTintColor: Colors.transparent,
         title: Text(
           mode == 'followers' ? l.t('statFollowers') : l.t('statFollowing'),
-          style: const TextStyle(color: AppColors.threadsText),
+          style: TextStyle(color: AppColors.threadsText),
         ),
       ),
       body: ids.when(
@@ -43,7 +44,7 @@ class FollowListScreen extends ConsumerWidget {
         data: (list) => list.isEmpty
             ? Center(
                 child: Text(l.t('emptyFollowList'),
-                    style: const TextStyle(color: AppColors.threadsMuted)),
+                    style: TextStyle(color: AppColors.threadsMuted)),
               )
             : ListView.builder(
                 padding: const EdgeInsets.symmetric(vertical: 8),
@@ -71,21 +72,18 @@ class FollowRow extends ConsumerWidget {
 
     return ListTile(
       onTap: () => context.push('/u/$uid'),
-      leading: CircleAvatar(
+      leading: MakanAvatar(
         radius: 22,
-        backgroundColor: AppColors.softYellow,
-        backgroundImage:
-            p.photoUrl != null ? NetworkImage(p.photoUrl!) : null,
-        child: p.photoUrl == null
-            ? const Text('😋', style: TextStyle(fontSize: 20))
-            : null,
+        photoUrl: p.photoUrl,
+        presetId: p.avatarPreset,
+        displayName: p.displayName,
       ),
       title: Text(p.displayName,
-          style: const TextStyle(
+          style: TextStyle(
               color: AppColors.threadsText, fontWeight: FontWeight.w700)),
       subtitle: p.username != null && p.username!.isNotEmpty
           ? Text('@${p.username}',
-              style: const TextStyle(color: AppColors.threadsMuted))
+              style: TextStyle(color: AppColors.threadsMuted))
           : null,
       trailing: uid == myUid
           ? null
@@ -98,7 +96,7 @@ class FollowRow extends ConsumerWidget {
                       style: OutlinedButton.styleFrom(
                         minimumSize: const Size(72, 34),
                         foregroundColor: AppColors.threadsText,
-                        side: const BorderSide(color: AppColors.threadsBorder),
+                        side: BorderSide(color: AppColors.threadsBorder),
                         padding: const EdgeInsets.symmetric(horizontal: 12),
                       ),
                       child: Text(l.t('following'),

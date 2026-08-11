@@ -21,6 +21,66 @@ Widget _harness(Widget child, {double scale = 1.0}) => MaterialApp(
       ),
     );
 
+/// 55 kunci Fit ISSUE 001.1 - senarai dikunci, dikongsi oleh ujian
+/// placeholder dan ujian penghalaan skrip (ISSUE 001.3).
+const completedFitKeys = [
+  'fitSetupTitle',
+  'fitSetupBody',
+  'fitBodyBasics',
+  'fitHeight',
+  'fitWeight',
+  'fitAge',
+  'fitGender',
+  'fitMale',
+  'fitFemale',
+  'fitGoalTitle',
+  'fitGoalHealthy',
+  'fitGoalFatLoss',
+  'fitGoalLean',
+  'fitGoalRecomp',
+  'fitGoalMuscle',
+  'fitGoalSport',
+  'fitLevel',
+  'fitLevelBeginner',
+  'fitLevelIntermediate',
+  'fitLevelAdvanced',
+  'fitLevelAthlete',
+  'fitTrainingPref',
+  'fitDaysPerWeek',
+  'fitSessionDuration',
+  'fitTargets',
+  'fitBudgetMin',
+  'fitBudgetMax',
+  'fitStepTarget',
+  'fitSaveProfile',
+  'fitStartSetup',
+  'fitEditProfile',
+  'fitTodayTitle',
+  'fitNutritionTargets',
+  'fitWater',
+  'fitLogWater',
+  'fitLogSteps',
+  'fitLogWeight',
+  'fitWorkoutToday',
+  'fitChangeMood',
+  'fitFinishWorkout',
+  'fitMenuSuggestions',
+  'fitMonitorTitle',
+  'fitWeeklyScore',
+  'fitStepsTrend',
+  'fitCaloriesTrend',
+  'fitBodyTrend',
+  'fitBodyTrendEmpty',
+  'fitWeeklyReport',
+  'fitRecentWorkouts',
+  'fitNoWorkoutYet',
+  'fitSampleReport',
+  'fitSampleRecProtein',
+  'fitSampleRecSteps',
+  'fitSportMoodTitle',
+  'fitSportMoodIntro',
+];
+
 void main() {
   testWidgets('AppChip label Tamil panjang @360dp 1.30 tiada overflow',
       (tester) async {
@@ -188,63 +248,6 @@ void main() {
   });
 
   test('l10n: Fit zh dan ta tiada lagi placeholder English', () {
-    const completedFitKeys = [
-      'fitSetupTitle',
-      'fitSetupBody',
-      'fitBodyBasics',
-      'fitHeight',
-      'fitWeight',
-      'fitAge',
-      'fitGender',
-      'fitMale',
-      'fitFemale',
-      'fitGoalTitle',
-      'fitGoalHealthy',
-      'fitGoalFatLoss',
-      'fitGoalLean',
-      'fitGoalRecomp',
-      'fitGoalMuscle',
-      'fitGoalSport',
-      'fitLevel',
-      'fitLevelBeginner',
-      'fitLevelIntermediate',
-      'fitLevelAdvanced',
-      'fitLevelAthlete',
-      'fitTrainingPref',
-      'fitDaysPerWeek',
-      'fitSessionDuration',
-      'fitTargets',
-      'fitBudgetMin',
-      'fitBudgetMax',
-      'fitStepTarget',
-      'fitSaveProfile',
-      'fitStartSetup',
-      'fitEditProfile',
-      'fitTodayTitle',
-      'fitNutritionTargets',
-      'fitWater',
-      'fitLogWater',
-      'fitLogSteps',
-      'fitLogWeight',
-      'fitWorkoutToday',
-      'fitChangeMood',
-      'fitFinishWorkout',
-      'fitMenuSuggestions',
-      'fitMonitorTitle',
-      'fitWeeklyScore',
-      'fitStepsTrend',
-      'fitCaloriesTrend',
-      'fitBodyTrend',
-      'fitBodyTrendEmpty',
-      'fitWeeklyReport',
-      'fitRecentWorkouts',
-      'fitNoWorkoutYet',
-      'fitSampleReport',
-      'fitSampleRecProtein',
-      'fitSampleRecSteps',
-      'fitSportMoodTitle',
-      'fitSportMoodIntro',
-    ];
     final en = AppLocalizations(const Locale('en'));
     for (final language in ['zh', 'ta']) {
       final translated = AppLocalizations(Locale(language));
@@ -256,10 +259,30 @@ void main() {
   });
 
   // 919 kunci asal + 334 kunci Sport Mood/blok senaman + 5 kunci UI statik
-  // (ISSUE 001.2).
-  test('l10n: semua 1258 kunci dan parameter sepadan', () {
+  // + 6 kunci UI am ISSUE 001.3 (notis legal, kongsi, keutamaan lanjut)
+  // + 124 kunci kad kedai/detail + 88 kunci laporan/pembetulan Phase 1.11.
+  test('l10n: semua 1504 kunci dan parameter sepadan', () {
     final msKeys = AppLocalizations.keysForTesting(const Locale('ms'));
-    expect(msKeys, hasLength(1258));
+    // Phase 2.2A: +2 kunci (loadMore, endOfResults) merentas 4 bahasa.
+    // Location hotfix: +1 kunci (near) merentas 4 bahasa.
+    // Phase 2.3: +9 kunci (5 sebab + 4 isyarat negatif) merentas 4 bahasa.
+    // Phase 2.3A: +1 kunci (nutritionNotVerified) merentas 4 bahasa.
+    // Phase 2.3C: +2 kunci (reasonSupperBounded, openStatusUnknown) merentas 4 bahasa.
+    // Phase 2.4: +3 kunci (fmReset, fmResetConfirm, fmResetDone) merentas 4 bahasa.
+    // Phase 2.8A: +3 kunci (locDefaultArea, locFallbackNotice, chooseArea)
+    //   merentas 4 bahasa — pendedahan jujur lokasi lalai (fallback KL).
+    // Phase 2.15A: +18 kunci Calorie Scan (kalori/makro anggaran, pendedahan
+    //   estimasi + disclaimer alahan/halal/perubatan, aliran sunting, validasi)
+    //   merentas 4 bahasa.
+    // Phase 2.16A: +13 kunci (7 validasi profil Fit + 6 keadaan laporan
+    //   mingguan jujur) merentas 4 bahasa.
+    // Front Page Redesign 1: +9 kunci Notification Center (notificationsTitle,
+    //   markAllRead, notifToday, notifEarlier, noNotifications, allCaughtUp,
+    //   notifLoadError, newNotification, seeAll) merentas 4 bahasa.
+    // Front Page Redesign 1A: +2 kunci hero Home (homeHeroLead, homeHeroAccent)
+    //   merentas 4 bahasa.
+    // Refinement Home: +2 kunci (threadsLabel, fitExclusive) merentas 4 bahasa.
+    expect(msKeys, hasLength(1580));
     final placeholder = RegExp(r'\{[^}]+\}');
     final msValues = AppLocalizations.valuesForTesting(const Locale('ms'));
     for (final language in ['en', 'zh', 'ta']) {
@@ -326,6 +349,51 @@ void main() {
     for (final entry in values.entries) {
       expect(entry.value, isNot(matches(informal)),
           reason: '${entry.key} masih menggunakan salinan tidak formal');
+    }
+  });
+
+  // ISSUE 001.3: bukti positif penghalaan - kunci Fit + Sport Mood zh/ta
+  // MESTI mengandungi skrip bahasa masing-masing (bukan sekadar "tidak
+  // sama dengan English"). Tajuk Sport Mood dikecualikan kerana istilah
+  // teknikal/jenama (cth 'MMA Hybrid', '5KM Prep') sengaja dikekalkan.
+  test('l10n: kunci Fit zh/ta diselesaikan dari peta skrip yang betul', () {
+    final cjk = RegExp(r'[一-鿿]');
+    final tamil = RegExp(r'[஀-௿]');
+    final zh = AppLocalizations.valuesForTesting(const Locale('zh'));
+    final ta = AppLocalizations.valuesForTesting(const Locale('ta'));
+
+    final routedKeys = <String>[
+      // 55 kunci Fit ISSUE 001.1 (senarai dikunci di atas).
+      ...completedFitKeys,
+      // Ayat penuh Sport Mood ISSUE 001.2.
+      for (final key in AppLocalizations.keysForTesting(const Locale('ms')))
+        if (key.startsWith('sportMood') &&
+            (key.endsWith('Purpose') || key.endsWith('FoodFocus')))
+          key,
+      'fitCoachNoteFatLoss',
+      'fitCoachNoteRestDay',
+      'legalMalayOnlyNotice',
+    ];
+    expect(routedKeys.length, greaterThan(110));
+
+    for (final key in routedKeys) {
+      expect(cjk.hasMatch(zh[key]!), isTrue,
+          reason: 'nilai zh $key tiada aksara Cina - mungkin salah halaman');
+      expect(tamil.hasMatch(ta[key]!), isTrue,
+          reason: 'nilai ta $key tiada aksara Tamil - mungkin salah halaman');
+    }
+  });
+
+  // ISSUE 001.3: tiada nilai memulangkan nama kuncinya sendiri.
+  test('l10n: tiada nilai sama dengan nama kunci', () {
+    for (final code in ['ms', 'en', 'zh', 'ta']) {
+      final values = AppLocalizations.valuesForTesting(Locale(code));
+      for (final entry in values.entries) {
+        expect(entry.value, isNot(entry.key),
+            reason: '$code ${entry.key} memulangkan kuncinya sendiri');
+        expect(entry.value.trim(), isNotEmpty,
+            reason: '$code ${entry.key} kosong');
+      }
     }
   });
 }

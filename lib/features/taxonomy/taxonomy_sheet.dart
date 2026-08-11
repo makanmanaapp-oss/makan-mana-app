@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/localization/app_localizations.dart';
+import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/providers.dart';
 import 'taxonomy_data.dart';
@@ -42,7 +43,7 @@ Future<void> showTaxonomySheet(
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: AppColors.creamBackground,
+    backgroundColor: context.mm.appBackground,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
@@ -115,9 +116,9 @@ class _TaxonomySheetState extends ConsumerState<_TaxonomySheet> {
                           fontSize: 17, fontWeight: FontWeight.w800)),
                 ),
                 Text('${_selected.length} ${l.t('taxSelected')}',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12.5,
-                        color: AppColors.mutedText,
+                        color: context.mm.onCardMuted,
                         fontWeight: FontWeight.w700)),
               ],
             ),
@@ -132,7 +133,7 @@ class _TaxonomySheetState extends ConsumerState<_TaxonomySheet> {
                 prefixIcon: const Icon(Icons.search, size: 20),
                 isDense: true,
                 filled: true,
-                fillColor: AppColors.cardWhite,
+                fillColor: context.mm.card,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
                   borderSide: BorderSide.none,
@@ -144,9 +145,9 @@ class _TaxonomySheetState extends ConsumerState<_TaxonomySheet> {
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 0),
               child: Text(note,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 11.5,
-                      color: AppColors.mutedText,
+                      color: context.mm.onCardMuted,
                       fontWeight: FontWeight.w600)),
             ),
           Expanded(
@@ -194,10 +195,10 @@ class _TaxonomySheetState extends ConsumerState<_TaxonomySheet> {
       Padding(
         padding: const EdgeInsets.only(top: 8, bottom: 8),
         child: Text(group.title,
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 13.5,
                 fontWeight: FontWeight.w800,
-                color: AppColors.darkText)),
+                color: context.mm.onCard)),
       ),
       Wrap(
         spacing: 8,
@@ -220,13 +221,13 @@ class _TaxonomySheetState extends ConsumerState<_TaxonomySheet> {
                 color: selected
                     ? AppColors.primaryRed
                     : (locked
-                        ? AppColors.softBorder.withValues(alpha: 0.4)
-                        : AppColors.cardWhite),
+                        ? context.mm.border.withValues(alpha: 0.4)
+                        : context.mm.card),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                     color: selected
                         ? AppColors.primaryRed
-                        : AppColors.softBorder),
+                        : context.mm.border),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
@@ -238,13 +239,13 @@ class _TaxonomySheetState extends ConsumerState<_TaxonomySheet> {
                         color: selected
                             ? Colors.white
                             : (locked
-                                ? AppColors.mutedText
-                                : AppColors.darkText),
+                                ? context.mm.onCardFaint
+                                : context.mm.onCard),
                       )),
                   if (locked) ...[
                     const SizedBox(width: 5),
-                    const Icon(Icons.lock,
-                        size: 12, color: AppColors.mutedText),
+                    Icon(Icons.lock,
+                        size: 12, color: context.mm.iconMuted),
                   ],
                 ],
               ),

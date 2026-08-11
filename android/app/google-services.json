@@ -12,7 +12,28 @@
           "package_name": "com.makanmana.app"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "1097613804556-nu436cdksermaccmm7gp7e0o75k6a1l1.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.makanmana.app",
+            "certificate_hash": "678b9b8ed73f5842320b29891878448479a443ab"
+          }
+        },
+        {
+          "client_id": "1097613804556-qc18oua5t8ru12e1023s4g47f9ou292l.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.makanmana.app",
+            "certificate_hash": "940d31a0442d642d72e992f3384db16b4836209c"
+          }
+        },
+        {
+          "client_id": "1097613804556-o49jf5n2ccqjktt1t4e2e9vvvan5qdap.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyB_xtQQsF4eIDZILzRf-Xbm1xX76JPWs28"
@@ -20,7 +41,65 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1097613804556-o49jf5n2ccqjktt1t4e2e9vvvan5qdap.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1097613804556:android:e7bf74d97b21e0c1601a29",
+        "android_client_info": {
+          "package_name": "com.makanmana.apps"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1097613804556-9ukmqi9pbnf8qr9e8faknm3pgs6gr9qi.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.makanmana.apps",
+            "certificate_hash": "b30c7086970e20a8344dc2f6b5c8a44e7a12c1ff"
+          }
+        },
+        {
+          "client_id": "1097613804556-harttu2e81omgmscdtt2m1cg0a6dvet9.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.makanmana.apps",
+            "certificate_hash": "940d31a0442d642d72e992f3384db16b4836209c"
+          }
+        },
+        {
+          "client_id": "1097613804556-ld2cp3lsihih3lv92dcdmgso3kneg3vu.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.makanmana.apps",
+            "certificate_hash": "678b9b8ed73f5842320b29891878448479a443ab"
+          }
+        },
+        {
+          "client_id": "1097613804556-o49jf5n2ccqjktt1t4e2e9vvvan5qdap.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB_xtQQsF4eIDZILzRf-Xbm1xX76JPWs28"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1097613804556-o49jf5n2ccqjktt1t4e2e9vvvan5qdap.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

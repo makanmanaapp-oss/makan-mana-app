@@ -9,6 +9,7 @@ import '../../core/events/event_types.dart';
 import '../../core/providers.dart';
 import '../../core/providers/makanmana_user_context_provider.dart';
 import 'fit_models.dart';
+import 'fit_profile_validation.dart';
 import 'fit_providers.dart';
 import 'sport_mood_display.dart';
 import 'sport_moods_data.dart';
@@ -39,7 +40,9 @@ class _FitOnboardingScreenState extends ConsumerState<FitOnboardingScreen> {
   @override
   void initState() {
     super.initState();
-    final profile = ref.read(fitProfileProvider).value;
+    // valueOrNull: elak initState ranap jika strim profil dalam keadaan
+    // ralat semasa skrin dibuka (ISSUE 001.3).
+    final profile = ref.read(fitProfileProvider).valueOrNull;
     if (profile != null) {
       _height.text = profile.heightCm.round().toString();
       _weight.text = profile.weightKg.round().toString();
@@ -69,11 +72,29 @@ class _FitOnboardingScreenState extends ConsumerState<FitOnboardingScreen> {
 
   Future<void> _save() async {
     if (_saving) return;
+    final l = AppLocalizations.of(context);
+    // Phase 2.16A: reject impossible values BEFORE persistence (no silent clamp).
+    final validation = validateFitProfileInput(FitProfileInput(
+      heightText: _height.text,
+      weightText: _weight.text,
+      ageText: _age.text,
+      trainingDays: _days,
+      sessionDurationMinutes: _duration,
+      stepTargetText: _steps.text,
+    ));
+    if (!validation.ok) {
+      // Editable input is preserved; nothing is saved.
+      final firstKey = validation.errors.values.first;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l.t(firstKey))),
+      );
+      return;
+    }
     setState(() => _saving = true);
     final profile = FitnessProfile(
-      heightCm: double.tryParse(_height.text) ?? 170,
-      weightKg: double.tryParse(_weight.text) ?? 70,
-      age: int.tryParse(_age.text) ?? 25,
+      heightCm: double.parse(_height.text.trim()),
+      weightKg: double.parse(_weight.text.trim()),
+      age: int.parse(_age.text.trim()),
       gender: _gender,
       mainGoal: _goal,
       fitnessLevel: _level,
@@ -81,7 +102,7 @@ class _FitOnboardingScreenState extends ConsumerState<FitOnboardingScreen> {
       sessionDurationMinutes: _duration,
       budgetMin: int.tryParse(_budgetMin.text) ?? 8,
       budgetMax: int.tryParse(_budgetMax.text) ?? 20,
-      stepTarget: int.tryParse(_steps.text) ?? 8000,
+      stepTarget: int.parse(_steps.text.trim()),
       waterTargetMl: 2500,
       selectedSportMood: _mood,
     );
@@ -203,17 +224,24 @@ class _FitOnboardingScreenState extends ConsumerState<FitOnboardingScreen> {
                 activeColor: AppColors.primaryRed,
                 onChanged: (v) => setState(() => _duration = v.round()),
               ),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(mood.icon, color: AppColors.primaryRed),
-                title: Text(resolveSportMoodTitle(l, moodId: mood.id),
-                    style: const TextStyle(fontWeight: FontWeight.w800)),
-                subtitle: Text(l.t(mood.purposeKey)),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () async {
-                  final picked = await context.push<String>('/fit/sport-moods');
-                  if (picked != null) setState(() => _mood = picked);
-                },
+              // Material lutsinar: ListTile melukis latar/ink pada Material
+              // terdekat; tanpa ini Flutter debug melempar amaran "ink
+              // splashes may be invisible" dalam bekas berhias _Section.
+              Material(
+                type: MaterialType.transparency,
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(mood.icon, color: AppColors.primaryRed),
+                  title: Text(resolveSportMoodTitle(l, moodId: mood.id),
+                      style: const TextStyle(fontWeight: FontWeight.w800)),
+                  subtitle: Text(l.t(mood.purposeKey)),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () async {
+                    final picked =
+                        await context.push<String>('/fit/sport-moods');
+                    if (picked != null) setState(() => _mood = picked);
+                  },
+                ),
               ),
             ],
           ),
@@ -362,6 +390,9 @@ class _ChoiceMenu extends StatelessWidget {
   Widget build(BuildContext context) {
     return DropdownButtonFormField<String>(
       initialValue: value,
+      // isExpanded: label terjemahan panjang (zh/ta) mesti dipotong elok,
+      // bukan melimpah keluar borang (QA ISSUE 001.3: 43px overflow).
+      isExpanded: true,
       decoration: InputDecoration(
         labelText: label,
         filled: true,

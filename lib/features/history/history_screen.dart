@@ -15,6 +15,7 @@ import '../fit/fit_log_sheets.dart';
 import '../fit/fit_models.dart';
 import '../fit/fit_providers.dart';
 import '../fit/fit_widgets.dart';
+import '../fit/weekly_report_state.dart';
 import '../reviews/rating_page.dart';
 
 /// Sejarah (V3): 4 tab - Makanan, Fitness, Monitor, Laporan.
@@ -396,9 +397,24 @@ class _ReportsTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l = AppLocalizations.of(context);
     final access = ref.watch(fitAccessProvider);
-    final report = access == FitAccess.full
-        ? ref.watch(fitWeeklyReportProvider).value
+    final async = access == FitAccess.full
+        ? ref.watch(fitWeeklyReportProvider)
         : null;
+    final report = async?.value;
+
+    // Phase 2.16A: honest report state — NEVER sample values (4/5, 7850, 71%).
+    final loadError = async?.hasError ?? false;
+    final profileValid = report?['profileValid'] != false;
+    final trackedDays = (report?['trackedDays'] as num?)?.toInt() ?? 0;
+    final hasActivity = report?['hasActivity'] == true;
+    final state = resolveWeeklyReportState(WeeklyReportSignals(
+      profileValid: profileValid,
+      loadError: loadError,
+      trackedDays: trackedDays,
+      windowDays: 7,
+      hasAnyActivity: hasActivity,
+    ));
+    final stepsTracked = report?['stepsTracked'] == true;
 
     final body = ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
@@ -409,34 +425,48 @@ class _ReportsTab extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                '${report?['coachSummary'] ?? l.t('fitReportTeaser')}',
+                _summaryFor(l, state, report),
                 style: const TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.w600,
                     height: 1.45),
               ),
-              const SizedBox(height: 12),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _StatBox(
-                    icon: MmIconType.fitCoach,
-                    value:
-                        '${report?['trainingCompleted'] ?? 4}/${report?['trainingPlanned'] ?? 5}',
-                    label: l.t('fitTrainingDone'),
-                  ),
-                  _StatBox(
-                    icon: MmIconType.berhampiran,
-                    value: _fmt(report?['averageSteps'] ?? 7850),
-                    label: l.t('fitAvgSteps'),
-                  ),
-                  _StatBox(
-                    icon: MmIconType.healthy,
-                    value: '${report?['proteinHitRate'] ?? 71}%',
-                    label: l.t('fitProteinHit'),
-                  ),
-                ],
-              ),
+              if (state == WeeklyReportState.realData ||
+                  state == WeeklyReportState.insufficientHistory ||
+                  state == WeeklyReportState.zeroActivity) ...[
+                const SizedBox(height: 6),
+                Text(
+                  l.t('fitReportRange').replaceAll(
+                      '{days}', trackedDays.toString()),
+                  style: TextStyle(
+                      fontSize: 12, color: context.mm.onCardMuted),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _StatBox(
+                      icon: MmIconType.fitCoach,
+                      value:
+                          '${(report?['trainingCompleted'] as num?)?.toInt() ?? 0}/${(report?['trainingPlanned'] as num?)?.toInt() ?? 0}',
+                      label: l.t('fitTrainingDone'),
+                    ),
+                    _StatBox(
+                      icon: MmIconType.berhampiran,
+                      value: stepsTracked
+                          ? _fmt(report?['averageSteps'])
+                          : l.t('fitNotTracked'),
+                      label: l.t('fitAvgSteps'),
+                    ),
+                    _StatBox(
+                      icon: MmIconType.healthy,
+                      value:
+                          '${(report?['proteinHitRate'] as num?)?.toInt() ?? 0}%',
+                      label: l.t('fitProteinHit'),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -456,6 +486,24 @@ class _ReportsTab extends ConsumerWidget {
     return access == FitAccess.full
         ? body
         : LockedProOverlay(locked: true, child: body);
+  }
+
+  static String _summaryFor(
+      AppLocalizations l, WeeklyReportState state, Map<String, dynamic>? report) {
+    switch (state) {
+      case WeeklyReportState.realData:
+        return '${report?['coachSummary'] ?? l.t('fitReportTeaser')}';
+      case WeeklyReportState.insufficientHistory:
+        return l.t('fitInsufficientHistory');
+      case WeeklyReportState.zeroActivity:
+        return l.t('fitZeroActivity');
+      case WeeklyReportState.profileIncomplete:
+        return l.t('fitProfileIncomplete');
+      case WeeklyReportState.notTracked:
+        return l.t('fitNotTracked');
+      case WeeklyReportState.error:
+        return l.t('fitReportUnavailable');
+    }
   }
 
   static String _fmt(dynamic n) {

@@ -26,12 +26,16 @@ export const updateBrainMetrics = onSchedule(
     for (const doc of snap.docs) {
       const d = doc.data();
       const slot = (d.timeSlot as string) ?? "unknown";
+      // Prompt 8: terima nama lama (accept/reject) DAN kanonik baharu
+      // (suggestion_accept/suggestion_reject) untuk keserasian peralihan.
       switch (d.eventType) {
         case "accept":
+        case "suggestion_accept":
           accepts++;
           acceptByTimeSlot[slot] = (acceptByTimeSlot[slot] ?? 0) + 1;
           break;
-        case "reject": {
+        case "reject":
+        case "suggestion_reject": {
           rejects++;
           const reason =
             ((d.metadata as Record<string, unknown>)?.reason as string) ??

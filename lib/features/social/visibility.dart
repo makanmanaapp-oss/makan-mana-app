@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/localization/app_localizations.dart';
+import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/providers.dart';
 import '../groups/group_providers.dart';
@@ -43,11 +44,18 @@ class VisibilityChip extends StatelessWidget {
     required this.value,
     required this.onChanged,
     this.dark = true,
+    // SP8: kekangan privasi. SP9.2B: followers_only & unlisted DIBUANG
+    // dari pilihan composer normal (followers_only dimatikan untuk beta).
+    this.options = const [
+      PostVisibility.public,
+      PostVisibility.private,
+    ],
   });
 
   final PostVisibility value;
   final ValueChanged<PostVisibility> onChanged;
   final bool dark;
+  final List<PostVisibility> options;
 
   @override
   Widget build(BuildContext context) {
@@ -55,17 +63,18 @@ class VisibilityChip extends StatelessWidget {
     final fg = dark ? AppColors.threadsText : AppColors.darkText;
     return InkWell(
       onTap: () async {
-        final picked = await showVisibilityPicker(context, value);
+        final picked =
+            await showVisibilityPicker(context, value, options: options);
         if (picked != null) onChanged(picked);
       },
       borderRadius: BorderRadius.circular(20),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          color: dark ? AppColors.threadsSurface : AppColors.cardWhite,
+          color: dark ? AppColors.threadsSurface : context.mm.card,
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-              color: dark ? AppColors.threadsBorder : AppColors.softBorder),
+              color: dark ? AppColors.threadsBorder : context.mm.border),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -88,17 +97,16 @@ class VisibilityChip extends StatelessWidget {
 Future<PostVisibility?> showVisibilityPicker(
   BuildContext context,
   PostVisibility current, {
+  // SP9.2B: default hanya public + private (followers_only dimatikan beta).
   List<PostVisibility> options = const [
     PostVisibility.public,
-    PostVisibility.followersOnly,
     PostVisibility.private,
-    PostVisibility.unlisted,
   ],
 }) {
   final l = AppLocalizations.of(context);
   return showModalBottomSheet<PostVisibility>(
     context: context,
-    backgroundColor: AppColors.cardWhite,
+    backgroundColor: context.mm.card,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
@@ -155,7 +163,7 @@ Future<void> showShareResultSheet(
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: AppColors.cardWhite,
+    backgroundColor: context.mm.card,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
@@ -224,9 +232,9 @@ class _ShareResultSheetState extends ConsumerState<_ShareResultSheet> {
     final groups = (ref.watch(discoverGroupsProvider).value ?? const [])
         .where((g) => myGroupIds.contains(g.id))
         .toList();
+    // SP9.2B: followers_only dibuang (dimatikan untuk beta).
     final visOptions = [
       PostVisibility.public,
-      PostVisibility.followersOnly,
       if (groups.isNotEmpty) PostVisibility.groupOnly,
       PostVisibility.private,
     ];
@@ -259,7 +267,7 @@ class _ShareResultSheetState extends ConsumerState<_ShareResultSheet> {
                       color: _vis == v ? Colors.white : AppColors.primaryRed),
                   selectedColor: AppColors.primaryRed,
                   labelStyle: TextStyle(
-                      color: _vis == v ? Colors.white : AppColors.darkText,
+                      color: _vis == v ? Colors.white : context.mm.chipText,
                       fontWeight: FontWeight.w700,
                       fontSize: 12.5),
                   onSelected: (_) => setState(() => _vis = v),

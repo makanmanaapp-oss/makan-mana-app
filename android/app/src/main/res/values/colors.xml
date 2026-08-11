@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#C4161A</color>
+    <!-- Splash Redesign 2B — Option B full-red launch background (#DD1F22). -->
+    <color name="splash_background">#DD1F22</color>
+</resources>

@@ -11,6 +11,9 @@ import '../../core/providers.dart';
 import '../../core/providers/makanmana_user_context_provider.dart';
 import '../../core/widgets/mm_icons.dart';
 import '../../core/widgets/place_image.dart';
+import '../taste/taste_taxonomy.dart';
+import '../taste/taste_compat.dart';
+import '../taste/taste_profile_sync.dart';
 import '../taxonomy/taxonomy_data.dart';
 import '../taxonomy/taxonomy_sheet.dart';
 
@@ -156,18 +159,120 @@ class TasteProfileScreen extends ConsumerWidget {
     // terus). Ini juga membetulkan pepijat lama (halalPreference bool
     // di-cast sebagai String yang boleh crash).
     final c = ref.watch(makanManaUserContextProvider);
+    final lang = l.locale.languageCode;
+    // ISSUE 003 — muatan profil penuh utk medan kanonikal baharu.
+    final profile = ref.watch(loadedUserProfileProvider).valueOrNull;
+    final p = profile == null ? null : hydrateCanonicalFromLegacy(profile);
+
+    String labelOf(List<TasteOption> list, String? id) {
+      if (id == null) return '-';
+      for (final o in list) {
+        if (o.id == id) return o.label(lang);
+      }
+      return id;
+    }
+
+    String cuisineLabels(List<String> ids) => ids.isEmpty
+        ? '-'
+        : ids
+            // QA ISSUE 003: kanonik dulu, kemudian label custom pengguna,
+            // akhirnya ID asal (teks custom pengguna kekal tidak berubah).
+            .map((id) => displayCuisineLabel(
+                id, lang, p?.customCuisineEntries ?? const []))
+            // Data legasi boleh mengandungi pendua ('melayu' + 'Malay')
+            // yang kini dipetakan ke label sama - dedup paparan sahaja.
+            .toSet()
+            .join(', ');
+
     final rows = <(String, String)>[
-      ('Diet', c.dietType),
-      ('Halal', c.halalPreference ? l.t('halalYes') : l.t('halalAny')),
-      ('Alahan', c.allergies.isEmpty ? '-' : c.allergies.join(', ')),
-      ('Bajet', 'RM${c.budgetMin} - RM${c.budgetMax}'),
-      ('Radius', '${c.effectiveRadiusKm.round()} km'),
+      if (p?.primaryFoodGoal != null)
+        (l.t('onbGoal'), labelOf(kFoodGoals, p!.primaryFoodGoal)),
       (
-        'Cuisine',
-        c.favoriteCuisines.isEmpty ? '-' : c.favoriteCuisines.join(', ')
+        l.t('onbHalal'),
+        labelOf(kHalalOptions,
+            p?.halalPreferenceId ??
+                canonicalHalalIdFromLegacyBool(c.halalPreference))
       ),
-      ('Pedas', '${c.spicyPreference.clamp(0, 3)}/3'),
-      ('Diet Goal', c.dietGoal),
+      (
+        l.t('onbDiet'),
+        (p?.dietaryPatternIds.isNotEmpty ?? false)
+            ? p!.dietaryPatternIds.map((d) => labelOf(kDietPatterns, d)).join(', ')
+            : labelOf(kDietPatterns, canonicalDietId(c.dietType))
+      ),
+      (
+        l.t('onbAllergyStep'),
+        (p?.allergyEntries.isNotEmpty ?? false)
+            ? p!.allergyEntries.map((e) {
+                final id = '${e['id']}';
+                final sev = '${e['severity'] ?? ''}';
+                final allergyLabel = labelOf([
+                  ...kAllergensCommon,
+                  ...kAllergensLocal,
+                  ...kAllergensOther
+                ], id);
+                final sevLabel = sev.isEmpty
+                    ? ''
+                    : ' · ${labelOf(kAllergySeverity, sev)}';
+                return '$allergyLabel$sevLabel';
+              }).join(', ')
+            // QA ISSUE 003: alahan legasi -> label taksonomi dilokalkan;
+            // nilai custom tidak dikenali kekal apa adanya.
+            : (c.allergies.isEmpty
+                ? '-'
+                : c.allergies
+                    .map((a) => labelOf(
+                        [
+                          ...kAllergensCommon,
+                          ...kAllergensLocal,
+                          ...kAllergensOther
+                        ],
+                        canonicalAllergyIdFromLegacy(a)))
+                    .join(', '))
+      ),
+      (l.t('onbFav'), cuisineLabels(c.favoriteCuisines)),
+      if ((p?.exploreCuisineIds.isNotEmpty ?? false))
+        (l.t('onbExplore'), cuisineLabels(p!.exploreCuisineIds)),
+      if ((p?.avoidedCuisineIds.isNotEmpty ?? false))
+        (l.t('onbAvoid'), cuisineLabels(p!.avoidedCuisineIds)),
+      (
+        l.t('onbSpicy'),
+        labelOf(kSpiceLevels,
+            p?.spiceToleranceId ??
+                canonicalSpiceIdFromLegacyInt(c.spicyPreference))
+      ),
+      if ((p?.tastePreferenceIds.isNotEmpty ?? false))
+        (
+          l.t('onbTastePrefs'),
+          p!.tastePreferenceIds
+              .map((t) => labelOf(kTastePreferences, t))
+              .join(', ')
+        ),
+      (
+        l.t('onbUsualTimes'),
+        c.usualMealTimes.isEmpty
+            ? '-'
+            : c.usualMealTimes.map((m) => labelOf(kMealTimes, m)).join(', ')
+      ),
+      if ((p?.specialMealContextIds.isNotEmpty ?? false))
+        (
+          l.t('onbSpecialContexts'),
+          p!.specialMealContextIds
+              .map((m) => labelOf(kMealContexts, m))
+              .join(', ')
+        ),
+      (l.t('onbBudget'), 'RM${c.budgetMin} - RM${c.budgetMax}'),
+      // ISSUE 003 (QA emulator): jarak CITARASA tersimpan
+      // (preferredDistanceKm dari onboarding), bukan radius carian Home
+      // sesi semasa — dahulunya baris ini memaparkan 3 km walaupun
+      // pengguna menyimpan 5 km.
+      (
+        l.t('onbDistance'),
+        '${(p?.preferredDistanceKm ?? c.effectiveRadiusKm).round()} km'
+      ),
+      if (p?.repeatToleranceId != null)
+        (l.t('onbRepeatTol'), labelOf(kRepeatTolerance, p!.repeatToleranceId)),
+      if (p?.discoveryPreferenceId != null)
+        (l.t('onbDiscovery'), labelOf(kDiscoveryLevels, p!.discoveryPreferenceId)),
     ];
     // SP10.4: kad & teks theme-aware (label kiri dulunya hampir hilang
     // dlm mod gelap sebab warna teks default atas kad putih).
@@ -185,15 +290,25 @@ class TasteProfileScreen extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: mm.border),
                 ),
+                // ISSUE 003 (QA emulator 360dp@1.30): label dahulunya tidak
+                // dibataskan + Spacer, jadi pada skala teks besar label
+                // mengambil hampir semua lebar dan nilai dimampatkan menjadi
+                // satu aksara setiap baris. Kedua-dua sisi kini berkongsi
+                // lebar mengikut flex tetap.
                 child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(r.$1,
-                        style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: mm.onCard,
-                            fontSize: 14)),
-                    const Spacer(),
-                    Flexible(
+                    Expanded(
+                      flex: 5,
+                      child: Text(r.$1,
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: mm.onCard,
+                              fontSize: 14)),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      flex: 4,
                       child: Text(
                         r.$2.isEmpty ? '-' : r.$2,
                         style: TextStyle(color: mm.onCardMuted, fontSize: 13.5),
@@ -212,18 +327,20 @@ class TasteProfileScreen extends ConsumerWidget {
                   color: mm.onCard)),
           const SizedBox(height: 8),
           _TaxTile(
-              icon: Icons.mood, label: 'Mood makan', type: TaxonomyType.mood),
+              icon: Icons.mood,
+              label: l.t('advPrefMood'),
+              type: TaxonomyType.mood),
           _TaxTile(
               icon: Icons.spa_outlined,
-              label: 'Diet & pemakanan',
+              label: l.t('advPrefDiet'),
               type: TaxonomyType.diet),
           _TaxTile(
               icon: Icons.warning_amber_outlined,
-              label: 'Alahan & sensitiviti',
+              label: l.t('advPrefAllergy'),
               type: TaxonomyType.allergy),
           _TaxTile(
               icon: Icons.restaurant_menu,
-              label: 'Cuisine kegemaran',
+              label: l.t('advPrefCuisine'),
               type: TaxonomyType.cuisine),
           const SizedBox(height: 12),
           ElevatedButton.icon(
@@ -297,6 +414,37 @@ class FoodMemoryScreen extends ConsumerWidget {
     }
   }
 
+  /// Phase 2.4 — Reset Food Memory (tingkah laku dipelajari). Alahan/halal/profil
+  /// KEKAL (pelayan tidak sentuh user_profiles). Perlu pengesahan.
+  Future<void> _reset(BuildContext context, WidgetRef ref) async {
+    final l = AppLocalizations.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dctx) => AlertDialog(
+        title: Text(l.t('fmReset')),
+        content: Text(l.t('fmResetConfirm')),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(dctx, false),
+              child: Text(l.t('cancelAction'))),
+          TextButton(
+              onPressed: () => Navigator.pop(dctx, true),
+              child: Text(l.t('fmReset'))),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final res = await ref.read(userBrainServiceProvider).resetFoodMemory();
+    if (res != null) {
+      await ref.read(makanManaUserContextProvider.notifier).refresh();
+    }
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l.t(res != null ? 'fmResetDone' : 'postFailed'))),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l = AppLocalizations.of(context);
@@ -312,6 +460,11 @@ class FoodMemoryScreen extends ConsumerWidget {
             tooltip: l.t('fmRecalculate'),
             icon: const Icon(Icons.refresh),
             onPressed: () => _refresh(context, ref),
+          ),
+          IconButton(
+            tooltip: l.t('fmReset'),
+            icon: const Icon(Icons.delete_outline),
+            onPressed: () => _reset(context, ref),
           ),
         ],
       ),

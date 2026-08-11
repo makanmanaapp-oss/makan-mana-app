@@ -2,20 +2,29 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/constants/app_constants.dart';
+import '../core/entitlement/entitlement.dart';
+import '../core/events/event_types.dart';
 import '../core/widgets/placeholder_screen.dart';
 import '../features/admin/admin_screen.dart';
 import '../features/auth/login_screen.dart';
+import '../features/auth/phone_login_screen.dart';
+import '../features/auth/register_screen.dart';
 import '../features/explore/explore_screen.dart';
 import '../features/fit/fit_extras_screens.dart';
 import '../features/fit/fit_monitor_screen.dart';
 import '../features/fit/fit_onboarding_screen.dart';
 import '../features/fit/fit_today_screen.dart';
+import '../features/fit/fit_view_logger.dart';
 import '../features/fit/sport_moods_screen.dart';
 import '../features/history/history_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/language/language_screen.dart';
+import '../features/legal/legal_screens.dart';
 import '../features/onboarding/onboarding_screen.dart';
+import '../features/paywall/coupon_screen.dart';
 import '../features/paywall/paywall_screen.dart';
+import '../features/place_corrections/correction_providers.dart';
+import '../features/place_corrections/submission_history_screen.dart';
 import '../features/privacy/privacy_screen.dart';
 import '../features/pro/calorie_scan_screen.dart';
 import '../features/pro/coach_screen.dart';
@@ -26,6 +35,8 @@ import '../features/pro/pro_hub_screen.dart';
 import '../features/pro/weekly_report_screen.dart';
 import '../features/profile/edit_profile_screen.dart';
 import '../features/profile/extras_screens.dart';
+import '../features/profile/food_preference_screens.dart';
+import '../features/profile/profile_makanan_screen.dart';
 import '../features/profile/profile_screen.dart';
 import '../features/restaurant/restaurant_detail_screen.dart';
 import '../features/reviews/rating_page.dart';
@@ -33,19 +44,25 @@ import '../features/settings/settings_screen.dart';
 import '../features/shell/app_shell.dart';
 import '../features/groups/group_bills_screen.dart';
 import '../features/groups/group_hub_screen.dart';
+import '../features/groups/group_invite_preview_screen.dart';
 import '../features/groups/group_settings_screen.dart';
 import '../features/social/compose_sheet.dart';
 import '../features/social/edit_food_profile_screen.dart';
 import '../features/social/feed_screen.dart';
 import '../features/social/follow_list_screen.dart';
+import '../features/dm/dm_conversation_screen.dart';
+import '../features/dm/dm_inbox_screen.dart';
 import '../features/social/food_profile_screen.dart';
+import '../features/social/media_viewer_screen.dart';
 import '../features/social/my_activity_screen.dart';
+import '../features/social/social_providers.dart';
 import '../features/tongtong/tongtong_screens.dart';
 import '../features/wallet/wallet_models.dart';
 import '../features/wallet/wallet_screens.dart';
 import '../features/splash/splash_screen.dart';
 import '../features/suggestions/suggestion_screen.dart';
 import '../features/theme_picker/theme_picker_screen.dart';
+import '../features/notifications/notification_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
@@ -109,7 +126,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: RoutePaths.paywall,
-        builder: (context, state) => const PaywallScreen(),
+        builder: (context, state) => PaywallScreen(
+          args: state.extra is PaywallArgs ? state.extra as PaywallArgs : null,
+        ),
       ),
       GoRoute(
         path: RoutePaths.themePicker,
@@ -125,11 +144,19 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: RoutePaths.fitToday,
-        builder: (context, state) => const FitTodayScreen(),
+        builder: (context, state) => const FitViewLogger(
+          eventType: EventType.fitTodayViewed,
+          sourceScreen: 'fit_today',
+          child: FitTodayScreen(),
+        ),
       ),
       GoRoute(
         path: RoutePaths.fitMonitor,
-        builder: (context, state) => const FitMonitorScreen(),
+        builder: (context, state) => const FitViewLogger(
+          eventType: EventType.monitorViewed,
+          sourceScreen: 'fit_monitor',
+          child: FitMonitorScreen(),
+        ),
       ),
       GoRoute(
         path: RoutePaths.fitOnboarding,
@@ -190,20 +217,69 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: RoutePaths.myActivity,
         builder: (context, state) => const MyActivityScreen(),
       ),
+      // PART 1 Phase 1.11 — sejarah laporan pelapor (titik masuk flag-gated).
+      GoRoute(
+        path: RoutePaths.placeReports,
+        builder: (context, state) => Consumer(
+          builder: (context, ref, _) => SubmissionHistoryScreen(
+            repository: ref.watch(placeCorrectionRepositoryProvider),
+          ),
+        ),
+      ),
       // Laluan placeholder masa depan - jangan bina penuh dalam V1 awal.
       GoRoute(
         path: RoutePaths.nutrition,
         builder: (context, state) =>
-            const PlaceholderScreen(title: 'Nutrition', emoji: '🥦'),
+            const PlaceholderScreen(title: 'Nutrition'),
       ),
       GoRoute(
         path: RoutePaths.social,
         builder: (context, state) => const FeedScreen(),
       ),
+      // Front Page Redesign 1 — Notification Center.
+      GoRoute(
+        path: RoutePaths.notifications,
+        builder: (context, state) => const NotificationScreen(),
+      ),
+      // SP10.3: skrin daftar berasingan (bukan toggle dlm login).
+      GoRoute(
+        path: '/register',
+        builder: (context, state) => const RegisterScreen(),
+      ),
+      // SP10.1B: log masuk nombor telefon (OTP sebenar).
+      GoRoute(
+        path: '/phone-login',
+        builder: (context, state) => const PhoneLoginScreen(),
+      ),
+      // PROMPT 12: tebus kod kupon → Pro Trial.
+      GoRoute(
+        path: '/coupon',
+        builder: (context, state) => const CouponScreen(),
+      ),
+      // PROMPT 11: halaman legal in-app (wajib sebelum public beta).
+      GoRoute(
+        path: '/terms',
+        builder: (context, state) => const TermsScreen(),
+      ),
+      GoRoute(
+        path: '/guidelines',
+        builder: (context, state) => const CommunityGuidelinesScreen(),
+      ),
+      GoRoute(
+        path: '/support',
+        builder: (context, state) => const SupportScreen(),
+      ),
       GoRoute(
         path: '/compose',
-        builder: (context, state) =>
-            ComposePage(groupId: state.uri.queryParameters['groupId']),
+        builder: (context, state) => ComposePage(
+          groupId: state.uri.queryParameters['groupId'],
+          initialType: state.uri.queryParameters['type'],
+          // SP8: mod quote repost.
+          quoteOfPostId: state.uri.queryParameters['quoteOf'],
+          quoteSource: state.extra is FeedPostData
+              ? (state.extra as FeedPostData).data
+              : null,
+        ),
       ),
       GoRoute(
         path: '/rate',
@@ -225,6 +301,31 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/taste',
         builder: (context, state) => const TasteProfileScreen(),
+      ),
+      // Prompt 3: Profile Makanan hub + editor selera.
+      GoRoute(
+        path: RoutePaths.profileMakanan,
+        builder: (context, state) => const ProfileMakananScreen(),
+      ),
+      GoRoute(
+        path: RoutePaths.pmDietAllergy,
+        builder: (context, state) => const DietAllergyScreen(),
+      ),
+      GoRoute(
+        path: RoutePaths.pmBudgetRadius,
+        builder: (context, state) => const BudgetRadiusScreen(),
+      ),
+      GoRoute(
+        path: RoutePaths.pmCuisine,
+        builder: (context, state) => const FavouriteCuisineScreen(),
+      ),
+      GoRoute(
+        path: RoutePaths.pmSpice,
+        builder: (context, state) => const SpiceLevelScreen(),
+      ),
+      GoRoute(
+        path: RoutePaths.pmMealTime,
+        builder: (context, state) => const MealTimeScreen(),
       ),
       GoRoute(
         path: '/food-memory',
@@ -271,7 +372,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: RoutePaths.group,
         builder: (context, state) =>
-            const PlaceholderScreen(title: 'Group Makan', emoji: '🍽️'),
+            const PlaceholderScreen(title: 'Group Makan'),
       ),
       // ---------- V4 Social: profil makanan awam + follow ----------
       GoRoute(
@@ -282,6 +383,29 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/u/:uid',
         builder: (context, state) =>
             FoodProfileScreen(uid: state.pathParameters['uid'] ?? ''),
+      ),
+      // Social Prompt 7: DM V1 — inbox + perbualan 1-lawan-1.
+      GoRoute(
+        path: '/dm',
+        builder: (context, state) => const DmInboxScreen(),
+      ),
+      GoRoute(
+        path: '/dm/chat/:otherUid',
+        builder: (context, state) => DmConversationScreen(
+            otherUid: state.pathParameters['otherUid'] ?? ''),
+      ),
+      // Social Prompt 3: media viewer skrin penuh untuk gambar post.
+      GoRoute(
+        path: '/post/:postId/media',
+        builder: (context, state) => MediaViewerScreen(
+          postId: state.pathParameters['postId'] ?? '',
+          initialPost: state.extra is FeedPostData
+              ? state.extra as FeedPostData
+              : null,
+          // SP8: buka pada indeks gambar yang ditap dalam carousel.
+          initialIndex:
+              int.tryParse(state.uri.queryParameters['i'] ?? '') ?? 0,
+        ),
       ),
       GoRoute(
         path: '/u/:uid/followers',
@@ -306,13 +430,27 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/groups/:groupId/bills/create',
-        builder: (context, state) => GroupCreateBillScreen(
-            groupId: state.pathParameters['groupId'] ?? ''),
+        builder: (context, state) {
+          // SP6: prefill dari check-in/post grup (pilihan).
+          final extra = state.extra is Map ? state.extra as Map : const {};
+          return GroupCreateBillScreen(
+            groupId: state.pathParameters['groupId'] ?? '',
+            prefillPlaceName: extra['placeName'] as String?,
+            prefillTotal: (extra['total'] as num?)?.toDouble(),
+            sourcePostId: extra['postId'] as String?,
+          );
+        },
       ),
       GoRoute(
         path: '/groups/:groupId',
         builder: (context, state) =>
             GroupHubScreen(groupId: state.pathParameters['groupId'] ?? ''),
+      ),
+      // HOTFIX 4.6 — secure group invite deep link (/invite/{token}).
+      GoRoute(
+        path: '/invite/:token',
+        builder: (context, state) => GroupInvitePreviewScreen(
+            token: state.pathParameters['token'] ?? ''),
       ),
     ],
   );

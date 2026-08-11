@@ -150,6 +150,9 @@ class TongTongService {
     String? notes,
     String? receiptPhotoUrl,
     String? groupId,
+    // Social Prompt 6: pautan ke post/check-in grup asal (pilihan).
+    String? linkedPostId,
+    String source = 'manual',
   }) async {
     if (!_ready) return null;
     final owed = calculateSplit(
@@ -187,6 +190,10 @@ class TongTongService {
         'receiptPhotoUrl': receiptPhotoUrl,
         'participants': participants.map((p) => p.toMap()).toList(),
         'items': items.map((i) => i.toMap()).toList(),
+        // SP6: bil kanonik simpan pautan post; kad feed hanya derive
+        // ringkasan selamat (tiada butiran hutang individu di feed).
+        'linkedPostId': linkedPostId,
+        'source': source,
         'createdAt': FieldValue.serverTimestamp(),
         'updatedAt': FieldValue.serverTimestamp(),
       });

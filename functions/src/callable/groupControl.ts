@@ -91,6 +91,10 @@ export const joinGroupV2 = onCall(async (request) => {
   const groupRef = db.collection("groups").doc(groupId);
   const gSnap = await groupRef.get();
   if (!gSnap.exists) throw new HttpsError("not-found", "Grup tiada.");
+  // FIX 3: grup dipadam tidak menerima ahli baharu.
+  if ((gSnap.data()?.status as string) === "deleted") {
+    throw new HttpsError("failed-precondition", "Grup telah dipadam.");
+  }
   if ((gSnap.data()?.privacy as string) === "private") {
     throw new HttpsError("permission-denied", "Grup peribadi - perlu jemputan.");
   }
@@ -130,6 +134,10 @@ export const addGroupMember = onCall({memory: "128MiB"}, async (request) => {
   const newRole = ROLES.includes(role ?? "") && role !== "owner" ? role! : "member";
 
   const groupRef = db.collection("groups").doc(groupId);
+  // FIX 3: grup dipadam tidak menerima ahli baharu.
+  if (((await groupRef.get()).data()?.status as string) === "deleted") {
+    throw new HttpsError("failed-precondition", "Grup telah dipadam.");
+  }
   const memberRef = groupRef.collection("members").doc(targetUid);
   const userSnap = await db.collection("users").doc(targetUid).get();
   if (!userSnap.exists) throw new HttpsError("not-found", "Pengguna tiada.");
@@ -227,6 +235,14 @@ export const updateGroupSettings = onCall(async (request) => {
   if (!groupId) throw new HttpsError("invalid-argument", "groupId perlu.");
   assertManager(await roleOf(groupId, uid));
 
+  const groupRef = db.collection("groups").doc(groupId);
+  // HOTFIX 4.5 Part 22: grup dipadam tidak boleh dikemas kini (termasuk imej).
+  const gSnap = await groupRef.get();
+  if (!gSnap.exists) throw new HttpsError("not-found", "Grup tiada.");
+  if ((gSnap.data()?.status as string) === "deleted") {
+    throw new HttpsError("failed-precondition", "Grup telah dipadam.");
+  }
+
   const update: Record<string, unknown> = {
     updatedAt: FieldValue.serverTimestamp(),
   };
@@ -242,7 +258,11 @@ export const updateGroupSettings = onCall(async (request) => {
   if (privacy === "public" || privacy === "private") {
     update.privacy = privacy;
   }
-  await db.collection("groups").doc(groupId).set(update, {merge: true});
+  // HOTFIX 4.5C (Part 16): tetapan generik TIDAK LAGI menerima/menetapkan
+  // metadata imej grup. Ia hanya boleh diubah melalui aliran server-mediated
+  // bertandatangan (finalize/remove V2). Sebarang medan imej dalam request.data
+  // DIABAIKAN di sini.
+  await groupRef.set(update, {merge: true});
   return {status: "OK"};
 });
 

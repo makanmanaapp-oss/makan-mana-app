@@ -1,11 +1,15 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../app/localization/app_localizations.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/providers.dart';
+import '../../core/widgets/makan_avatar.dart';
+import 'live_identity.dart';
 import 'social_providers.dart';
+import 'social_time.dart';
 
 /// Sheet komen gaya Threads: senarai + input di bawah.
 Future<void> showCommentsSheet(BuildContext context, String postId) {
@@ -55,6 +59,15 @@ class _CommentSheetState extends ConsumerState<_CommentSheet> {
     setState(() => _sending = true);
     try {
       final myDoc = ref.read(myUserDocProvider).value;
+      // ISSUE 005: medan denormalisasi untuk tab Balasan profil awam.
+      // Rules mengesahkan nilai ini BENAR terhadap post induk sebenar.
+      final parentSnap = await FirebaseFirestore.instance
+          .collection('feed_posts')
+          .doc(widget.postId)
+          .get()
+          .timeout(const Duration(seconds: 10));
+      final parentVis =
+          parentSnap.data()?['visibility'] as String? ?? 'public';
       await FirebaseFirestore.instance
           .collection('feed_posts')
           .doc(widget.postId)
@@ -64,6 +77,8 @@ class _CommentSheetState extends ConsumerState<_CommentSheet> {
         'displayName': name,
         'photoUrl': myDoc?['photoUrl'],
         'text': text,
+        'postId': widget.postId,
+        'parentVisibility': parentVis,
         'createdAt': FieldValue.serverTimestamp(),
       }).timeout(const Duration(seconds: 15));
       _controller.clear();
@@ -112,14 +127,17 @@ class _CommentSheetState extends ConsumerState<_CommentSheet> {
     }
   }
 
-  String _timeAgo(BuildContext context, dynamic ts) {
-    final l = AppLocalizations.of(context);
-    if (ts is! Timestamp) return l.t('justNow');
-    final diff = DateTime.now().difference(ts.toDate());
-    if (diff.inMinutes < 1) return l.t('justNow');
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m';
-    if (diff.inHours < 24) return '${diff.inHours}j';
-    return '${diff.inDays}h';
+  /// Social Prompt 2: buka profil awam pengomen (uid hilang = abaikan).
+  void _openCommenter(BuildContext context, Map<String, dynamic> data) {
+    final uid = data['authorUid'] as String? ?? '';
+    if (uid.isEmpty) return;
+    GoRouter.of(context).push('/u/$uid');
+  }
+
+  String _timeAgo(BuildContext context, dynamic ts, {bool pending = false}) {
+    // Threads Fix 1: guna penghurai jujur bersama (post lama kekal lama).
+    return relativePostTime(AppLocalizations.of(context), ts,
+        pending: pending);
   }
 
   @override
@@ -140,7 +158,7 @@ class _CommentSheetState extends ConsumerState<_CommentSheet> {
         ),
         Text(
           l.t('commentsTitle'),
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w800,
             color: AppColors.threadsText,
@@ -159,7 +177,7 @@ class _CommentSheetState extends ConsumerState<_CommentSheet> {
                 return Center(
                   child: Text(
                     l.t('noComments'),
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: AppColors.threadsMuted,
                       fontWeight: FontWeight.w600,
                     ),
@@ -179,18 +197,29 @@ class _CommentSheetState extends ConsumerState<_CommentSheet> {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          CircleAvatar(
-                            radius: 16,
-                            backgroundColor: AppColors.softYellow,
-                            backgroundImage: c.data['photoUrl'] != null
-                                ? NetworkImage(
-                                    c.data['photoUrl'] as String)
-                                : null,
-                            child: c.data['photoUrl'] == null
-                                ? const Text('😋',
-                                    style: TextStyle(fontSize: 16))
-                                : null,
-                          ),
+                          // ISSUE 004: identiti pengomen LIVE - profil
+                          // semasa dulu, snapshot komen lama fallback.
+                          Builder(builder: (context) {
+                            final ca = resolveAuthorIdentity(
+                              ref,
+                              AppLocalizations.of(context),
+                              uid: c.data['authorUid'] as String? ?? '',
+                              snapshotName:
+                                  c.data['displayName'] as String?,
+                              snapshotPhotoUrl:
+                                  c.data['photoUrl'] as String?,
+                              snapshotPreset:
+                                  c.data['avatarPreset'] as String?,
+                            );
+                            return MakanAvatar(
+                              radius: 16,
+                              photoUrl: ca.photoUrl,
+                              presetId: ca.avatarPreset,
+                              displayName: ca.displayName,
+                              onTap: () =>
+                                  _openCommenter(context, c.data),
+                            );
+                          }),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Column(
@@ -200,23 +229,35 @@ class _CommentSheetState extends ConsumerState<_CommentSheet> {
                                 Row(
                                   children: [
                                     Expanded(
-                                      child: Text(
-                                        c.data['displayName']
-                                                as String? ??
-                                            'Foodie',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w800,
-                                          fontSize: 13.5,
-                                          color: AppColors.threadsText,
+                                      child: GestureDetector(
+                                        onTap: () => _openCommenter(
+                                            context, c.data),
+                                        child: Text(
+                                          resolveAuthorIdentity(
+                                            ref,
+                                            AppLocalizations.of(context),
+                                            uid: c.data['authorUid']
+                                                    as String? ??
+                                                '',
+                                            snapshotName:
+                                                c.data['displayName']
+                                                    as String?,
+                                          ).displayName,
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.w800,
+                                            fontSize: 13.5,
+                                            color: AppColors.threadsText,
+                                          ),
+                                          maxLines: 1,
+                                          overflow:
+                                              TextOverflow.ellipsis,
                                         ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
                                     Text(
-                                      _timeAgo(
-                                          context, c.data['createdAt']),
-                                      style: const TextStyle(
+                                      _timeAgo(context, c.data['createdAt'],
+                                          pending: c.pending),
+                                      style: TextStyle(
                                         color: AppColors.threadsMuted,
                                         fontSize: 12,
                                       ),
@@ -226,7 +267,7 @@ class _CommentSheetState extends ConsumerState<_CommentSheet> {
                                 const SizedBox(height: 2),
                                 Text(
                                   c.data['text'] as String? ?? '',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 14,
                                     height: 1.35,
                                     color: AppColors.threadsText,
@@ -247,7 +288,7 @@ class _CommentSheetState extends ConsumerState<_CommentSheet> {
         // Input komen.
         Container(
           padding: const EdgeInsets.fromLTRB(16, 8, 8, 12),
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: AppColors.threadsSurface,
             border: Border(
               top: BorderSide(color: AppColors.threadsBorder),
@@ -261,11 +302,11 @@ class _CommentSheetState extends ConsumerState<_CommentSheet> {
                   maxLength: 300,
                   minLines: 1,
                   maxLines: 3,
-                  style: const TextStyle(color: AppColors.threadsText),
+                  style: TextStyle(color: AppColors.threadsText),
                   decoration: InputDecoration(
                     hintText: l.t('commentHint'),
                     hintStyle:
-                        const TextStyle(color: AppColors.threadsMuted),
+                        TextStyle(color: AppColors.threadsMuted),
                     counterText: '',
                     isDense: true,
                     filled: true,

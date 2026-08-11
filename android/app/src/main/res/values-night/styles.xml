@@ -13,6 +13,8 @@
 
          This Theme is only used starting with V2 of Flutter's Android embedding. -->
     <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
-        <item name="android:windowBackground">?android:colorBackground</item>
+        <!-- Splash Redesign 2B: keep the launch identity red in Dark mode too;
+             red window background avoids any white/black flash before Flutter. -->
+        <item name="android:windowBackground">@color/splash_background</item>
     </style>
 </resources>

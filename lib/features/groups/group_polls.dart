@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/localization/app_localizations.dart';
+import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
 import '../social/social_providers.dart';
 import 'group_providers.dart';
@@ -92,9 +93,9 @@ class _CreatePollSheetState extends ConsumerState<_CreatePollSheet> {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     return Scaffold(
-      backgroundColor: AppColors.creamBackground,
+      backgroundColor: context.mm.appBackground,
       appBar: AppBar(
-        backgroundColor: AppColors.creamBackground,
+        backgroundColor: context.mm.appBackground,
         title: Text(l.t('createPoll')),
       ),
       body: Column(
@@ -113,7 +114,7 @@ class _CreatePollSheetState extends ConsumerState<_CreatePollSheet> {
                       decoration: InputDecoration(
                         hintText: l.t('pollQuestionHint'),
                         filled: true,
-                        fillColor: AppColors.cardWhite,
+                        fillColor: context.mm.card,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(14),
                           borderSide: BorderSide.none,
@@ -137,7 +138,7 @@ class _CreatePollSheetState extends ConsumerState<_CreatePollSheet> {
                             labelStyle: TextStyle(
                                 color: _type == t
                                     ? Colors.white
-                                    : AppColors.darkText,
+                                    : context.mm.chipText,
                                 fontSize: 12.5,
                                 fontWeight: FontWeight.w700),
                             onSelected: (_) => setState(() => _type = t),
@@ -159,7 +160,7 @@ class _CreatePollSheetState extends ConsumerState<_CreatePollSheet> {
                             counterText: '',
                             hintText: '${l.t('pollOption')} ${i + 1}',
                             filled: true,
-                            fillColor: AppColors.cardWhite,
+                            fillColor: context.mm.card,
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
                               borderSide: BorderSide.none,
@@ -232,9 +233,9 @@ class PollCard extends ConsumerWidget {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppColors.cardWhite,
+        color: context.mm.card,
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.softBorder),
+        border: Border.all(color: context.mm.border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -248,16 +249,18 @@ class PollCard extends ConsumerWidget {
                   color: AppColors.softYellow,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text('🗳️ ${pollTypeLabel(l, poll['type'] as String? ?? '')}',
+                child: Text(pollTypeLabel(l, poll['type'] as String? ?? ''),
                     style: const TextStyle(
-                        fontSize: 11, fontWeight: FontWeight.w700)),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.darkText)),
               ),
               const Spacer(),
               if (!isOpen)
                 Text(l.t('pollClosed'),
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 11.5,
-                        color: AppColors.mutedText,
+                        color: context.mm.onCardMuted,
                         fontWeight: FontWeight.w700)),
             ],
           ),
@@ -270,8 +273,8 @@ class PollCard extends ConsumerWidget {
             _optionBar(context, ref, opt, total, myVote, isOpen, pollId),
           const SizedBox(height: 4),
           Text('$total ${l.t('votesLabel')}',
-              style: const TextStyle(
-                  fontSize: 11.5, color: AppColors.mutedText)),
+              style: TextStyle(
+                  fontSize: 11.5, color: context.mm.onCardMuted)),
         ],
       ),
     );
@@ -304,12 +307,12 @@ class PollCard extends ConsumerWidget {
             Container(
               height: 42,
               decoration: BoxDecoration(
-                color: AppColors.creamBackground,
+                color: context.mm.appBackground,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                     color: selected
                         ? AppColors.primaryRed
-                        : AppColors.softBorder),
+                        : context.mm.border),
               ),
             ),
             // Bar peratus.

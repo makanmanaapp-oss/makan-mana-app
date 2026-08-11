@@ -1,5 +1,30 @@
 export const REGION = "asia-southeast1";
 
+/**
+ * HOTFIX 4.5C: bucket Storage kanonik untuk imej grup (server-mediated V2).
+ * Signed URL dijana terhadap bucket ini melalui Admin SDK; klien TIDAK menulis
+ * terus (Storage rules group_images = read,write:false). Boleh ditimpa via env
+ * GROUP_IMAGE_BUCKET (cth emulator: "demo-mm.appspot.com").
+ */
+export const STORAGE_BUCKET =
+  process.env.GROUP_IMAGE_BUCKET ?? "makanmana-c59f3.firebasestorage.app";
+
+/**
+ * SP9.2A: senarai putih UID admin/owner yang DIPERCAYAI.
+ *
+ * KRITIKAL: callable admin TIDAK boleh percaya users/{uid}.isAdmin sebab
+ * medan itu pernah boleh ditulis client (privilege escalation). Sumber
+ * kebenaran = custom claim `token.admin===true` ATAU UID dalam senarai
+ * ini. UID owner (i.hachiman12@gmail.com) didokumentasi dalam memori
+ * projek. Boleh ditimpa melalui env ADMIN_UIDS (dipisah koma).
+ */
+export const ADMIN_UIDS: string[] = (
+  process.env.ADMIN_UIDS ?? "blp6g37BUVPFLsDrSGuVqHrne153"
+)
+  .split(",")
+  .map((s) => s.trim())
+  .filter((s) => s.length > 0);
+
 export const FREE_SPIN_LIMIT_PER_DAY = 3;
 
 /** Versi algoritma semasa (dummy scoring; Google Places di Milestone 4). */

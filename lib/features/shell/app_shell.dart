@@ -3,9 +3,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/localization/app_localizations.dart';
+import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/widgets/mm_icons.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/entitlement/entitlement.dart';
+import '../../core/entitlement/plan_tier.dart';
+import '../../core/events/event_types.dart';
 import '../../core/providers.dart';
+import '../../core/providers/makanmana_user_context_provider.dart';
 import '../suggestions/spin_controller.dart';
 
 /// Rangka utama app: 4 tab + butang Spin tengah (aksi utama MakanMana).
@@ -25,7 +31,6 @@ class AppShell extends ConsumerWidget {
       barrierDismissible: false,
       builder: (dialogContext) => _SpinDialog(
         label: l.t('spinning'),
-        emoji: _themeEmoji(ref.read(spinThemeProvider)),
         ringColor: _themeRing(ref.read(spinThemeProvider)),
       ),
     );
@@ -43,11 +48,46 @@ class AppShell extends ConsumerWidget {
     Navigator.of(context, rootNavigator: true).pop();
 
     if (outcome.blocked) {
+      // Prompt 10: had spin Free dicapai -> event + paywall Plus (unlimited).
+      final ent = ref.read(entitlementProvider);
+      ref.read(eventLoggerProvider).logEvent(
+        EventType.quotaLimitReached,
+        sourceScreen: SourceScreen.spinButton,
+        metadata: {
+          'limitType': 'daily_spin',
+          'userPlan': ent.plan.id,
+        },
+      );
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(l.t('spinLimitReached'))),
       );
-      context.push(RoutePaths.paywall);
+      context.push(
+        RoutePaths.paywall,
+        extra: PaywallArgs(
+          featureId: FeatureId.unlimitedSpin,
+          requiredPlan: PlanTier.plus,
+          userPlan: ent.plan,
+          sourceScreen: SourceScreen.spinButton,
+          trigger: 'spin_limit',
+        ),
+      );
     } else {
+      // Prompt 7: serah sesi spin (sessionId/suggestionId + calon) kepada
+      // gelung tindakan supaya Accept/Reject di skrin cadangan kekal betul.
+      final place = outcome.place ?? ref.read(currentSuggestionProvider);
+      if (place != null) {
+        ref.read(suggestionActionControllerProvider.notifier).beginFromSpin(
+              place,
+              suggestionId: controller.currentSuggestionId,
+              sessionId: controller.sessionId,
+              source: place.source,
+              alternatives: controller.remoteCandidates,
+              mood: ref.read(selectedMoodProvider),
+              radiusMeters:
+                  ref.read(makanManaUserContextProvider).effectiveRadiusMeters,
+              contextHash: controller.contextHash,
+            );
+      }
       context.push(RoutePaths.suggestion);
     }
   }
@@ -55,91 +95,92 @@ class AppShell extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l = AppLocalizations.of(context);
+    final mm = context.mm;
 
+    // BRIGHT MODE spec: navigasi TETAP lebar penuh melekat pada tepi bawah
+    // (bukan pil terapung), permukaan putih/tema, pembahagi atas halus,
+    // aktif merah / tidak aktif kelabu, Spin bersepadu naik 10px sahaja.
     return Scaffold(
       body: navigationShell,
-      extendBody: true,
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-          height: 68,
-          decoration: BoxDecoration(
-            color: AppColors.cardWhite,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppColors.softBorder),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.08),
-                blurRadius: 20,
-                offset: const Offset(0, 6),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              _navItem(context, 0, Icons.home_rounded, l.t('navHome')),
-              _navItem(context, 1, Icons.explore_rounded, l.t('navExplore')),
-              // Butang Spin tengah - visual ikut tema terpilih (M5).
-              Expanded(
-                child: GestureDetector(
-                  onTap: () => _startSpin(context, ref),
-                  child: Transform.translate(
-                    offset: const Offset(0, -18),
-                    child: Builder(builder: (builderContext) {
-                      final theme = ref.watch(spinThemeProvider);
-                      final colors = _themeGradient(theme);
-                      final ring = _themeRing(theme);
-                      return Container(
-                        height: 64,
-                        width: 64,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: colors,
-                          ),
-                          border: Border.all(color: ring, width: 3),
-                          boxShadow: [
-                            BoxShadow(
-                              color: colors.first.withValues(alpha: 0.45),
-                              blurRadius: 16,
-                              offset: const Offset(0, 6),
+      bottomNavigationBar: Container(
+        // Front Page Redesign 1A — bekas warm-white bersudut-atas bulat +
+        // bayang lembut ke atas (arah imej rujukan). Destinasi/callback kekal.
+        decoration: BoxDecoration(
+          color: mm.card,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+          border: Border(top: BorderSide(color: mm.border)),
+          boxShadow: context.isDarkMode
+              ? null
+              : [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.06),
+                    blurRadius: 16,
+                    offset: const Offset(0, -4),
+                  ),
+                ],
+        ),
+        child: SafeArea(
+          top: false,
+          child: SizedBox(
+            height: 62,
+            child: Row(
+              children: [
+                _navItem(context, 0, MmIconType.home, l.t('navHome')),
+                _navItem(context, 1, MmIconType.explore, l.t('navExplore')),
+                // Aksi Spin signature - bersepadu, matang, tanpa glow.
+                Expanded(
+                  child: Semantics(
+                    button: true,
+                    label: l.t('spinShort'),
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => _startSpin(context, ref),
+                      child: Transform.translate(
+                        offset: const Offset(0, -10),
+                        child: Builder(builder: (builderContext) {
+                          final theme = ref.watch(spinThemeProvider);
+                          final colors = _themeGradient(theme);
+                          return Container(
+                            height: 56,
+                            width: 56,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: colors,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color:
+                                      Colors.black.withValues(alpha: 0.18),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 3),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                        child: Center(
-                          child: Text(
-                            _themeEmoji(theme),
-                            style: const TextStyle(fontSize: 28),
-                          ),
-                        ),
-                      );
-                    }),
+                            child: const Center(
+                              child: MmIcon(
+                                MmIconType.spin,
+                                size: 30,
+                                color: Colors.white,
+                                accent: Colors.white70,
+                              ),
+                            ),
+                          );
+                        }),
+                      ),
+                    ),
                   ),
                 ),
-              ),
-              _navItem(context, 2, Icons.history_rounded, l.t('navHistory')),
-              _navItem(context, 3, Icons.person_rounded, l.t('navProfile')),
-            ],
+                _navItem(context, 2, MmIconType.history, l.t('navHistory')),
+                _navItem(context, 3, MmIconType.profile, l.t('navProfile')),
+              ],
+            ),
           ),
         ),
       ),
     );
-  }
-
-  /// Emoji butang tengah ikut tema (visual sahaja, logik sama).
-  String _themeEmoji(String theme) {
-    switch (theme) {
-      case 'rodaMisteri':
-        return '🎡';
-      case 'shuffleCard':
-        return '🃏';
-      case 'nearbyRadar':
-        return '📡';
-      default:
-        return '🍽️';
-    }
   }
 
   /// Gradient butang tengah per tema - bagi setiap tema identiti sendiri.
@@ -170,30 +211,32 @@ class AppShell extends ConsumerWidget {
   }
 
   Widget _navItem(
-      BuildContext context, int index, IconData icon, String label) {
+      BuildContext context, int index, MmIconType icon, String label) {
     final selected = navigationShell.currentIndex == index;
+    final inactive = context.mm.iconMuted;
     return Expanded(
       child: InkWell(
         onTap: () => navigationShell.goBranch(
           index,
           initialLocation: index == navigationShell.currentIndex,
         ),
-        borderRadius: BorderRadius.circular(20),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
+            MmIcon(
               icon,
-              size: 26,
-              color: selected ? AppColors.primaryRed : AppColors.mutedText,
+              size: 24,
+              filled: selected,
+              color: selected ? AppColors.primaryRed : inactive,
+              accent: selected ? AppColors.primaryRed : inactive,
             ),
-            const SizedBox(height: 2),
+            const SizedBox(height: 3),
             Text(
               label,
               style: TextStyle(
                 fontSize: 10.5,
                 fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
-                color: selected ? AppColors.primaryRed : AppColors.mutedText,
+                color: selected ? AppColors.primaryRed : inactive,
               ),
             ),
           ],
@@ -206,12 +249,10 @@ class AppShell extends ConsumerWidget {
 class _SpinDialog extends StatefulWidget {
   const _SpinDialog({
     required this.label,
-    this.emoji = '🍽️',
     this.ringColor = AppColors.warmYellow,
   });
 
   final String label;
-  final String emoji;
   final Color ringColor;
 
   @override
@@ -245,24 +286,31 @@ class _SpinDialogState extends State<_SpinDialog>
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            height: 120,
-            width: 120,
+            height: 108,
+            width: 108,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: AppColors.cardWhite,
-              border: Border.all(color: widget.ringColor, width: 4),
+              // Dark: permukaan elevated charcoal (ZIP), Bright: putih.
+              color: context.isDarkMode
+                  ? context.mm.elevatedCard
+                  : AppColors.cardWhite,
+              border: Border.all(color: widget.ringColor, width: 3),
               boxShadow: [
                 BoxShadow(
-                  color: widget.ringColor.withValues(alpha: 0.55),
-                  blurRadius: 30,
+                  color: Colors.black.withValues(alpha: 0.25),
+                  blurRadius: 14,
+                  offset: const Offset(0, 4),
                 ),
               ],
             ),
             child: RotationTransition(
               turns: _controller,
-              child: Center(
-                child: Text(widget.emoji,
-                    style: const TextStyle(fontSize: 56)),
+              child: const Center(
+                child: MmIcon(
+                  MmIconType.spin,
+                  size: 52,
+                  color: AppColors.primaryRed,
+                ),
               ),
             ),
           ),

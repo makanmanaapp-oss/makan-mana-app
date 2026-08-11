@@ -47,8 +47,8 @@ class _MonitorBody extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l = AppLocalizations.of(context);
-    final profile = ref.watch(fitProfileProvider).value;
-    final targets = ref.watch(nutritionTargetsProvider);
+    // valueOrNull: elak build ranap bila strim profil ralat (ISSUE 001.3).
+    final profile = ref.watch(fitProfileProvider).valueOrNull;
     if (!preview && profile == null) {
       return Center(
         child: Padding(
@@ -77,6 +77,10 @@ class _MonitorBody extends ConsumerWidget {
       );
     }
 
+    // Ditonton SELEPAS pemeriksaan profil: nutritionTargetsProvider membaca
+    // .value strim profil secara dalaman dan melempar semula ralat strim -
+    // laluan biasa mesti selamat dahulu (ISSUE 001.3).
+    final targets = ref.watch(nutritionTargetsProvider);
     final weekly = preview
         ? _sampleWeek()
         : ref.watch(weeklyMetricsProvider).value ?? const [];
@@ -86,9 +90,11 @@ class _MonitorBody extends ConsumerWidget {
     final workouts = preview
         ? _sampleWorkouts()
         : ref.watch(recentWorkoutsProvider).value ?? const [];
+    // Phase 2.16A: the Pro production path must never fall back to sample data.
+    // _sampleReport stays only behind the non-Pro locked preview (paywall).
     final report = preview
         ? _sampleReport(l)
-        : ref.watch(fitWeeklyReportProvider).value ?? _sampleReport(l);
+        : ref.watch(fitWeeklyReportProvider).value ?? const <String, dynamic>{};
 
     final stepTarget = profile?.stepTarget.toDouble() ?? 8000;
     final labels = weekly.map((e) => _dayLabel(e.$1.weekday)).toList();

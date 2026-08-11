@@ -95,7 +95,7 @@ class AdminScreen extends ConsumerWidget {
                             ),
                           ),
                         ),
-                        Text('⭐' * rating,
+                        Text('★' * rating,
                             style: const TextStyle(fontSize: 12)),
                       ],
                     ),

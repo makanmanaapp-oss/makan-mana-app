@@ -192,6 +192,9 @@ export const submitReview = onCall(async (request) => {
         text: text.length > 0 ? text : null,
         imageUrl: imageUrl.length > 0 ? imageUrl : null,
         groupId: null,
+        // Social 1.1: setiap post baharu WAJIB ada visibility eksplisit.
+        // Review dikongsi hanya bila shareToFeed=true (persetujuan jelas).
+        visibility: "public",
         placeId,
         placeName: input.placeName ?? null,
         cuisine: input.cuisine ?? null,

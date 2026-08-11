@@ -20,15 +20,27 @@ service firebase.storage {
         && request.resource.contentType.matches('image/.*');
     }
 
-    // Gambar Meal Wallet (foto makanan & resit): peribadi owner.
-    // Baca oleh pengguna log masuk (URL sukar diteka + dilindungi rules
-    // Firestore untuk konteks); tulis sendiri sahaja.
+    // Gambar Meal Wallet (foto makanan & resit): PERIBADI owner.
+    // SP9: baca kini owner-only (dulu mana-mana authed) — resit/foto
+    // belanja tidak pernah dikongsi awam, jadi hadkan ke pemilik.
     match /wallet_images/{uid}/{fileName} {
-      allow read: if request.auth != null;
+      allow read: if request.auth != null && request.auth.uid == uid;
       allow write: if request.auth != null
         && request.auth.uid == uid
         && request.resource.size < 5 * 1024 * 1024
         && request.resource.contentType.matches('image/.*');
+    }
+
+    // HOTFIX 4.5C: IMEJ GRUP — group_images/{groupId}/{assetId}.jpg.
+    // SERVER-MEDIATED V2: TIADA akses klien terus. Kebenaran dinilai oleh Cloud
+    // Functions (Admin SDK) dari state Firestore, kemudian SIGNED URL jangka
+    // pendek dikeluarkan untuk PUT/GET terus ke objek tepat. Signed URL MEMINTAS
+    // Storage rules pada lapisan GCS, jadi read,write:false di sini adalah BETUL
+    // — ia menutup laluan SDK klien tanpa menghalang aliran signed. Ini
+    // MEMBUANG kebergantungan silang-perkhidmatan (penyoalan Firestore dari
+    // Storage rules) yang ditolak di runtime — punca 4.5B.
+    match /group_images/{groupId}/{allPaths=**} {
+      allow read, write: if false;
     }
 
     // Tutup semua yang lain.

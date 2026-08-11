@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../app/localization/app_localizations.dart';
+import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/providers.dart';
 
@@ -63,7 +64,7 @@ class _RatingPageState extends ConsumerState<RatingPage> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('😕 $e')));
+            .showSnackBar(SnackBar(content: Text('$e')));
       }
     }
   }
@@ -117,7 +118,7 @@ class _RatingPageState extends ConsumerState<RatingPage> {
             content: Text(
               msg.contains('5 minit') || msg.contains('failed-precondition')
                   ? l.t('reviewNotEligible')
-                  : '📡 ${l.t('postFailed')}',
+                  : l.t('postFailed'),
             ),
           ),
         );
@@ -131,7 +132,7 @@ class _RatingPageState extends ConsumerState<RatingPage> {
     final canSubmit = !_submitting && _rating > 0;
 
     return Scaffold(
-      backgroundColor: AppColors.creamBackground,
+      backgroundColor: context.mm.appBackground,
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.close),
@@ -153,10 +154,10 @@ class _RatingPageState extends ConsumerState<RatingPage> {
                 Expanded(
                   child: Text(
                     widget.args.placeName,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 19,
                       fontWeight: FontWeight.w800,
-                      color: AppColors.darkText,
+                      color: context.mm.onCard,
                     ),
                   ),
                 ),
@@ -178,7 +179,7 @@ class _RatingPageState extends ConsumerState<RatingPage> {
                       filled ? Icons.star_rounded : Icons.star_outline_rounded,
                       color: filled
                           ? AppColors.warmYellow
-                          : AppColors.mutedText,
+                          : context.mm.iconMuted,
                     ),
                   );
                 }),
@@ -193,16 +194,16 @@ class _RatingPageState extends ConsumerState<RatingPage> {
               decoration: InputDecoration(
                 hintText: l.t('reviewHint'),
                 filled: true,
-                fillColor: AppColors.cardWhite,
+                fillColor: context.mm.card,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
                   borderSide:
-                      const BorderSide(color: AppColors.softBorder),
+                      BorderSide(color: context.mm.border),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(16),
                   borderSide:
-                      const BorderSide(color: AppColors.softBorder),
+                      BorderSide(color: context.mm.border),
                 ),
               ),
             ),
@@ -288,9 +289,9 @@ class _RatingPageState extends ConsumerState<RatingPage> {
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Text(
-                  'ℹ️ ${l.t('deliveryPendingNote')}',
-                  style: const TextStyle(
-                    color: AppColors.mutedText,
+                  l.t('deliveryPendingNote'),
+                  style: TextStyle(
+                    color: context.mm.onCardMuted,
                     fontSize: 13,
                   ),
                 ),

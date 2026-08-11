@@ -16,6 +16,10 @@ class PlaceSummary {
     required this.matchReasonKeys,
     this.priceEstimate = '',
     this.photoUrl,
+    this.negativeSignals = const [],
+    this.source,
+    this.dataSource,
+    this.canonicalPlaceId,
   });
 
   final String placeId;
@@ -35,7 +39,55 @@ class PlaceSummary {
   /// Foto sebenar kedai dari Google Places (null = guna monogram).
   final String? photoUrl;
 
+  /// Prompt 6: isyarat negatif jujur (cth. possible_allergy_conflict,
+  /// price_unknown). Bukan jaminan keselamatan.
+  final List<String> negativeSignals;
+
+  /// Sumber data: google_places | firestore_cache | mock_fallback |
+  /// demo_preview | offline_fallback | null.
+  final String? source;
+
+  /// Phase 1.14G: sumber data per-tempat untuk kohort dalaman —
+  /// 'canonical' (server-mediated) | 'legacy' | null (laluan awam biasa).
+  final String? dataSource;
+
+  /// Phase 1.14G: ID kanonikal (kohort sahaja) untuk penghalaan stabil.
+  final String? canonicalPlaceId;
+
+  bool get isCanonicalData => dataSource == 'canonical';
+
+  /// true jika data ini contoh/sampel (bukan cadangan live sebenar).
+  bool get isSample =>
+      source == 'mock_fallback' ||
+      source == 'demo_preview' ||
+      source == 'offline_fallback';
+
+  /// NET-01: fallback tempatan bila Functions/rangkaian tidak sampai.
+  bool get isOfflineFallback => source == 'offline_fallback';
+
   String get priceLabel => r'$' * priceLevel;
+
+  /// Salinan dengan sumber baharu (untuk cop fallback offline).
+  PlaceSummary copyWithSource(String newSource) => PlaceSummary(
+        placeId: placeId,
+        name: name,
+        cuisine: cuisine,
+        emoji: emoji,
+        rating: rating,
+        userRatingCount: userRatingCount,
+        priceLevel: priceLevel,
+        distanceKm: distanceKm,
+        isOpen: isOpen,
+        address: address,
+        matchScore: matchScore,
+        matchReasonKeys: matchReasonKeys,
+        priceEstimate: priceEstimate,
+        photoUrl: photoUrl,
+        negativeSignals: negativeSignals,
+        source: newSource,
+        dataSource: dataSource,
+        canonicalPlaceId: canonicalPlaceId,
+      );
 
   /// Dari respons Cloud Function getSuggestions (Milestone 3+).
   factory PlaceSummary.fromMap(Map<String, dynamic> map) => PlaceSummary(
@@ -54,5 +106,10 @@ class PlaceSummary {
             (map['matchReasonKeys'] as List?)?.cast<String>() ?? const [],
         priceEstimate: map['priceEstimate'] as String? ?? '',
         photoUrl: map['photoUrl'] as String?,
+        negativeSignals:
+            (map['negativeSignals'] as List?)?.cast<String>() ?? const [],
+        source: map['source'] as String?,
+        dataSource: map['dataSource'] as String?,
+        canonicalPlaceId: map['canonicalPlaceId'] as String?,
       );
 }

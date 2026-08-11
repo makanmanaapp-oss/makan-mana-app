@@ -43,3 +43,27 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# App Check debug token — NEVER commit. Supplied via --dart-define secure env only.
+.appcheck.env
+*.appcheck.env
+appcheck_debug_token*
+
+# Local Firebase / QA / release artifacts
+.firebase/
+aab_build_verbose.txt
+aab_error_summary.txt
+active_android_plugins.txt
+all_android_manifests.txt
+getsuggestions_logs.json
+qa16/
+qa17/
+reports_run2/
+v1_plugin_audit.txt
+v1_project_audit.txt
+
+# Never commit downloaded Google service-account credentials
+makanmana-c59f3-*.json
+
+# Local Node dependencies for rules emulator tests
+/rules_test/node_modules/

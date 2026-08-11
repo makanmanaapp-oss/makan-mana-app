@@ -1,7 +1,7 @@
 name: makan_mana
 description: MakanMana - AI food recommendation app untuk Malaysia.
 publish_to: "none"
-version: 0.1.0+1
+version: 0.1.7+9
 
 environment:
   sdk: ">=3.5.0 <4.0.0"
@@ -12,6 +12,7 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   firebase_core: any
+  firebase_app_check: any
   firebase_auth: any
   cloud_firestore: any
   cloud_functions: any
@@ -31,6 +32,8 @@ dependencies:
   share_plus: ^13.2.0
   image_picker: ^1.2.3
   in_app_purchase: ^3.3.0
+  in_app_purchase_android: ^0.5.1
+  crypto: ^3.0.6
 
 dev_dependencies:
   flutter_test:
@@ -42,8 +45,36 @@ flutter:
   uses-material-design: true
   assets:
     - assets/icon/app_icon.png
+    # Front Page Redesign 1A/refinement — aset branding (logo/wordmark) + slot
+    # aset hero makanan. Daftar DIREKTORI supaya wordmark telus (bila
+    # dibekalkan pemilik: assets/branding/makanmana_wordmark.png) dimuat tanpa
+    # memecahkan build ketika fail belum wujud. Hero foto masih PENDING.
+    - assets/branding/
+    - assets/images/
+    # Home food hero carousel — 9 aset PNG telus (subdirektori mesti didaftar
+    # berasingan; entri direktori induk tidak merangkumi subfolder).
+    - assets/images/home_food_carousel/
+  # Tipografi rasmi MakanMana: Inter (statik 400/500/600/700, aset tempatan
+  # rasmi rsms/inter v4.1 — TIADA muat turun runtime). CJK/Tamil fallback ke
+  # font sistem Android (Noto Sans SC / Noto Sans Tamil) secara automatik.
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/inter/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/inter/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/inter/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/inter/Inter-Bold.ttf
+          weight: 700
 
+# Logo rasmi MakanMana (ISSUE branding): merah rasmi #C4161A disampel terus
+# dari imej sumber. Lapisan latar adaptif = merah rasmi; lapisan depan =
+# wordmark rasmi (piksel asal, tidak dilukis semula) dalam zon selamat 66dp.
 flutter_launcher_icons:
   android: true
   ios: false
   image_path: "assets/icon/app_icon.png"
+  adaptive_icon_background: "#C4161A"
+  adaptive_icon_foreground: "assets/branding/makanmana_logo_adaptive_fg.png"

@@ -30,7 +30,10 @@ class FitTodayScreen extends ConsumerWidget {
       );
     }
 
-    final profile = ref.watch(fitProfileProvider).value;
+    // valueOrNull: .value melempar semula ralat strim semasa build (skrin
+    // ranap ke ErrorWidget). Ralat profil dilayan sama seperti belum ada
+    // profil - jatuh ke keadaan persediaan yang selamat (QA ISSUE 001.3).
+    final profile = ref.watch(fitProfileProvider).valueOrNull;
     if (profile == null) {
       return Scaffold(
         appBar: AppBar(title: Text(l.t('fitCoachTitle'))),

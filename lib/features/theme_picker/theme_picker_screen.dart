@@ -3,9 +3,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/localization/app_localizations.dart';
+import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_constants.dart';
+import '../../core/entitlement/entitlement.dart';
+import '../../core/entitlement/plan_tier.dart';
 import '../../core/providers.dart';
+import '../../core/widgets/mm_icons.dart';
 
 /// Pemilih tema Spin (Profile > App Style > Spin Theme).
 /// Milestone 1: Magic Plate sahaja aktif; lain berkunci (Plus - Milestone 5).
@@ -23,14 +27,36 @@ class _ThemePickerScreenState extends ConsumerState<ThemePickerScreen> {
     final prefs = ref.watch(appPrefsProvider);
     final active = ref.watch(spinThemeProvider);
     // Free: Magic Plate sahaja. Plus/Pro: semua 4 tema.
-    final plan = ref.watch(userPlanProvider).value ?? 'free';
-    final plusOk = plan == 'plus' || plan == 'pro';
+    final ent = ref.watch(entitlementProvider);
+    final plusOk = ent.isPlusOrAbove;
 
+    // BRIGHT MODE spec: emoji digantikan swatch gradient tema + ikon Spin
+    // proprietary (identiti setiap tema kekal — visual sahaja).
     final themes = [
-      ('magicPlate', l.t('themeMagicPlate'), '🍽️', false),
-      ('rodaMisteri', l.t('themeRodaMisteri'), '🎡', !plusOk),
-      ('shuffleCard', l.t('themeShuffleCard'), '🃏', !plusOk),
-      ('nearbyRadar', l.t('themeNearbyRadar'), '📡', !plusOk),
+      (
+        'magicPlate',
+        l.t('themeMagicPlate'),
+        const [AppColors.primaryRed, AppColors.deepSambalRed],
+        false
+      ),
+      (
+        'rodaMisteri',
+        l.t('themeRodaMisteri'),
+        const [Color(0xFF7C3AED), Color(0xFFDB2777)],
+        !plusOk
+      ),
+      (
+        'shuffleCard',
+        l.t('themeShuffleCard'),
+        const [Color(0xFF0F172A), Color(0xFF475569)],
+        !plusOk
+      ),
+      (
+        'nearbyRadar',
+        l.t('themeNearbyRadar'),
+        const [Color(0xFF059669), Color(0xFF0EA5E9)],
+        !plusOk
+      ),
     ];
 
     return Scaffold(
@@ -49,7 +75,14 @@ class _ThemePickerScreenState extends ConsumerState<ThemePickerScreen> {
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text(l.t('lockedPlus'))),
                   );
-                  context.push(RoutePaths.paywall);
+                  context.push(
+                    RoutePaths.paywall,
+                    extra: ent.buildPaywallArgs(
+                      featureId: FeatureId.allSpinThemes,
+                      sourceScreen: 'theme_picker',
+                      requiredPlan: PlanTier.plus,
+                    ),
+                  );
                   return;
                 }
                 await prefs.setSpinTheme(t.$1);
@@ -60,26 +93,47 @@ class _ThemePickerScreenState extends ConsumerState<ThemePickerScreen> {
                 padding: const EdgeInsets.all(18),
                 decoration: BoxDecoration(
                   color:
-                      selected ? AppColors.softYellow : AppColors.cardWhite,
+                      selected ? AppColors.softYellow : context.mm.card,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: selected
                         ? AppColors.warmYellow
-                        : AppColors.softBorder,
+                        : context.mm.border,
                     width: selected ? 2 : 1,
                   ),
                 ),
                 child: Row(
                   children: [
-                    Text(t.$3, style: const TextStyle(fontSize: 32)),
+                    Container(
+                      height: 44,
+                      width: 44,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: t.$3,
+                        ),
+                      ),
+                      child: const Center(
+                        child: MmIcon(MmIconType.spin,
+                            size: 22,
+                            color: Colors.white,
+                            accent: Colors.white70),
+                      ),
+                    ),
                     const SizedBox(width: 16),
                     Expanded(
                       child: Text(
                         t.$2,
-                        style: const TextStyle(
+                        // SP10.5: kad kuning (selected) kekal teks gelap;
+                        // kad token guna onCard.
+                        style: TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w700,
-                          color: AppColors.darkText,
+                          color: selected
+                              ? AppColors.darkText
+                              : context.mm.onCard,
                         ),
                       ),
                     ),

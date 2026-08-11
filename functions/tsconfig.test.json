@@ -1,0 +1,12 @@
+{
+  "//": "Phase 1.2 — konfigurasi ujian domain SAHAJA. Kompil src/domain (+ __tests__) ke lib-test/. Tidak menyentuh binaan produksi (lib/).",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "lib-test",
+    "rootDir": "src",
+    "noUnusedLocals": false,
+    "sourceMap": false
+  },
+  "include": ["src/domain"],
+  "exclude": ["node_modules"]
+}

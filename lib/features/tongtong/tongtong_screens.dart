@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../app/localization/app_localizations.dart';
+import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/providers.dart';
 import '../fit/fit_widgets.dart';
@@ -35,7 +36,7 @@ class TongTongListScreen extends ConsumerWidget {
       ),
       body: bills.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, st) => Center(child: Text('😕 $e')),
+        error: (e, st) => Center(child: Text(l.t('cvError'))),
         data: (list) {
           if (list.isEmpty) {
             return const _EmptyBills();
@@ -53,7 +54,10 @@ class TongTongListScreen extends ConsumerWidget {
                 child: Text(
                   l.t('ttListIntro'),
                   style: const TextStyle(
-                      fontWeight: FontWeight.w700, height: 1.4, fontSize: 13),
+                      fontWeight: FontWeight.w700,
+                      height: 1.4,
+                      fontSize: 13,
+                      color: AppColors.darkText),
                 ),
               ),
               ...list.map((b) => _BillCard(billId: b.$1, data: b.$2)),
@@ -87,8 +91,9 @@ class _EmptyBills extends StatelessWidget {
             Text(
               l.t('ttEmptyDesc'),
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                  color: AppColors.mutedText, fontWeight: FontWeight.w600),
+              style: TextStyle(
+                  color: context.mm.onCardMuted,
+                  fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 16),
             FilledButton(
@@ -129,10 +134,11 @@ class _BillCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         child: Container(
           padding: const EdgeInsets.all(16),
+          // SP10.5: PERATURAN KAD — bg token + teks token eksplisit.
           decoration: BoxDecoration(
-            color: AppColors.cardWhite,
+            color: context.mm.card,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: AppColors.softBorder),
+            border: Border.all(color: context.mm.border),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -142,8 +148,10 @@ class _BillCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       data['placeNameSnapshot'] as String? ?? l.t('ttBillFallback'),
-                      style: const TextStyle(
-                          fontSize: 15.5, fontWeight: FontWeight.w800),
+                      style: TextStyle(
+                          fontSize: 15.5,
+                          fontWeight: FontWeight.w800,
+                          color: context.mm.onCard),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -156,9 +164,9 @@ class _BillCard extends StatelessWidget {
                 '${_rm((data['totalAmount'] as num?)?.toDouble() ?? 0)} • '
                 '${parts.length} ${l.t('ttPeople')}'
                 '${unpaid > 0 ? ' • $unpaid ${l.t('ttUnpaidSuffix')}' : ' • ${l.t('ttAllDone')}'}',
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 12.5,
-                    color: AppColors.mutedText,
+                    color: context.mm.onCardMuted,
                     fontWeight: FontWeight.w600),
               ),
             ],
@@ -179,7 +187,7 @@ class _StatusChip extends StatelessWidget {
     final l = AppLocalizations.of(context);
     final (label, color) = switch (status) {
       'settled' => (l.t('billSettled'), AppColors.healthyGreen),
-      'cancelled' => (l.t('ttStatusCancelled'), AppColors.mutedText),
+      'cancelled' => (l.t('ttStatusCancelled'), context.mm.onCardMuted),
       _ => (l.t('billActive'), AppColors.warningOrange),
     };
     return Container(
@@ -248,7 +256,7 @@ class _CreateBillScreenState extends ConsumerState<CreateBillScreen> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.creamBackground,
+      backgroundColor: context.mm.appBackground,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -274,7 +282,7 @@ class _CreateBillScreenState extends ConsumerState<CreateBillScreen> {
               decoration: InputDecoration(
                 hintText: l.t('ttFriendName'),
                 filled: true,
-                fillColor: AppColors.cardWhite,
+                fillColor: sheetContext.mm.card,
                 border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12)),
               ),
@@ -312,7 +320,7 @@ class _CreateBillScreenState extends ConsumerState<CreateBillScreen> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.creamBackground,
+      backgroundColor: context.mm.appBackground,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -338,7 +346,7 @@ class _CreateBillScreenState extends ConsumerState<CreateBillScreen> {
                 decoration: InputDecoration(
                   hintText: l.t('ttItemName'),
                   filled: true,
-                  fillColor: AppColors.cardWhite,
+                  fillColor: builderContext.mm.card,
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12)),
                 ),
@@ -351,7 +359,7 @@ class _CreateBillScreenState extends ConsumerState<CreateBillScreen> {
                 decoration: InputDecoration(
                   hintText: l.t('walletPriceHint'),
                   filled: true,
-                  fillColor: AppColors.cardWhite,
+                  fillColor: builderContext.mm.card,
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12)),
                 ),
@@ -458,7 +466,7 @@ class _CreateBillScreenState extends ConsumerState<CreateBillScreen> {
             decoration: InputDecoration(
               labelText: l.t('ttPlaceEat'),
               filled: true,
-              fillColor: AppColors.cardWhite,
+              fillColor: context.mm.card,
               border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14)),
             ),
@@ -473,7 +481,7 @@ class _CreateBillScreenState extends ConsumerState<CreateBillScreen> {
             decoration: InputDecoration(
               labelText: l.t('ttTotalBill'),
               filled: true,
-              fillColor: AppColors.cardWhite,
+              fillColor: context.mm.card,
               border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14)),
             ),
@@ -529,7 +537,7 @@ class _CreateBillScreenState extends ConsumerState<CreateBillScreen> {
                                 size: 20,
                                 color: _payer == entry.value.name
                                     ? AppColors.healthyGreen
-                                    : AppColors.mutedText,
+                                    : context.mm.iconMuted,
                               ),
                             ),
                             const SizedBox(width: 10),
@@ -565,9 +573,9 @@ class _CreateBillScreenState extends ConsumerState<CreateBillScreen> {
                                   }
                                   _participants.removeAt(entry.key);
                                 }),
-                                icon: const Icon(Icons.close,
+                                icon: Icon(Icons.close,
                                     size: 16,
-                                    color: AppColors.mutedText),
+                                    color: context.mm.iconMuted),
                               ),
                           ],
                         ),
@@ -593,8 +601,8 @@ class _CreateBillScreenState extends ConsumerState<CreateBillScreen> {
               ),
               child: _items.isEmpty
                   ? Text(l.t('ttAddItemHint'),
-                      style: const TextStyle(
-                          color: AppColors.mutedText,
+                      style: TextStyle(
+                          color: context.mm.onCardMuted,
                           fontSize: 12.5,
                           fontWeight: FontWeight.w600))
                   : Column(
@@ -624,9 +632,9 @@ class _CreateBillScreenState extends ConsumerState<CreateBillScreen> {
                                         _total.text = _itemsTotal
                                             .toStringAsFixed(2);
                                       }),
-                                      icon: const Icon(Icons.close,
+                                      icon: Icon(Icons.close,
                                           size: 16,
-                                          color: AppColors.mutedText),
+                                          color: context.mm.iconMuted),
                                     ),
                                   ],
                                 ),
@@ -675,7 +683,7 @@ class BillDetailScreen extends ConsumerWidget {
       ),
       body: billAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, st) => Center(child: Text('😕 $e')),
+        error: (e, st) => Center(child: Text(l.t('cvError'))),
         data: (data) {
           if (data == null) {
             return Center(child: Text(l.t('ttNotFound')));
@@ -795,7 +803,7 @@ class _ParticipantRow extends ConsumerWidget {
     final (label, color) = switch (p.paymentStatus) {
       'paid' => (l.t('ttPaid'), AppColors.healthyGreen),
       'pending_confirmation' => (l.t('ttPending'), AppColors.warningOrange),
-      'waived' => (l.t('ttWaived'), AppColors.mutedText),
+      'waived' => (l.t('ttWaived'), context.mm.onCardMuted),
       _ => (l.t('ttUnpaid'), AppColors.primaryRed),
     };
     return Padding(
@@ -803,9 +811,9 @@ class _ParticipantRow extends ConsumerWidget {
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: AppColors.cardWhite,
+          color: context.mm.card,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.softBorder),
+          border: Border.all(color: context.mm.border),
         ),
         child: Row(
           children: [
@@ -830,17 +838,19 @@ class _ParticipantRow extends ConsumerWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(p.name,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w800, fontSize: 14)),
+                      style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14,
+                          color: context.mm.onCard)),
                   Text(
                     isPayer
                         ? l.t('ttPayFirst')
                         : (p.amountOwed > 0
                             ? '${l.t('ttOwes')} $payer: ${_rm(p.amountOwed)}'
                             : l.t('ttNoDebt')),
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12.5,
-                        color: AppColors.mutedText,
+                        color: context.mm.onCardMuted,
                         fontWeight: FontWeight.w600),
                   ),
                 ],

@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../app/localization/app_localizations.dart';
+import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/providers.dart';
@@ -84,7 +85,7 @@ class _GroupDecisionScreenState
       if (mounted) {
         setState(() => _creating = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('📡 ${l.t('postFailed')}')),
+          SnackBar(content: Text(l.t('postFailed'))),
         );
       }
     }
@@ -118,14 +119,16 @@ class _GroupDecisionScreenState
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
         children: [
-          const Center(child: Text('🗳️', style: TextStyle(fontSize: 56))),
+          const Center(
+            child: Icon(Icons.how_to_vote_outlined,
+                size: 56, color: AppColors.fadedText)),
           const SizedBox(height: 10),
           Center(
             child: Text(
               l.t('groupIntro'),
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: AppColors.mutedText,
+              style: TextStyle(
+                color: context.mm.onCardMuted,
                 fontSize: 14,
                 height: 1.4,
               ),
@@ -142,22 +145,22 @@ class _GroupDecisionScreenState
                         strokeWidth: 2, color: Colors.white),
                   )
                 : const Icon(Icons.add_circle_outline, size: 20),
-            label: Text('${l.t('createSession')} 👑'),
+            label: Text(l.t('createSession')),
           ),
           const SizedBox(height: 24),
           Row(
             children: [
-              const Expanded(
-                  child: Divider(color: AppColors.softBorder)),
+              Expanded(
+                  child: Divider(color: context.mm.border)),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: Text(
                   l.t('orLabel'),
-                  style: const TextStyle(color: AppColors.mutedText),
+                  style: TextStyle(color: context.mm.onCardMuted),
                 ),
               ),
-              const Expanded(
-                  child: Divider(color: AppColors.softBorder)),
+              Expanded(
+                  child: Divider(color: context.mm.border)),
             ],
           ),
           const SizedBox(height: 24),
@@ -175,16 +178,16 @@ class _GroupDecisionScreenState
               hintText: 'KOD',
               counterText: '',
               filled: true,
-              fillColor: AppColors.cardWhite,
+              fillColor: context.mm.card,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
                 borderSide:
-                    const BorderSide(color: AppColors.softBorder),
+                    BorderSide(color: context.mm.border),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(16),
                 borderSide:
-                    const BorderSide(color: AppColors.softBorder),
+                    BorderSide(color: context.mm.border),
               ),
             ),
           ),
@@ -288,6 +291,8 @@ class GroupVoteScreen extends ConsumerWidget {
                             crossAxisAlignment:
                                 CrossAxisAlignment.start,
                             children: [
+                              // SP10.5: kad KUNING B-style — teks gelap
+                              // eksplisit (bukan token kad gelap).
                               Text(
                                 l.t('sessionCode'),
                                 style: const TextStyle(
@@ -332,8 +337,8 @@ class GroupVoteScreen extends ConsumerWidget {
                   const SizedBox(height: 8),
                   Text(
                     '$total ${l.t('votesLabel')}',
-                    style: const TextStyle(
-                      color: AppColors.mutedText,
+                    style: TextStyle(
+                      color: context.mm.onCardMuted,
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
                     ),
@@ -355,12 +360,12 @@ class GroupVoteScreen extends ConsumerWidget {
                           decoration: BoxDecoration(
                             color: isMyVote
                                 ? AppColors.softYellow
-                                : AppColors.cardWhite,
+                                : context.mm.card,
                             borderRadius: BorderRadius.circular(18),
                             border: Border.all(
                               color: isMyVote
                                   ? AppColors.warmYellow
-                                  : AppColors.softBorder,
+                                  : context.mm.border,
                               width: isMyVote ? 2 : 1,
                             ),
                           ),
@@ -384,8 +389,8 @@ class GroupVoteScreen extends ConsumerWidget {
                                     ),
                                     Text(
                                       o['cuisine'] as String? ?? '',
-                                      style: const TextStyle(
-                                        color: AppColors.mutedText,
+                                      style: TextStyle(
+                                        color: context.mm.onCardMuted,
                                         fontSize: 12.5,
                                       ),
                                     ),
@@ -396,9 +401,10 @@ class GroupVoteScreen extends ConsumerWidget {
                                 const Padding(
                                   padding:
                                       EdgeInsets.only(right: 6),
-                                  child: Text('👑',
-                                      style:
-                                          TextStyle(fontSize: 18)),
+                                  child: Icon(
+                                      Icons.emoji_events_outlined,
+                                      size: 18,
+                                      color: AppColors.warmYellow),
                                 ),
                               Container(
                                 padding: const EdgeInsets.symmetric(
@@ -427,8 +433,8 @@ class GroupVoteScreen extends ConsumerWidget {
                   Text(
                     l.t('voteHint'),
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: AppColors.mutedText,
+                    style: TextStyle(
+                      color: context.mm.onCardMuted,
                       fontSize: 12.5,
                     ),
                   ),

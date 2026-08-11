@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/localization/app_localizations.dart';
+import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
 import '../social/social_providers.dart';
 import 'group_providers.dart';
@@ -15,8 +16,8 @@ Future<void> showShareStatusSheet(BuildContext context, String groupId) {
   ));
 }
 
-const _hungerLevels = ['😋 Boleh tahan', '😐 Sederhana', '🤤 Lapar gila'];
-const _budgetLevels = ['💸 Jimat', '💵 Sederhana', '🤑 Belanja best'];
+const _hungerLevels = ['Boleh tahan', 'Sederhana', 'Lapar gila'];
+const _budgetLevels = ['Jimat', 'Sederhana', 'Belanja best'];
 
 class _ShareStatusSheet extends ConsumerStatefulWidget {
   const _ShareStatusSheet({required this.groupId});
@@ -76,7 +77,7 @@ class _ShareStatusSheetState extends ConsumerState<_ShareStatusSheet> {
               counterText: '',
               hintText: hint,
               filled: true,
-              fillColor: AppColors.cardWhite,
+              fillColor: context.mm.card,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
                 borderSide: BorderSide.none,
@@ -91,9 +92,9 @@ class _ShareStatusSheetState extends ConsumerState<_ShareStatusSheet> {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     return Scaffold(
-      backgroundColor: AppColors.creamBackground,
+      backgroundColor: context.mm.appBackground,
       appBar: AppBar(
-        backgroundColor: AppColors.creamBackground,
+        backgroundColor: context.mm.appBackground,
         title: Text(l.t('shareStatus')),
       ),
       body: Column(
@@ -106,8 +107,8 @@ class _ShareStatusSheetState extends ConsumerState<_ShareStatusSheet> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                     Text(l.t('shareStatusDesc'),
-                        style: const TextStyle(
-                            fontSize: 12, color: AppColors.mutedText)),
+                        style: TextStyle(
+                            fontSize: 12, color: context.mm.onCardMuted)),
                     const SizedBox(height: 14),
                     Text(l.t('hungerLevel'),
                         style: const TextStyle(
@@ -213,7 +214,7 @@ class GroupStatusStrip extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(l.t('groupStatusTitle'),
-            style: const TextStyle(
+            style: TextStyle(
                 color: AppColors.threadsMuted,
                 fontWeight: FontWeight.w800,
                 fontSize: 12)),
@@ -264,7 +265,7 @@ class GroupStatusStrip extends ConsumerWidget {
           Text(s['displayName'] as String? ?? 'Foodie',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                   color: AppColors.threadsText,
                   fontWeight: FontWeight.w800,
                   fontSize: 13)),
@@ -273,7 +274,7 @@ class GroupStatusStrip extends ConsumerWidget {
             child: Text(bits.take(3).join(' • '),
                 maxLines: 3,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
+                style: TextStyle(
                     color: AppColors.threadsMuted, fontSize: 11.5)),
           ),
         ],

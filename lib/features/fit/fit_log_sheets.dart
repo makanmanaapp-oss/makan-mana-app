@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/localization/app_localizations.dart';
+import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/utils/time_slot_utils.dart';
 import 'fit_models.dart';
@@ -136,7 +137,7 @@ Future<void> showMealLogSheet(BuildContext context, WidgetRef ref) {
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: AppColors.creamBackground,
+    backgroundColor: context.mm.appBackground,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
@@ -212,7 +213,7 @@ class _MealLogSheetState extends State<_MealLogSheet> {
     Navigator.pop(context);
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text(
-          '✅ $name · $cal kcal ${AppLocalizations.of(context).t('fitLogged')}'),
+          '$name · $cal kcal ${AppLocalizations.of(context).t('fitLogged')}'),
       duration: const Duration(seconds: 2),
     ));
   }
@@ -263,9 +264,9 @@ class _MealLogSheetState extends State<_MealLogSheet> {
                     children: kQuickMeals
                         .map((m) => ActionChip(
                               onPressed: () => _logQuick(m),
-                              backgroundColor: AppColors.cardWhite,
+                              backgroundColor: context.mm.card,
                               side:
-                                  const BorderSide(color: AppColors.softBorder),
+                                  BorderSide(color: context.mm.border),
                               label: Text(
                                 '${m['e']} ${m['n']} · ${m['c']}',
                                 style: const TextStyle(
@@ -323,14 +324,14 @@ class _MealLogSheetState extends State<_MealLogSheet> {
           hintText: hint,
           isDense: true,
           filled: true,
-          fillColor: AppColors.cardWhite,
+          fillColor: context.mm.card,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: AppColors.softBorder),
+            borderSide: BorderSide(color: context.mm.border),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: AppColors.softBorder),
+            borderSide: BorderSide(color: context.mm.border),
           ),
         ),
       ),
@@ -350,7 +351,7 @@ Future<void> showNumberSheet(
   return showModalBottomSheet<void>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: AppColors.creamBackground,
+    backgroundColor: context.mm.appBackground,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
@@ -378,8 +379,8 @@ Future<void> showNumberSheet(
                           Navigator.pop(sheetContext);
                           onSave(v.toDouble());
                         },
-                        backgroundColor: AppColors.cardWhite,
-                        side: const BorderSide(color: AppColors.softBorder),
+                        backgroundColor: context.mm.card,
+                        side: BorderSide(color: context.mm.border),
                         label: Text('+$v $unit',
                             style: const TextStyle(
                                 fontSize: 13, fontWeight: FontWeight.w700)),
@@ -396,14 +397,14 @@ Future<void> showNumberSheet(
               hintText: unit,
               isDense: true,
               filled: true,
-              fillColor: AppColors.cardWhite,
+              fillColor: context.mm.card,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: AppColors.softBorder),
+                borderSide: BorderSide(color: context.mm.border),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: AppColors.softBorder),
+                borderSide: BorderSide(color: context.mm.border),
               ),
             ),
           ),
@@ -464,14 +465,14 @@ Future<void> showWorkoutFeedbackSheet(
       'noTime',
       l.t('fitFbNoTime'),
       Icons.schedule,
-      AppColors.mutedText,
+      context.mm.onCardMuted,
       'skipped'
     ),
     ('pain', l.t('fitFbPain'), Icons.healing, AppColors.primaryRed, 'skipped'),
   ];
   return showModalBottomSheet<void>(
     context: context,
-    backgroundColor: AppColors.creamBackground,
+    backgroundColor: context.mm.appBackground,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
@@ -504,10 +505,10 @@ Future<void> showWorkoutFeedbackSheet(
                             : l.t('fitFbThanks')),
                       ));
                     },
-                    tileColor: AppColors.cardWhite,
+                    tileColor: context.mm.card,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(14),
-                      side: const BorderSide(color: AppColors.softBorder),
+                      side: BorderSide(color: context.mm.border),
                     ),
                     leading: Icon(o.$3, color: o.$4),
                     title: Text(o.$2,

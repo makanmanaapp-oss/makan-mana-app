@@ -31,6 +31,16 @@ class AppPrefs {
   Future<void> setSpinTheme(String value) =>
       _prefs.setString(_kSpinTheme, value);
 
+  // SP10: Appearance (system | light | dark) — keutamaan PERANTI supaya
+  // skrin pra-login pun ikut pilihan; dicermin ke users doc untuk sync.
+  static const _kAppearance = 'appearance';
+
+  // BRIGHT MODE spec: lalai = Bright; 'system'/'dark' hanya jika pengguna
+  // pilih sendiri (pilihan tersimpan dihormati sepenuhnya).
+  String get appearance => _prefs.getString(_kAppearance) ?? 'light';
+  Future<void> setAppearance(String value) =>
+      _prefs.setString(_kAppearance, value);
+
   // Fallback mod dev (tanpa Firebase): rekod makan & kiraan spin tempatan.
   static const _kMealsJson = 'devMealsJson';
 

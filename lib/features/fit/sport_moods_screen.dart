@@ -21,7 +21,22 @@ class SportMoodsScreen extends ConsumerWidget {
     final l = AppLocalizations.of(context);
     final access = ref.watch(fitAccessProvider);
     final isPro = access == FitAccess.full;
-    final selected = ref.watch(fitProfileProvider).value?.selectedSportMood;
+    // BUGFIX auto-exit Sport Mode:
+    // 1) valueOrNull - .value melempar semula ralat strim semasa build
+    //    (skrin bertukar menjadi ErrorWidget; kelas pepijat sama seperti
+    //    pembetulan ISSUE 001.3 pada Fit Today/Monitor).
+    // 2) Sandaran konteks - FitnessProfile.fromMap memulangkan null untuk
+    //    dokumen separa (tiada heightCm), jadi pengguna tanpa onboarding
+    //    Fit lengkap TIDAK pernah nampak mood dipilih walaupun tulisan
+    //    Firestore berjaya. Konteks pengguna memuatkan sportMood daripada
+    //    fitness_profiles.selectedSportMood / sport_preferences pada
+    //    permulaan, dan dikemas kini serta-merta semasa pilihan.
+    final profileMood =
+        ref.watch(fitProfileProvider).valueOrNull?.selectedSportMood;
+    final contextMood = ref.watch(
+        makanManaUserContextProvider.select((c) => c.sportMood));
+    final selected =
+        profileMood ?? (contextMood == 'none' ? null : contextMood);
     final grouped = sportMoodsByCategory();
 
     void onTapMood(SportMood mood, String category) {
@@ -51,6 +66,18 @@ class SportMoodsScreen extends ConsumerWidget {
       ref
           .read(fitServiceProvider)
           .updateProfileFields({'selectedSportMood': mood.id});
+      // BUGFIX auto-exit: pop segera tanpa maklum balas kelihatan seperti
+      // skrin "tertutup sendiri". Pengesahan ditunjuk melalui messenger akar
+      // (kekal selepas pop) supaya pengguna nampak pilihan berjaya.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '${l.t('sportMoodSelectedToast')}: '
+            '${resolveSportMoodTitle(l, moodId: mood.id)}',
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
       Navigator.pop(context, mood.id);
     }
 

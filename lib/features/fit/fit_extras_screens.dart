@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/localization/app_localizations.dart';
+import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
 import 'fit_providers.dart';
 import 'fit_widgets.dart';
@@ -21,7 +22,7 @@ class FitReportsScreen extends ConsumerWidget {
     final body = reportAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, st) => Center(
-        child: Text('😕 $e', style: const TextStyle(fontSize: 13)),
+        child: Text('$e', style: const TextStyle(fontSize: 13)),
       ),
       data: (r) => ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
@@ -81,7 +82,7 @@ class FitReportsScreen extends ConsumerWidget {
                 _statRow(Icons.restaurant, l.t('fitHealthyMeals'),
                     '${r['healthyMealCount'] ?? 0}', AppColors.healthyGreen),
                 _statRow(Icons.fastfood_outlined, l.t('fitHeavyMeals'),
-                    '${r['heavyMealCount'] ?? 0}', AppColors.mutedText),
+                    '${r['heavyMealCount'] ?? 0}', context.mm.onCardMuted),
                 _statRow(Icons.local_cafe_outlined, l.t('fitSugaryDrinks'),
                     '${r['sugaryDrinkCount'] ?? 0}', AppColors.warningOrange),
               ],
@@ -132,8 +133,8 @@ class FitReportsScreen extends ConsumerWidget {
                         )),
                 if (((r['recommendations'] as List?) ?? const []).isEmpty)
                   Text(l.t('fitNoDataYet'),
-                      style: const TextStyle(
-                          color: AppColors.mutedText,
+                      style: TextStyle(
+                          color: context.mm.onCardMuted,
                           fontWeight: FontWeight.w600,
                           fontSize: 12.5)),
               ],
@@ -218,8 +219,13 @@ class FitWearablesScreen extends ConsumerWidget {
                 Expanded(
                   child: Text(
                     l.t('fitWearableSoon'),
+                    // SP10.5: banner kuning kekal dua-dua mod (B-style)
+                    // — teks WAJIB gelap eksplisit.
                     style: const TextStyle(
-                        fontWeight: FontWeight.w700, height: 1.4, fontSize: 13),
+                        fontWeight: FontWeight.w700,
+                        height: 1.4,
+                        fontSize: 13,
+                        color: AppColors.darkText),
                   ),
                 ),
               ],
@@ -237,28 +243,32 @@ class FitWearablesScreen extends ConsumerWidget {
                       duration: const Duration(seconds: 2),
                     ));
                   },
-                  tileColor: AppColors.cardWhite,
+                  // SP10.5: PERATURAN KAD — bg=mm.card, teks=mm.onCard.
+                  tileColor: context.mm.card,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
-                    side: const BorderSide(color: AppColors.softBorder),
+                    side: BorderSide(color: context.mm.border),
                   ),
-                  leading: Icon(p.$2, color: AppColors.mutedText),
+                  leading: Icon(p.$2, color: context.mm.iconMuted),
                   title: Text(p.$1,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 13.5)),
+                      style: TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13.5,
+                          color: context.mm.onCard)),
                   trailing: Container(
                     padding:
                         const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                     decoration: BoxDecoration(
-                      color: AppColors.softBorder.withValues(alpha: 0.6),
+                      color: context.mm.chipBackground,
                       borderRadius: BorderRadius.circular(9),
+                      border: Border.all(color: context.mm.border),
                     ),
                     child: Text(
                       l.t('soonBadge'),
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 10.5,
                           fontWeight: FontWeight.w700,
-                          color: AppColors.mutedText),
+                          color: context.mm.onCardMuted),
                     ),
                   ),
                 ),
@@ -362,15 +372,15 @@ class _HealthPermissionsScreenState
                   margin: const EdgeInsets.only(bottom: 14),
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: AppColors.cardWhite,
+                    color: context.mm.card,
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: AppColors.softBorder),
+                    border: Border.all(color: context.mm.border),
                   ),
                   child: Text(
                     l.t('fitPermNote'),
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12.5,
-                        color: AppColors.mutedText,
+                        color: context.mm.onCardMuted,
                         fontWeight: FontWeight.w600,
                         height: 1.45),
                   ),
@@ -391,21 +401,26 @@ class _HealthPermissionsScreenState
                           }
                         },
                         activeTrackColor: AppColors.healthyGreen,
-                        tileColor: AppColors.cardWhite,
+                        tileColor: context.mm.card,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
-                          side: const BorderSide(color: AppColors.softBorder),
+                          side: BorderSide(color: context.mm.border),
                         ),
-                        secondary: Icon(item.$3, color: AppColors.mutedText),
+                        secondary:
+                            Icon(item.$3, color: context.mm.iconMuted),
                         title: Text(
                           item.$2,
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w700, fontSize: 13.5),
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13.5,
+                              color: context.mm.onCard),
                         ),
                         subtitle: item.$4
                             ? null
                             : Text(l.t('soonBadge'),
-                                style: const TextStyle(fontSize: 11.5)),
+                                style: TextStyle(
+                                    fontSize: 11.5,
+                                    color: context.mm.onCardMuted)),
                       ),
                     )),
               ],
