@@ -12,10 +12,14 @@ import {
   buildAreaCandidatePool,
   coverageCellsForRadius,
   decideAreaDiscovery,
+  enumerateCellsForRadius,
   exactRadiusFilter,
   mergeAreaPlaces,
   resolutionForRadius,
+  storageCellForPlace,
+  STORAGE_RESOLUTION,
 } from "../areaCandidatePool";
+import { MAX_QUERIED_CELLS } from "../coverageCell";
 import { paginateRanked } from "../../../algorithm2/sessionEngine";
 import { PlaceCandidate } from "../../../../types/place";
 import { approxCellWidthMeters } from "../geohash";
@@ -59,6 +63,20 @@ test("coverageCellsForRadius returns center + neighbors, no dup", () => {
   const cells = coverageCellsForRadius(KL.lat, KL.lng, 3000);
   assert.ok(cells.length >= 1);
   assert.equal(new Set(cells).size, cells.length);
+});
+
+// 2b — READ==WRITE resolution consistency (guards DB-reuse bug)
+test("storage cell of a place is found by the read enumeration for its radius", () => {
+  // a place ~1.5km from center must be readable at 3/5/10km radii
+  const pLat = KL.lat + dLat(1500), pLng = KL.lng;
+  const writeCell = storageCellForPlace(pLat, pLng);
+  for (const r of [3000, 5000, 10000, 15000]) {
+    const readCells = enumerateCellsForRadius(KL.lat, KL.lng, r);
+    assert.ok(readCells.includes(writeCell), `radius ${r} read cells include place's storage cell`);
+    assert.ok(readCells.length <= MAX_QUERIED_CELLS, `radius ${r} bounded`);
+    // all enumerated cells are at the fixed storage resolution
+    assert.ok(readCells.every((c) => c.length === STORAGE_RESOLUTION));
+  }
 });
 
 // ---- exact radius filter (authoritative) ----

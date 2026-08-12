@@ -25,7 +25,16 @@ import {
 import {
   getCoverageCellId,
   getSearchableCellIds,
+  MAX_QUERIED_CELLS,
 } from "./coverageCell";
+
+/**
+ * Resolusi simpanan TETAP untuk membership sel (baca == tulis). res 5 (~4.9km
+ * sel) melitupi 3–15km dalam had MAX_QUERIED_CELLS. Menetapkannya tetap
+ * menghalang ketidakpadanan resolusi baca/tulis (jika tidak database-first
+ * gagal → temui-semula setiap Spin).
+ */
+export const STORAGE_RESOLUTION = 5;
 
 /** Status operasi tempat (dikekalkan; tidak dipadam) — Part 3/19. */
 export type AreaPlaceStatus =
@@ -105,6 +114,44 @@ export function coverageCellsForRadius(
     : DEFAULT_CELL_RESOLUTION;
   const center = getCoverageCellId(lat, lng, res);
   return getSearchableCellIds(center);
+}
+
+/** Sel simpanan TETAP untuk satu tempat (baca == tulis). */
+export function storageCellForPlace(lat: number, lng: number): string {
+  return getCoverageCellId(lat, lng, STORAGE_RESOLUTION);
+}
+
+/**
+ * Enumerasi sel resolusi-TETAP yang menyelaputi bulatan radius (baca).
+ * Melangkah separuh-lebar-sel supaya tiada sel terlepas; dedup; TERHAD
+ * MAX_QUERIED_CELLS (radius besar → coverage-limited, penapis radius tepat
+ * kekal autoritatif). res tetap = STORAGE_RESOLUTION supaya padan simpanan.
+ */
+export function enumerateCellsForRadius(
+  lat: number,
+  lng: number,
+  radiusMeters: number,
+  resolution: number = STORAGE_RESOLUTION,
+): string[] {
+  const cells = new Set<string>();
+  cells.add(getCoverageCellId(lat, lng, resolution)); // sentiasa masuk pusat
+  const r = Number.isFinite(radiusMeters) && radiusMeters > 0 ? radiusMeters : 0;
+  if (r === 0) return [...cells];
+  const cellW = approxCellWidthMeters(resolution);
+  const step = cellW / 2;
+  const latM = 111_320;
+  const lngM = 111_320 * Math.cos((lat * Math.PI) / 180) || 1;
+  for (let dLa = -r; dLa <= r; dLa += step) {
+    for (let dLo = -r; dLo <= r; dLo += step) {
+      // hanya titik dalam bulatan (elak sudut bbox jauh)
+      if (dLa * dLa + dLo * dLo > r * r) continue;
+      const pLat = lat + dLa / latM;
+      const pLng = lng + dLo / lngM;
+      cells.add(getCoverageCellId(pLat, pLng, resolution));
+      if (cells.size >= MAX_QUERIED_CELLS) return [...cells];
+    }
+  }
+  return [...cells];
 }
 
 /** Bucket lokasi deterministik (grid ~111m + radius dibucket) untuk id kolam. */

@@ -21,9 +21,10 @@ import {
   AreaCoverageStatus,
   AreaPlace,
   buildAreaCandidatePool,
-  coverageCellsForRadius,
   decideAreaDiscovery,
+  enumerateCellsForRadius,
   mergeAreaPlaces,
+  storageCellForPlace,
 } from "../domain/places/coverage/areaCandidatePool";
 
 const C_AREA = "area_place_cache";
@@ -121,7 +122,7 @@ function coverageStatusOf(
  */
 export async function getAreaCandidatePool(req: AreaPoolRequest): Promise<AreaPoolOutcome> {
   try {
-    const cellIds = coverageCellsForRadius(req.lat, req.lng, req.radiusMeters);
+    const cellIds = enumerateCellsForRadius(req.lat, req.lng, req.radiusMeters);
     const cellDocs = await readCells(cellIds);
 
     // 1) DIKETAHUI dari simpanan kekal (union calon semua sel; dedup di merge).
@@ -223,7 +224,7 @@ async function persistDiscovered(merged: readonly AreaPlace[], now: number): Pro
   const byCell = new Map<string, PlaceCandidate[]>();
   for (const p of merged) {
     if (!p.candidate) continue;
-    const cellId = coverageCellsForRadius(p.lat, p.lng, 0)[0]; // sel pusat tempat
+    const cellId = storageCellForPlace(p.lat, p.lng); // sel simpanan tetap
     const arr = byCell.get(cellId) ?? [];
     arr.push({ ...p.candidate, lat: p.lat, lng: p.lng });
     byCell.set(cellId, arr);
