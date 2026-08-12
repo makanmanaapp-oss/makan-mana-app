@@ -327,7 +327,12 @@ export function buildAreaCandidatePool(input: BuildAreaPoolInput): AreaCandidate
     if (p.status === "active") activeCount++;
     canonicalPlaceIds.push(p.canonicalPlaceId ?? p.placeId);
     if (p.candidate) {
-      candidates.push({ ...p.candidate, distanceKm: p.distanceMeters / 1000 });
+      // Bundarkan jarak (1 titik perpuluhan) — konsisten dgn searchNearby;
+      // elak paparan mentah "1.9441905…km" pada kad.
+      candidates.push({
+        ...p.candidate,
+        distanceKm: Math.round((p.distanceMeters / 1000) * 10) / 10,
+      });
     }
   }
   return {
