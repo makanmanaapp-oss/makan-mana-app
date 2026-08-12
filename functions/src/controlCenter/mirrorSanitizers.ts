@@ -135,23 +135,36 @@ export function sanitizePlacePublicationMirror(
   const location = asRecord(place.location);
   const displaySnapshot = asRecord(place.displaySnapshot);
 
-  const name = text(displaySnapshot.name) ?? text(identity.canonicalName);
+  // Production 1.14E publications are intentionally flat (`title`, `lat`, `lng`).
+  // Newer canonical publications may use `snapshot.place`. Support both shapes so
+  // the Control Center mirror remains backward-compatible with the approved
+  // production cohort rather than silently dropping valid records.
+  const name =
+    text(publication.title) ??
+    text(displaySnapshot.name) ??
+    text(identity.canonicalName);
   if (!name) return null;
 
-  const lifecycleStatus = text(place.status) ?? "active";
+  const lifecycleStatus =
+    text(publication.lifecycleStatus) ?? text(place.status) ?? "active";
+  const latitude = finiteNumber(publication.lat) ?? finiteNumber(location.lat);
+  const longitude = finiteNumber(publication.lng) ?? finiteNumber(location.lng);
   const updatedAt =
     toIsoTimestamp(head.updatedAt) ??
+    toIsoTimestamp(publication.publishedAt) ??
     toIsoTimestamp(place.updatedAt) ??
     toIsoTimestamp(publication.createdAt);
 
   return {
     firebase_id: canonicalPlaceId,
-    canonical_place_id: canonicalPlaceId,
+    canonical_place_id:
+      text(publication.placeId) ?? canonicalPlaceId,
     name,
-    publication_status: text(publication.publicationStatus) ?? text(place.publicationStatus),
+    publication_status:
+      text(publication.publicationStatus) ?? text(place.publicationStatus),
     lifecycle_status: lifecycleStatus,
-    latitude: finiteNumber(location.lat),
-    longitude: finiteNumber(location.lng),
+    latitude,
+    longitude,
     source_summary: {
       publication_id: publicationId,
       publication_version: finiteNumber(publication.versionNumber),
@@ -159,6 +172,7 @@ export function sanitizePlacePublicationMirror(
       locality: text(location.locality),
       state: text(location.state),
       country_code: text(location.countryCode),
+      source_canonical_version: text(publication.sourceCanonicalVersion),
     },
     firebase_updated_at: updatedAt,
     archived_at: lifecycleStatus === "archived" ? updatedAt : null,
