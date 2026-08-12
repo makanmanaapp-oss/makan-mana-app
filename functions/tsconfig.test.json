@@ -1,5 +1,5 @@
 {
-  "//": "Phase 1.2 — konfigurasi ujian domain SAHAJA. Kompil src/domain (+ __tests__) ke lib-test/. Tidak menyentuh binaan produksi (lib/).",
+  "//": "Phase 1.2 + Control Center bridge tests. Compiles domain and read-only bridge tests to lib-test/ without changing production output.",
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "outDir": "lib-test",
@@ -7,6 +7,6 @@
     "noUnusedLocals": false,
     "sourceMap": false
   },
-  "include": ["src/domain"],
+  "include": ["src/domain", "src/controlCenter"],
   "exclude": ["node_modules"]
 }

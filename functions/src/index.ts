@@ -50,3 +50,4 @@ export {
   setGroupStatus,
 } from "./callable/groupPoll";
 export {updateFoodProfile} from "./callable/updateFoodProfile";
+export {syncControlCenterMirrors} from "./controlCenter/mirrorSync";
