@@ -9,7 +9,7 @@
  * TIDAK mengubah berat skor. Menggunakan mekanisme excludePlaceIds sedia ada +
  * enjin tulen (penindasan/putaran/kepelbagaian).
  */
-import { db } from "../config/firebase";
+import { db, FieldValue } from "../config/firebase";
 import { PlaceCandidate } from "../types/place";
 import { ScoringContext, scoreAndRank } from "./scoringService";
 import {
@@ -23,12 +23,15 @@ import {
 } from "../domain/algorithm2/sessionEngine";
 import { RecommendationUserContext } from "../domain/algorithm2/recommendationContext";
 import { rankUnified, ScoringSubFlags, UnifiedRankDiagnostics } from "../domain/algorithm2/unifiedRanking";
+import { normalizeRejectReason, rejectTtlMs } from "../domain/algorithm2/rejectPolicy";
 
 interface Algo2SessionDoc {
   sessionId: string;
   shownPlaceIds: string[];
   rejectedPlaceIds: string[];
   remainingAlternativeIds: string[];
+  /** MULTI-CHUNK — senarai identiti autoritatif penuh (Part 2). */
+  rankedPlaceIds?: string[];
   /** Ringkasan calon tersimpan (untuk guna-semula LANGSUNG tanpa search/rank). */
   candidates: PlaceCandidate[];
   rotationSeed: number;
@@ -48,6 +51,10 @@ export interface AlternativeConsumeResult {
     alternativesBefore: number;
     invalidAlternativesRemoved: number;
     alternativesAfter: number;
+    /** MULTI-CHUNK — masih ada calon autoritatif selepas pop ini (Part 10/11). */
+    hasMoreAuthoritative: boolean;
+    /** Jumlah identiti autoritatif dalam sesi (rankedPlaceIds). */
+    totalAuthoritative: number;
     sessionIdMasked: string;
   };
 }
@@ -63,9 +70,12 @@ export interface Algorithm2Diagnostics {
   diversityApplied: boolean;
   alternativeRemainingCount: number;
   responseSource: "ranked" | "ranked_with_algo2";
-  /** Master fix — tahap relaksasi penindasan (0=tiada, 1=drop sesi shown/rejected,
-   * 2=drop reject-memory juga; keselamatan keras TIDAK PERNAH dilonggarkan). */
+  /** FINAL REPAIR — tahap relaksasi (0=tiada, 1=drop SHOWN sesi sahaja).
+   * reject-memory + reject-sesi + TUTUP + keselamatan keras TIDAK PERNAH dilonggarkan. */
   sessionRelaxationLevel: number;
+  /** FINAL REPAIR — bekalan-rendah jujur: pool kekal kosong selepas relaks SHOWN
+   * (tiada tempat ditolak/ditutup disajikan). Klien patut papar keadaan low-supply. */
+  lowSupply: boolean;
   /** Phase 2.3 — versi pemarkahan digunakan (legasi atau bersatu). */
   scoringVersion: string;
   /** Phase 2.3 — diagnostik pemarkahan bersatu (null bila legasi). */
@@ -84,6 +94,16 @@ export interface Algorithm2Result {
 }
 
 const SESSION_TTL_MS = 3 * 60 * 60 * 1000; // sesi aktif 3 jam
+/**
+ * MULTI-CHUNK — bilangan MAKSIMUM calon ber-pangkat disimpan dalam satu dokumen
+ * sesi (identiti + objek calon). Chunk penghantaran kekal 30, tetapi jumlah
+ * autoritatif yang boleh diguna TIDAK terhad 30. 300 × ~1KB ≈ 300KB — selamat di
+ * bawah had dokumen Firestore 1MB. Kolam melebihi ini ditandakan hasMore=false
+ * hanya bila senarai autoritatif habis (Part 13; elak had skala tersembunyi).
+ */
+export const AUTHORITATIVE_POOL_MAX = 300;
+/** Saiz chunk penghantaran (kekal). BUKAN had jumlah kolam. */
+export const SESSION_CHUNK_SIZE = 30;
 
 /**
  * Ranking dengan Algorithm 2: penindasan shown/rejected + reject-memory 24h,
@@ -148,40 +168,44 @@ export async function rankWithAlgorithm2(
     ranked0 = scoreAndRank([...candidates], { ...scoringCtx, excludePlaceIds: mergedExclude });
   }
 
-  // Master fix — RELAKSASI TERKAWAL (directive F/G): bila penindasan sesi
-  // mengosongkan pool, JANGAN pulangkan kosong (yang menyebabkan not-found →
-  // fallback sampel/dummy di klien). Relaks berperingkat, KEKALKAN keselamatan
-  // keras (alahan/halal ditapis dalam rankUnified). Reason-coded & diperhatikan.
-  //  L1: gugurkan penindasan shown/rejected sesi (KEKAL reject-memory 24h).
-  //  L2: gugurkan reject-memory juga (last resort) supaya pengguna dapat tempat
-  //      SEBENAR, bukan dummy. Keselamatan keras tidak pernah dilonggarkan.
+  // FINAL RECOMMENDATION REPAIR — RELAKSASI REJECT-SELAMAT (Part 4/8).
+  // Bila penindasan mengosongkan pool, kita HANYA melonggarkan SHOWN sesi.
+  // JANGAN SEKALI melonggarkan: reject-memory, reject dalam-sesi, penapis TUTUP,
+  // atau keselamatan keras (alahan/halal). "Recent rejected is strongest after
+  // permanent safety/avoid rules" — reject tidak pernah dibangkitkan semula oleh
+  // relaksasi (menutup RELAXATION_BYPASSES_REJECT). Jika masih kosong selepas
+  // melonggar SHOWN → keadaan bekalan-rendah JUJUR (tiada tempat ditutup/ditolak
+  // disajikan, tiada dummy). Reason-coded & diperhatikan.
+  //   L1: gugurkan SHOWN sesi sahaja. KEKAL reject-memory + reject-sesi + TUTUP.
   let relaxationLevel = 0;
-  if (ranked0.length === 0 && (mergedExclude.length > 0 || rejectMemoryIds.length > 0)) {
-    const relaxRank = (suppressed: Set<string>, rejectMem: Set<string>): PlaceCandidate[] => {
-      if (opts.useUnified && opts.recCtx) {
-        const r = rankUnified(candidates, opts.recCtx, {
-          suppressedIds: suppressed, rejectMemoryIds: rejectMem,
-          subFlags: opts.subFlags, excludeClosed: true,
-        });
-        if (opts.recCtx.selectedMood) {
-          moodFitById = new Map(r.scored.map((s) => [s.place.placeId, s.components.moodFit]));
-        }
-        return r.ranked;
+  let lowSupply = false;
+  if (ranked0.length === 0 && sessionShown.length > 0) {
+    // Kekalkan reject-sesi + reject-memory (buang HANYA shown dari exclude).
+    const shownSet = new Set(sessionShown);
+    const keepSuppressed = new Set(
+      [...mergedExclude].filter((id) => !shownSet.has(id)),
+    );
+    if (opts.useUnified && opts.recCtx) {
+      const r = rankUnified(candidates, opts.recCtx, {
+        suppressedIds: keepSuppressed,
+        rejectMemoryIds: new Set(rejectMemoryIds), // reject-memory KEKAL
+        subFlags: opts.subFlags,
+        excludeClosed: true, // TUTUP tidak pernah dilonggarkan (eat-now)
+      });
+      ranked0 = r.ranked;
+      if (opts.recCtx.selectedMood) {
+        moodFitById = new Map(r.scored.map((s) => [s.place.placeId, s.components.moodFit]));
       }
-      return scoreAndRank([...candidates], { ...scoringCtx, excludePlaceIds: [...rejectMem] });
-    };
-    // L1 — kekal reject-memory sahaja.
-    ranked0 = relaxRank(new Set(), new Set(rejectMemoryIds));
-    relaxationLevel = 1;
-    if (ranked0.length === 0) {
-      // L2 — keselamatan keras sahaja (excludeClosed juga dilonggarkan supaya
-      // sentiasa ada tempat sebenar jika ada calon selamat langsung).
-      ranked0 = opts.useUnified && opts.recCtx
-        ? rankUnified(candidates, opts.recCtx, { subFlags: opts.subFlags, excludeClosed: false }).ranked
-        : scoreAndRank([...candidates], { ...scoringCtx, excludePlaceIds: [] });
-      relaxationLevel = 2;
+    } else {
+      ranked0 = scoreAndRank([...candidates], {
+        ...scoringCtx, excludePlaceIds: [...keepSuppressed, ...rejectMemoryIds],
+      });
     }
+    relaxationLevel = 1;
   }
+  // Bekalan-rendah jujur: kekal kosong walau selepas relaks shown → JANGAN
+  // resurrect reject/closed. Klien papar keadaan bekalan-rendah (Part 8 Stage 3).
+  if (ranked0.length === 0) lowSupply = true;
 
   // Putaran ber-benih-sesi (hanya calon hampir-sama).
   const rotationApplied = opts.flags.sessionRotation && ranked0.length > 1;
@@ -198,18 +222,24 @@ export async function rankWithAlgorithm2(
     ? applyMoodPriority(diversified, (id) => (moodFitById as Map<string, number>).get(id) ?? 0.5)
     : diversified;
 
-  const store = moodOrdered.slice(0, opts.storeCount);
+  // MULTI-CHUNK — simpan KOLAM BER-PANGKAT PENUH (bukan lagi terhad 30) supaya
+  // nextSuggestion boleh menyusuri chunk 2/3/… tanpa kueri provider. storeCount
+  // (30) kekal HANYA saiz chunk pertama yang dipulangkan getSuggestions kepada
+  // klien. Ditutup pada AUTHORITATIVE_POOL_MAX (selamat saiz-dokumen Firestore).
+  const store = moodOrdered.slice(0, AUTHORITATIVE_POOL_MAX);
   const primary = store[0];
   const alternativeIds = store.slice(1).map((p) => p.placeId);
+  const rankedPlaceIds = store.map((p) => p.placeId); // senarai identiti autoritatif
 
   // Lifecycle: sesi aktif segar → guna semula id+seed; jika tidak → sesi BAHARU
   // (id + seed baharu → putaran hampir-sama untuk konteks yang sama).
   const reuseSession = fresh && fresh.status === "active";
   const sessionId = reuseSession ? fresh.sessionId : `s_${seed.toString(36)}_${opts.now.toString(36)}`;
-  // Master fix — bila RELAKSASI berlaku (pool ditindas sehingga kosong), KITAR
-  // SEMULA sesi: reset shown/rejected supaya kolam yang dibina semula benar-benar
-  // BOLEH digunakan oleh consumeStoredAlternative (jika tidak, ia menindas semula
-  // segala-galanya → exhausted → dummy). Reason-coded (sessionRelaxationLevel).
+  // FINAL RECOMMENDATION REPAIR — bila RELAKSASI berlaku, KITAR SEMULA SHOWN
+  // SAHAJA supaya kolam yang dibina semula boleh diguna oleh consumeStored
+  // Alternative. rejectedPlaceIds TIDAK PERNAH direset (reject kekal ditindas
+  // dalam-sesi; menutup NEW_SPIN/relaxation reject resurrection). reject-memory
+  // 24h+ kekal pula ditapis semasa RANKING pool tersimpan.
   const recycledShown = relaxationLevel > 0;
   const baseShown = recycledShown ? [] : sessionShown;
   const newShown = primary ? [...new Set([...baseShown, primary.placeId])] : baseShown;
@@ -217,9 +247,10 @@ export async function rankWithAlgorithm2(
     {
       sessionId,
       shownPlaceIds: newShown,
-      rejectedPlaceIds: recycledShown ? [] : sessionRejected,
+      rejectedPlaceIds: sessionRejected, // JANGAN reset — reject kekal ditindas
       remainingAlternativeIds: alternativeIds,
-      candidates: store, // ringkasan tersimpan untuk guna-semula LANGSUNG
+      rankedPlaceIds, // senarai identiti autoritatif penuh (Part 2)
+      candidates: store, // kolam penuh (bukan lagi 30) untuk guna-semula LANGSUNG
       rotationSeed: reuseSession ? fresh.rotationSeed : (seed % 100000),
       startedAt: reuseSession ? fresh.startedAt : opts.now,
       expiresAt: opts.now + SESSION_TTL_MS,
@@ -243,6 +274,7 @@ export async function rankWithAlgorithm2(
       alternativeRemainingCount: alternativeIds.length,
       responseSource: "ranked_with_algo2",
       sessionRelaxationLevel: relaxationLevel,
+      lowSupply,
       scoringVersion,
       unified: unifiedDiag ? { ...unifiedDiag, diversityApplied: true } : null,
     },
@@ -309,29 +341,51 @@ export async function consumeStoredAlternative(
         alternativesBefore: before,
         invalidAlternativesRemoved: before - stillRemaining.length - 1,
         alternativesAfter: stillRemaining.length,
+        hasMoreAuthoritative: stillRemaining.length > 0,
+        totalAuthoritative: (s.rankedPlaceIds ?? s.candidates ?? []).length,
         sessionIdMasked: `${(s.sessionId ?? "").slice(0, 6)}…`,
       },
     };
   });
 }
 
-/** Tulis rekod reject-memory 24 jam (idempoten mengikut placeId). */
+/**
+ * Tulis rekod reject-memory dengan TTL BER-SEBAB + PROGRESIF (Part 4).
+ * Reject berulang tempat yang sama → penindasan lebih kuat; do_not_suggest_again
+ * → kekal. canonicalPlaceId disimpan supaya identiti alias setara ditindas juga
+ * (menutup CANONICAL_ALIAS_BYPASS). Idempoten mengikut placeId (rejectCount naik).
+ */
 export async function writeRejectMemory(
   uid: string,
   placeId: string,
   now: number,
   opts: { canonicalPlaceId?: string | null; reason?: string | null } = {},
 ): Promise<void> {
-  const ttlMs = 24 * 60 * 60 * 1000;
-  await db.collection("users").doc(uid).collection("place_reject_memory").doc(placeId).set(
+  const ref = db.collection("users").doc(uid).collection("place_reject_memory").doc(placeId);
+  const reason = normalizeRejectReason(opts.reason);
+  const snap = await ref.get();
+  const prev = snap.exists ? (snap.data() ?? {}) : {};
+  const prevCount = typeof prev.rejectCount === "number" ? prev.rejectCount : 0;
+  const rejectCount = prevCount + 1;
+  const ttlMs = rejectTtlMs(reason, rejectCount);
+  // Kekalkan canonicalPlaceId sedia ada jika panggilan ini tak membekalkannya.
+  const canonicalPlaceId = opts.canonicalPlaceId ?? (prev.canonicalPlaceId as string | null | undefined) ?? null;
+  // Sebab do_not_suggest_again (permanent) tidak boleh diturunkan oleh reject
+  // sebab-lemah kemudian: ambil TTL maksimum yang pernah ditetapkan.
+  const prevExpiry = typeof prev.expiresAt === "number" ? prev.expiresAt : 0;
+  const newExpiry = Math.max(now + ttlMs, prevExpiry);
+  await ref.set(
     {
       placeId,
-      canonicalPlaceId: opts.canonicalPlaceId ?? null,
+      canonicalPlaceId,
       rejectedAt: now,
-      expiresAt: now + ttlMs,
-      reason: opts.reason ?? null,
+      lastRejectedAt: now,
+      rejectCount,
+      reason, // sebab kanonikal TERAKHIR
+      reasons: FieldValue.arrayUnion(reason), // jejak semua sebab (Part 1B)
+      expiresAt: newExpiry,
+      suppressedUntil: newExpiry,
     },
     { merge: true },
   );
-  // Tandakan juga dalam mana-mana sesi algo2 aktif (best-effort, tidak menyekat).
 }

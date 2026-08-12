@@ -92,9 +92,24 @@ export const nextSuggestion = onCall(async (request) => {
     return {actionId, actionAccepted: true, responseSource: "idempotent_pending", nextPlace: null};
   }
 
-  // Pemenang: rekod reject (memori 24h + sesi) SEBELUM memilih calon seterusnya.
+  // Pemenang: rekod reject (memori ber-sebab + sesi) SEBELUM memilih calon seterusnya.
   if (action === "reject" && input.placeId) {
-    if (flags.rejectMemory) await writeRejectMemory(uid, input.placeId, now, {reason: input.reason ?? null});
+    if (flags.rejectMemory) {
+      // FINAL REPAIR — jambatan kanonikal: cari canonicalPlaceId tempat yang
+      // ditolak dari calon sesi tersimpan supaya identiti alias setara turut
+      // ditindas (menutup CANONICAL_ALIAS_BYPASS).
+      let canonicalPlaceId: string | null = null;
+      try {
+        const sessSnap = await db.collection("users").doc(uid)
+          .collection("algo2_sessions").doc(contextHash).get();
+        const stored = (sessSnap.data()?.candidates as Array<{placeId: string; canonicalPlaceId?: string | null}> | undefined) ?? [];
+        const match = stored.find((c) => c.placeId === input.placeId);
+        canonicalPlaceId = match?.canonicalPlaceId ?? null;
+      } catch {
+        canonicalPlaceId = null;
+      }
+      await writeRejectMemory(uid, input.placeId, now, {reason: input.reason ?? null, canonicalPlaceId});
+    }
     if (input.sessionId) {
       await db.collection("suggestion_sessions").doc(input.sessionId)
         .set({rejectedPlaceIds: FieldValue.arrayUnion(input.placeId)}, {merge: true});
@@ -123,6 +138,11 @@ export const nextSuggestion = onCall(async (request) => {
     providerQueryCount: consumed ? consumed.diagnostics.providerQueryCount : 0,
     rankingExecuted: consumed ? consumed.diagnostics.rankingExecuted : false,
     alternativesRemaining: consumed ? consumed.diagnostics.alternativesAfter : 0,
+    // MULTI-CHUNK (Part 10/11) — kolam autoritatif melangkaui 30; exhausted HANYA
+    // bila tiada lagi calon autoritatif sah (bukan sekadar 30 pertama habis).
+    hasMoreAuthoritative: consumed ? consumed.diagnostics.hasMoreAuthoritative : false,
+    authoritativeRemaining: consumed ? consumed.diagnostics.alternativesAfter : 0,
+    totalAuthoritative: consumed ? consumed.diagnostics.totalAuthoritative : 0,
     sessionStatus: "active",
     poolExhausted: !consumed,
   };

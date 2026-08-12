@@ -153,6 +153,22 @@ export function sessionSeededRotation(
   return out;
 }
 
+// --- Multi-chunk delivery planning ------------------------------------------
+/**
+ * MULTI-CHUNK — julat chunk penghantaran bagi jumlah kolam autoritatif.
+ * Saiz chunk (cth. 30) ≠ jumlah kolam. Contoh: total 61 → [[0,30],[30,60],[60,61]].
+ * TULEN & deterministik. total<=0 → tiada chunk.
+ */
+export function chunkRanges(total: number, chunkSize = 30): Array<[number, number]> {
+  const n = Math.max(0, Math.floor(total));
+  const size = Math.max(1, Math.floor(chunkSize));
+  const out: Array<[number, number]> = [];
+  for (let start = 0; start < n; start += size) {
+    out.push([start, Math.min(start + size, n)]);
+  }
+  return out;
+}
+
 /** Benih berangka deterministik daripada rentetan sesi. */
 export function seedFromString(s: string): number {
   let h = 2166136261;
