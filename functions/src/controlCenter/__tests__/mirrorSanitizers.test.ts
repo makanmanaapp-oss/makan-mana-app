@@ -59,7 +59,7 @@ test("deleted social posts become removed mirror records", () => {
   assert.equal(record.removed_at, "2023-11-14T22:13:20.000Z");
 });
 
-test("canonical publication becomes compact place mirror record", () => {
+test("canonical snapshot publication becomes compact place mirror record", () => {
   const record = sanitizePlacePublicationMirror(
     "place-1",
     {activePublicationId: "pub-1", updatedAt: 1_700_000_000_000},
@@ -94,5 +94,44 @@ test("canonical publication becomes compact place mirror record", () => {
     locality: "Kuala Lumpur",
     state: "Kuala Lumpur",
     country_code: "MY",
+    source_canonical_version: null,
+  });
+});
+
+test("production 1.14E flat publication is mirrored without a snapshot wrapper", () => {
+  const record = sanitizePlacePublicationMirror(
+    "PLC-123",
+    {activePublicationId: "PUB-123", updatedAt: 1_700_000_000_000},
+    "PUB-123",
+    {
+      publicationId: "PUB-123",
+      placeId: "PLC-123",
+      versionNumber: 1,
+      title: "Warung Production",
+      lat: 3.139,
+      lng: 101.687,
+      publicationStatus: "published",
+      sourceCanonicalVersion: "1.14E.1",
+      publishedAt: 1_700_000_000_000,
+      createdAt: 1_700_000_000_000,
+    },
+  );
+
+  assert.ok(record);
+  assert.equal(record?.firebase_id, "PLC-123");
+  assert.equal(record?.canonical_place_id, "PLC-123");
+  assert.equal(record?.name, "Warung Production");
+  assert.equal(record?.latitude, 3.139);
+  assert.equal(record?.longitude, 101.687);
+  assert.equal(record?.publication_status, "published");
+  assert.equal(record?.lifecycle_status, "active");
+  assert.deepEqual(record?.source_summary, {
+    publication_id: "PUB-123",
+    publication_version: 1,
+    verification_status: null,
+    locality: null,
+    state: null,
+    country_code: null,
+    source_canonical_version: "1.14E.1",
   });
 });
