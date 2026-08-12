@@ -37,4 +37,11 @@ export interface PlaceCandidate {
   dataSource?: "canonical" | "legacy";
   /** Phase 1.14G — ID kanonikal (kohort sahaja) untuk penghalaan stabil. */
   canonicalPlaceId?: string;
+  /**
+   * FULL RADIUS COVERAGE — koordinat mentah tempat (opsyenal). Diisi oleh
+   * searchNearby supaya penemuan boleh disimpan ke place_registry + sel liputan
+   * (indeks geo). Tidak wajib; laluan lama tidak terjejas.
+   */
+  lat?: number;
+  lng?: number;
 }

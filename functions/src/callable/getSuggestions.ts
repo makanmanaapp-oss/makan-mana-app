@@ -15,6 +15,7 @@ import {resolveCohortAuthorization} from "../domain/places/canonical/canonicalRe
 import {applyCanonicalOverlay} from "../services/canonicalReadService";
 import {consumeStoredAlternative, rankWithAlgorithm2} from "../services/algorithm2SessionService";
 import {getExpandedPool} from "../services/expandedPoolService";
+import {getAreaCandidatePool} from "../services/areaCandidatePoolService";
 import {logEvent} from "../services/eventService";
 import {searchNearby} from "../services/placesService";
 import {ScoringContext, scoreAndRank} from "../services/scoringService";
@@ -277,9 +278,37 @@ export const getSuggestions = onCall(
     // ≤3 kueri. Guna kelayakan rollout server-authoritative (bukan owner-only).
     const useExpandedPool = input.forceLegacy !== true &&
       algorithm2FlagActive("expandedPool", algorithm2LiveEligible);
+    // FULL RADIUS COVERAGE — kolam kawasan KEKAL (database-first + tumbuh).
+    // OFF secara lalai; hidup HANYA bila AREA_COVERAGE_POOL_ENABLED="true" DAN
+    // kohort layak. Session chunk (storeCount) kekal; kolam kawasan TIDAK terhad
+    // 30. Fallback selamat ke expandedPool dalam perkhidmatan (tiada dummy).
+    const areaCoverageOn = process.env.AREA_COVERAGE_POOL_ENABLED === "true" &&
+      input.forceLegacy !== true && algorithm2LiveEligible;
     if (apiKey) {
       try {
-        if (useExpandedPool) {
+        if (areaCoverageOn) {
+          const area = await getAreaCandidatePool({
+            lat, lng, radiusMeters: radiusM, languageCode, apiKey, now: Date.now(),
+          });
+          candidatesSource = area.pool.candidates.length > 0
+            ? area.pool.candidates
+            : await searchNearby({lat, lng, radiusMeters: radiusM, languageCode, apiKey});
+          logger.info("getSuggestions.areaCoverage", {
+            cohortId: rollout.cohortId,
+            areaPoolTotal: area.pool.candidates.length,
+            knownCanonicalCount: area.pool.knownCanonicalCount,
+            exactRadiusCount: area.pool.exactRadiusCount,
+            activePlaceCount: area.pool.activePlaceCount,
+            newlyDiscoveredCount: area.pool.newlyDiscoveredCount,
+            discoveryPerformed: area.pool.discoveryPerformed,
+            discoveryReason: area.pool.discoveryReason,
+            freshnessStatus: area.pool.freshnessStatus,
+            providerQueryCount: area.providerQueryCount,
+            usedFallback: area.usedFallback,
+            fallbackReason: area.fallbackReason,
+            coverageCells: area.pool.coverageCellIds.length,
+          });
+        } else if (useExpandedPool) {
           const pool = await getExpandedPool({
             lat, lng, radiusMeters: radiusM, languageCode, apiKey, now: Date.now(),
           });

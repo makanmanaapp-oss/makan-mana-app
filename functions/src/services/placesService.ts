@@ -207,6 +207,9 @@ function toCandidate(raw: RawPlace, lat: number, lng: number): PlaceCandidate {
     priceEstimate: PRICE_ESTIMATE_BY_LEVEL[priceLevel] ?? "RM10 - RM25",
     openingPeriods,
     photoUrl: null,
+    // FULL RADIUS COVERAGE — koordinat mentah untuk indeks geo/penyimpanan.
+    lat: raw.location?.latitude,
+    lng: raw.location?.longitude,
   };
 }
 
