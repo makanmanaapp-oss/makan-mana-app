@@ -34,8 +34,5 @@ jobs:
       - name: Build all Cloud Functions
         run: npm run build
 
-      - name: Compile bridge tests
-        run: npm run test:build
-
-      - name: Run bridge sanitizer tests
-        run: node --test "lib-test/controlCenter/__tests__/*.test.js"
+      - name: Run full Functions unit suite
+        run: npm test
