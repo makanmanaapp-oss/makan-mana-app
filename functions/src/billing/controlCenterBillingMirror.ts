@@ -1,6 +1,6 @@
 import {defineSecret} from "firebase-functions/params";
 
-import {NormalizedSubscription} from "./googlePlayDomain";
+import {MakanManaPlan} from "./googlePlayDomain";
 
 export const CONTROL_CENTER_SYNC_SECRET = defineSecret(
   "CONTROL_CENTER_SYNC_SECRET",
@@ -9,9 +9,17 @@ export const CONTROL_CENTER_SYNC_SECRET = defineSecret(
 const CONTROL_CENTER_MIRROR_URL =
   "https://makanmana-control-center.vercel.app/api/internal/sync/mirror";
 
+export interface EffectiveSubscriptionMirror {
+  productId: string | null;
+  plan: MakanManaPlan;
+  status: string;
+  expiryTime: string | null;
+  autoRenew: boolean | null;
+}
+
 export interface SubscriptionMirrorInput {
   uid: string;
-  subscription: NormalizedSubscription;
+  subscription: EffectiveSubscriptionMirror;
   eventId: string;
 }
 
@@ -24,8 +32,6 @@ export async function mirrorSubscriptionToControlCenter(
     product_id: input.subscription.productId,
     plan: input.subscription.plan,
     status: input.subscription.status,
-    // subscriptionsv2 startTime is the lifetime subscription start, not an
-    // unambiguous current renewal-period start. Keep this field unknown.
     current_period_start: null,
     current_period_end: input.subscription.expiryTime,
     auto_renew: input.subscription.autoRenew,
@@ -33,8 +39,6 @@ export async function mirrorSubscriptionToControlCenter(
     trial_started_at: null,
     trial_ends_at: null,
     coupon_id: null,
-    // Do not invent a cancellation timestamp from ingestion time. Google Play
-    // remains authoritative and this compact mirror only carries known facts.
     cancelled_at: null,
     expired_at: input.subscription.status === "expired" ?
       input.subscription.expiryTime : null,
