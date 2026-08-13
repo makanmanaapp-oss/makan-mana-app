@@ -104,8 +104,8 @@ async function resolveUid(
   const opaqueUid = await uidForOpaqueId(opaque);
   const linkedUid = await uidForRawToken(purchase.linkedPurchaseToken);
 
-  const expiredOpaque = purchase.outOfAppPurchaseContext?
-    .expiredExternalAccountIdentifiers?.obfuscatedExternalAccountId;
+  const expiredOpaque = purchase.outOfAppPurchaseContext
+    ?.expiredExternalAccountIdentifiers?.obfuscatedExternalAccountId;
   const expiredOpaqueUid = await uidForOpaqueId(expiredOpaque);
   const expiredTokenUid = await uidForRawToken(
     purchase.outOfAppPurchaseContext?.expiredPurchaseToken,
@@ -146,9 +146,6 @@ async function resolveUid(
       );
     }
 
-    // A brand-new token must be bound to the app account by Google Play.
-    // Existing, linked and out-of-app-resubscribe tokens can be restored from
-    // server-known ownership signals without trusting the client identity.
     const hasServerKnownOwner = Boolean(
       currentUid || linkedUid || expiredOpaqueUid || expiredTokenUid,
     );
@@ -178,7 +175,12 @@ async function persistTokenState(
   const eventRef = db.collection("billing_events").doc(sourceEventId);
 
   await db.runTransaction(async (tx) => {
+    // Firestore requires transaction reads before transaction writes.
     const existing = await tx.get(tokenRef);
+    const linkedRef = linkedTokenHash && linkedTokenHash !== tokenHash ?
+      db.collection("billing_purchase_tokens").doc(linkedTokenHash) : null;
+    const linked = linkedRef ? await tx.get(linkedRef) : null;
+
     if (existing.exists && existing.data()?.uid !== uid) {
       throw new BillingAuthorityError(
         "token-already-owned",
@@ -209,15 +211,11 @@ async function persistTokenState(
       updatedAt: FieldValue.serverTimestamp(),
     }, {merge: true});
 
-    if (linkedTokenHash && linkedTokenHash !== tokenHash) {
-      const linkedRef = db.collection("billing_purchase_tokens").doc(linkedTokenHash);
-      const linked = await tx.get(linkedRef);
-      if (linked.exists && linked.data()?.uid === uid) {
-        tx.set(linkedRef, {
-          supersededByTokenHash: tokenHash,
-          updatedAt: FieldValue.serverTimestamp(),
-        }, {merge: true});
-      }
+    if (linkedRef && linked?.exists && linked.data()?.uid === uid) {
+      tx.set(linkedRef, {
+        supersededByTokenHash: tokenHash,
+        updatedAt: FieldValue.serverTimestamp(),
+      }, {merge: true});
     }
 
     tx.set(eventRef, {
@@ -367,11 +365,16 @@ export async function processGooglePlaySubscription(
   }
 
   const nowMillis = input.nowMillis ?? Date.now();
-  let productId = input.productId;
   let normalized: NormalizedSubscription;
+  let resolvedProductId: string;
   try {
-    productId = productId ?? selectCurrentSubscriptionProduct(purchase, nowMillis);
-    normalized = normalizeSubscriptionPurchase(productId, purchase, nowMillis);
+    resolvedProductId = input.productId ??
+      selectCurrentSubscriptionProduct(purchase, nowMillis);
+    normalized = normalizeSubscriptionPurchase(
+      resolvedProductId,
+      purchase,
+      nowMillis,
+    );
   } catch {
     throw new BillingAuthorityError(
       "invalid-play-response",
@@ -404,7 +407,10 @@ export async function processGooglePlaySubscription(
     normalized.acknowledgementState === "ACKNOWLEDGEMENT_STATE_PENDING"
   ) {
     try {
-      await acknowledgeGooglePlaySubscription(productId, input.purchaseToken);
+      await acknowledgeGooglePlaySubscription(
+        resolvedProductId,
+        input.purchaseToken,
+      );
       acknowledged = true;
       await db.collection("billing_purchase_tokens").doc(tokenHash).set({
         acknowledgementState: "ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED",
