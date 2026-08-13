@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {sanitizeCoverageCell} from "../../../controlCenter/placeCoverageSanitizer";
+import {sanitizeCoverageCell} from "../../../../controlCenter/placeCoverageSanitizer";
 import {PlaceCandidate} from "../../../../types/place";
 
 function candidate(placeId: string, isOpen: boolean): PlaceCandidate {
@@ -9,7 +9,7 @@ function candidate(placeId: string, isOpen: boolean): PlaceCandidate {
     placeId,
     name: placeId,
     cuisine: "malay",
-    emoji: "🍽️",
+    emoji: "ðŸ½ï¸",
     rating: 4,
     userRatingCount: 10,
     priceLevel: 2,

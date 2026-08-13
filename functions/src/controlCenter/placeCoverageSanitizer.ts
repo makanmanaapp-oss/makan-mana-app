@@ -8,7 +8,7 @@ export interface ProductionAreaCellDoc {
   updatedAt?: number;
 }
 
-export interface CoverageCellMirrorRecord {
+export interface CoverageCellMirrorRecord extends Record<string, unknown> {
   cell_id: string;
   area_key: string;
   known_places: number;
