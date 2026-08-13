@@ -13,21 +13,36 @@ class UserRepository {
   CollectionReference<Map<String, dynamic>> get _users =>
       FirebaseFirestore.instance.collection('users');
 
-  /// Jangan biar UI tergantung jika backend lambat/belum sedia:
-  /// SDK Firestore akan beratur tulisan secara offline dan sync kemudian.
+  /// Cipta profil pengguna baharu dengan plan Free yang selamat. Untuk dokumen
+  /// sedia ada, kemas kini profil biasa SAHAJA dan jangan sentuh field billing.
   Future<void> upsertUser(AppUser user) async {
     if (!firebaseReady) return;
     try {
-      await _users.doc(user.uid).set(
-        {
-          ...user.toMap(),
+      final ref = _users.doc(user.uid);
+      final existing = await ref.get().timeout(const Duration(seconds: 8));
+      final profile = <String, dynamic>{
+        'uid': user.uid,
+        'email': user.email,
+        'displayName': user.displayName,
+        'photoUrl': user.photoUrl,
+        'language': user.language,
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+
+      if (existing.exists) {
+        // Important: plan/planStatus/planSource/planPeriodEnd are backend-owned.
+        await ref.set(profile, SetOptions(merge: true))
+            .timeout(const Duration(seconds: 8));
+      } else {
+        await ref.set({
+          ...profile,
+          'plan': 'free',
+          'planStatus': 'active',
           'createdAt': FieldValue.serverTimestamp(),
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      ).timeout(const Duration(seconds: 8));
+        }).timeout(const Duration(seconds: 8));
+      }
     } on TimeoutException {
-      debugPrint('MakanMana: tulisan users/{uid} beratur (offline queue).');
+      debugPrint('MakanMana: tulisan users/{uid} beratur/tertangguh.');
     }
   }
 
