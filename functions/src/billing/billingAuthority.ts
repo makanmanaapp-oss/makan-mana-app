@@ -9,6 +9,7 @@ import {
   hashPurchaseToken,
   normalizeSubscriptionPurchase,
   obfuscatedAccountIdForUid,
+  selectCurrentSubscriptionProduct,
 } from "./googlePlayDomain";
 import {
   acknowledgeGooglePlaySubscription,
@@ -62,13 +63,33 @@ function planRank(plan: MakanManaPlan): number {
 export async function prepareBillingAccount(uid: string): Promise<string> {
   if (!uid) throw new BillingAuthorityError("unauthenticated", "Missing user");
   const opaqueId = obfuscatedAccountIdForUid(uid);
-  await db.collection("billing_account_links").doc(opaqueId).set({
-    uid,
-    opaqueId,
-    updatedAt: FieldValue.serverTimestamp(),
-    createdAt: FieldValue.serverTimestamp(),
-  }, {merge: true});
+  const ref = db.collection("billing_account_links").doc(opaqueId);
+  await db.runTransaction(async (tx) => {
+    const existing = await tx.get(ref);
+    if (existing.exists && existing.data()?.uid !== uid) {
+      throw new BillingAuthorityError("account-mismatch", "Opaque billing account is already owned");
+    }
+    tx.set(ref, {
+      uid,
+      opaqueId,
+      ...(existing.exists ? {} : {createdAt: FieldValue.serverTimestamp()}),
+      updatedAt: FieldValue.serverTimestamp(),
+    }, {merge: true});
+  });
   return opaqueId;
+}
+
+async function uidForOpaqueId(opaqueId: string | undefined): Promise<string | undefined> {
+  if (!opaqueId) return undefined;
+  const link = await db.collection("billing_account_links").doc(opaqueId).get();
+  return link.exists ? link.data()?.uid as string | undefined : undefined;
+}
+
+async function uidForRawToken(rawToken: string | undefined): Promise<string | undefined> {
+  if (!rawToken) return undefined;
+  const token = await db.collection("billing_purchase_tokens")
+    .doc(hashPurchaseToken(rawToken)).get();
+  return token.exists ? token.data()?.uid as string | undefined : undefined;
 }
 
 async function resolveUid(
@@ -80,20 +101,18 @@ async function resolveUid(
   const currentUid = current.exists ? current.data()?.uid as string | undefined : undefined;
 
   const opaque = purchase.externalAccountIdentifiers?.obfuscatedExternalAccountId;
-  let opaqueUid: string | undefined;
-  if (opaque) {
-    const link = await db.collection("billing_account_links").doc(opaque).get();
-    opaqueUid = link.exists ? link.data()?.uid as string | undefined : undefined;
-  }
+  const opaqueUid = await uidForOpaqueId(opaque);
+  const linkedUid = await uidForRawToken(purchase.linkedPurchaseToken);
 
-  let linkedUid: string | undefined;
-  if (purchase.linkedPurchaseToken) {
-    const linkedHash = hashPurchaseToken(purchase.linkedPurchaseToken);
-    const linked = await db.collection("billing_purchase_tokens").doc(linkedHash).get();
-    linkedUid = linked.exists ? linked.data()?.uid as string | undefined : undefined;
-  }
+  const expiredOpaque = purchase.outOfAppPurchaseContext?
+    .expiredExternalAccountIdentifiers?.obfuscatedExternalAccountId;
+  const expiredOpaqueUid = await uidForOpaqueId(expiredOpaque);
+  const expiredTokenUid = await uidForRawToken(
+    purchase.outOfAppPurchaseContext?.expiredPurchaseToken,
+  );
 
-  const resolved = currentUid ?? opaqueUid ?? linkedUid ?? requestedUid;
+  const resolved = currentUid ?? opaqueUid ?? linkedUid ?? expiredOpaqueUid ??
+    expiredTokenUid ?? requestedUid;
   if (!resolved) {
     throw new BillingAuthorityError(
       "account-unresolved",
@@ -101,7 +120,14 @@ async function resolveUid(
     );
   }
 
-  for (const candidate of [currentUid, opaqueUid, linkedUid, requestedUid]) {
+  for (const candidate of [
+    currentUid,
+    opaqueUid,
+    linkedUid,
+    expiredOpaqueUid,
+    expiredTokenUid,
+    requestedUid,
+  ]) {
     if (candidate && candidate !== resolved) {
       throw new BillingAuthorityError(
         "account-mismatch",
@@ -120,9 +146,13 @@ async function resolveUid(
       );
     }
 
-    // A brand-new purchase must carry an account binding from Google Play.
-    // Existing or linked server-known tokens can still be restored safely.
-    if (!currentUid && !linkedUid && opaque !== expectedOpaque) {
+    // A brand-new token must be bound to the app account by Google Play.
+    // Existing, linked and out-of-app-resubscribe tokens can be restored from
+    // server-known ownership signals without trusting the client identity.
+    const hasServerKnownOwner = Boolean(
+      currentUid || linkedUid || expiredOpaqueUid || expiredTokenUid,
+    );
+    if (!hasServerKnownOwner && opaque !== expectedOpaque) {
       throw new BillingAuthorityError(
         "account-binding-missing",
         "Google Play purchase is not bound to this app account",
@@ -158,6 +188,7 @@ async function persistTokenState(
 
     tx.set(tokenRef, {
       uid,
+      // Raw tokens stay server-only. They are never logged or mirrored.
       purchaseToken,
       tokenHash,
       productId: normalized.productId,
@@ -174,9 +205,8 @@ async function persistTokenState(
       isTestPurchase: normalized.isTestPurchase,
       source,
       lastSourceEventId: sourceEventId,
+      ...(existing.exists ? {} : {createdAt: FieldValue.serverTimestamp()}),
       updatedAt: FieldValue.serverTimestamp(),
-      createdAt: existing.exists ? existing.data()?.createdAt ?? FieldValue.serverTimestamp() :
-        FieldValue.serverTimestamp(),
     }, {merge: true});
 
     if (linkedTokenHash && linkedTokenHash !== tokenHash) {
@@ -200,8 +230,9 @@ async function persistTokenState(
       status: normalized.status,
       entitled: normalized.entitled,
       expiryTime: normalized.expiryTime,
-      createdAt: FieldValue.serverTimestamp(),
-    }, {merge: false});
+      updatedAt: FieldValue.serverTimestamp(),
+      ...(existing.exists ? {} : {createdAt: FieldValue.serverTimestamp()}),
+    }, {merge: true});
   });
 
   return tokenHash;
@@ -300,11 +331,12 @@ async function recomputeEffectiveEntitlement(
 
 export interface ProcessGooglePlaySubscriptionInput {
   purchaseToken: string;
-  productId: string;
+  productId?: string;
   requestedUid?: string;
   source: "client_verify" | "rtdn";
   sourceEventId?: string;
   nowMillis?: number;
+  preloadedPurchase?: PlaySubscriptionPurchaseV2;
 }
 
 export interface ProcessGooglePlaySubscriptionResult {
@@ -318,7 +350,7 @@ export interface ProcessGooglePlaySubscriptionResult {
 export async function processGooglePlaySubscription(
   input: ProcessGooglePlaySubscriptionInput,
 ): Promise<ProcessGooglePlaySubscriptionResult> {
-  if (!ALLOWED_SUBSCRIPTION_PRODUCTS.has(input.productId)) {
+  if (input.productId && !ALLOWED_SUBSCRIPTION_PRODUCTS.has(input.productId)) {
     throw new BillingAuthorityError("unsupported-product", "Unsupported subscription product");
   }
   if (!input.purchaseToken || input.purchaseToken.length > 4096) {
@@ -327,18 +359,24 @@ export async function processGooglePlaySubscription(
 
   let purchase: PlaySubscriptionPurchaseV2;
   try {
-    purchase = await getGooglePlaySubscription(input.purchaseToken);
+    purchase = input.preloadedPurchase ??
+      await getGooglePlaySubscription(input.purchaseToken);
   } catch {
-    // Never propagate an HTTP error that could contain the raw purchase token URL.
+    // Never propagate an HTTP error that could contain the raw purchase-token URL.
     throw new BillingAuthorityError("play-verification-failed", "Google Play verification failed");
   }
 
   const nowMillis = input.nowMillis ?? Date.now();
+  let productId = input.productId;
   let normalized: NormalizedSubscription;
   try {
-    normalized = normalizeSubscriptionPurchase(input.productId, purchase, nowMillis);
+    productId = productId ?? selectCurrentSubscriptionProduct(purchase, nowMillis);
+    normalized = normalizeSubscriptionPurchase(productId, purchase, nowMillis);
   } catch {
-    throw new BillingAuthorityError("invalid-play-response", "Google Play response is not valid for this product");
+    throw new BillingAuthorityError(
+      "invalid-play-response",
+      "Google Play response is not valid for a supported product",
+    );
   }
 
   const tokenHash = hashPurchaseToken(input.purchaseToken);
@@ -366,7 +404,7 @@ export async function processGooglePlaySubscription(
     normalized.acknowledgementState === "ACKNOWLEDGEMENT_STATE_PENDING"
   ) {
     try {
-      await acknowledgeGooglePlaySubscription(input.productId, input.purchaseToken);
+      await acknowledgeGooglePlaySubscription(productId, input.purchaseToken);
       acknowledged = true;
       await db.collection("billing_purchase_tokens").doc(tokenHash).set({
         acknowledgementState: "ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED",
@@ -392,6 +430,10 @@ export async function processGooglePlaySubscription(
         `${uid}:${effective.productId ?? "free"}:${effective.status}:${effective.expiryTime ?? "none"}`,
       ),
     });
+    await db.collection("billing_events").doc(sourceEventId).set({
+      controlCenterMirrorStatus: "succeeded",
+      updatedAt: FieldValue.serverTimestamp(),
+    }, {merge: true});
   } catch {
     await db.collection("billing_events").doc(sourceEventId).set({
       controlCenterMirrorStatus: "failed",
