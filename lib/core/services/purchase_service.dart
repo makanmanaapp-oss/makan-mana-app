@@ -1,6 +1,7 @@
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 
@@ -11,39 +12,60 @@ enum PurchaseFlow {
   /// Google Play Billing sebenar berjaya dimulakan.
   storeStarted,
 
-  /// Store tidak tersedia (app belum di Play Store / produk belum dicipta)
-  /// -> caller patut fallback ke mock.
+  /// Store/backend tidak tersedia atau produk belum dikonfigurasi.
+  /// Production TIDAK akan fallback kepada paid mock entitlement.
   storeUnavailable,
 }
 
-/// Langganan sebenar melalui Google Play Billing (M6).
+/// Langganan Android melalui Google Play Billing dengan backend authority.
 ///
-/// POLISI PENTING: langganan digital Android WAJIB guna Play Billing —
-/// gateway luar (Billplz dll) tidak dibenarkan untuk unlock ciri app.
-/// Pengguna Malaysia boleh bayar kad/TnG/GrabPay/telco melalui Play.
-///
-/// Sehingga app di Play Console + produk langganan dicipta
-/// (makanmana_plus_monthly / makanmana_pro_monthly), store akan
-/// unavailable dan paywall fallback ke mock purchase.
+/// Polisi production:
+/// - client tidak pernah menulis plan/planStatus;
+/// - purchase token dihantar ke Cloud Function untuk Google Play verification;
+/// - entitlement hanya diberi oleh backend selepas state sah;
+/// - completePurchase hanya dibuat selepas backend membenarkan penutupan.
 class PurchaseService {
   PurchaseService({required this.firebaseReady}) {
     _subscription = InAppPurchase.instance.purchaseStream.listen(
       _onPurchases,
-      onError: (Object e) => debugPrint('MakanMana: purchaseStream: $e'),
+      onError: (Object _) =>
+          debugPrint('MakanMana: purchase stream unavailable.'),
     );
   }
 
   final bool firebaseReady;
   StreamSubscription<List<PurchaseDetails>>? _subscription;
 
-  /// uid pengguna semasa - diset oleh caller sebelum beli.
   String currentUid = '';
+
+  FirebaseFunctions get _functions =>
+      FirebaseFunctions.instanceFor(region: 'asia-southeast1');
+
+  Future<String?> _prepareOpaqueAccountId(String uid) async {
+    if (!firebaseReady || uid.isEmpty) return null;
+    try {
+      final result = await _functions
+          .httpsCallable('prepareGooglePlayBilling')
+          .call<void>();
+      final data = Map<String, dynamic>.from(result.data as Map);
+      final opaque = data['opaqueAccountId'];
+      return opaque is String && opaque.isNotEmpty ? opaque : null;
+    } catch (_) {
+      debugPrint('MakanMana: billing account preparation failed.');
+      return null;
+    }
+  }
 
   Future<PurchaseFlow> buy({
     required String uid,
     required String plan, // plus | pro
   }) async {
     currentUid = uid;
+    if (!firebaseReady || uid.isEmpty) return PurchaseFlow.storeUnavailable;
+
+    final opaqueAccountId = await _prepareOpaqueAccountId(uid);
+    if (opaqueAccountId == null) return PurchaseFlow.storeUnavailable;
+
     final iap = InAppPurchase.instance;
     if (!await iap.isAvailable()) return PurchaseFlow.storeUnavailable;
 
@@ -51,50 +73,72 @@ class PurchaseService {
         ? PlanConstants.proSubscriptionId
         : PlanConstants.plusSubscriptionId;
     final response = await iap.queryProductDetails({productId});
-    if (response.productDetails.isEmpty) {
-      // Produk belum dicipta di Play Console.
-      return PurchaseFlow.storeUnavailable;
-    }
+    if (response.productDetails.isEmpty) return PurchaseFlow.storeUnavailable;
+
     await iap.buyNonConsumable(
-      purchaseParam:
-          PurchaseParam(productDetails: response.productDetails.first),
+      purchaseParam: PurchaseParam(
+        productDetails: response.productDetails.first,
+        applicationUserName: opaqueAccountId,
+      ),
     );
     return PurchaseFlow.storeStarted;
   }
 
   Future<void> restore(String uid) async {
     currentUid = uid;
+    if (!firebaseReady || uid.isEmpty) return;
+    final opaqueAccountId = await _prepareOpaqueAccountId(uid);
+    if (opaqueAccountId == null) return;
+
     final iap = InAppPurchase.instance;
     if (await iap.isAvailable()) {
-      await iap.restorePurchases();
+      await iap.restorePurchases(applicationUserName: opaqueAccountId);
     }
   }
 
-  /// Kemas kini pelan bila Play sahkan pembelian.
-  /// (Fasa akan datang: sahkan resit di pelayan / RevenueCat.)
+  Future<bool> _verifyOnBackend(PurchaseDetails purchase) async {
+    final uid = currentUid.isNotEmpty
+        ? currentUid
+        : FirebaseAuth.instance.currentUser?.uid ?? '';
+    if (!firebaseReady || uid.isEmpty) return false;
+
+    final allowedProduct =
+        purchase.productID == PlanConstants.plusSubscriptionId ||
+        purchase.productID == PlanConstants.proSubscriptionId;
+    if (!allowedProduct) return false;
+
+    final serverVerificationData =
+        purchase.verificationData.serverVerificationData.trim();
+    if (serverVerificationData.isEmpty) return false;
+
+    try {
+      final result = await _functions
+          .httpsCallable('verifyGooglePlaySubscription')
+          .call({
+        'productId': purchase.productID,
+        'purchaseToken': serverVerificationData,
+      });
+      final data = Map<String, dynamic>.from(result.data as Map);
+      return data['verified'] == true &&
+          data['allowCompletePurchase'] == true;
+    } catch (_) {
+      // Do not complete an unverified purchase. The purchase stream/RTDN can
+      // safely retry later; no entitlement is granted by the client.
+      debugPrint('MakanMana: server purchase verification failed.');
+      return false;
+    }
+  }
+
   Future<void> _onPurchases(List<PurchaseDetails> purchases) async {
-    for (final p in purchases) {
-      if (p.status == PurchaseStatus.purchased ||
-          p.status == PurchaseStatus.restored) {
-        final plan = p.productID == PlanConstants.proSubscriptionId
-            ? 'pro'
-            : p.productID == PlanConstants.plusSubscriptionId
-                ? 'plus'
-                : null;
-        if (plan != null && firebaseReady && currentUid.isNotEmpty) {
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(currentUid)
-              .set({
-            'plan': plan,
-            'planStatus': 'active',
-            'planSource': 'google_play',
-            'updatedAt': FieldValue.serverTimestamp(),
-          }, SetOptions(merge: true));
-        }
+    for (final purchase in purchases) {
+      if (purchase.status != PurchaseStatus.purchased &&
+          purchase.status != PurchaseStatus.restored) {
+        continue;
       }
-      if (p.pendingCompletePurchase) {
-        await InAppPurchase.instance.completePurchase(p);
+
+      final verified = await _verifyOnBackend(purchase);
+      if (verified && purchase.pendingCompletePurchase) {
+        await InAppPurchase.instance.completePurchase(purchase);
       }
     }
   }

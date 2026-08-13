@@ -1,11 +1,12 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
-/// Mock pembelian langganan (Milestone 5).
-/// Struktur mengikut aliran RevenueCat supaya penggantian nanti mudah:
-/// purchase() -> entitlement aktif -> users/{uid}.plan dikemaskini.
-/// RevenueCat sebenar: ganti isi kaedah ini sahaja, UI kekal.
+/// Developer-only mock billing helper.
+///
+/// SECURITY: release/profile builds must never grant paid entitlement without
+/// Google Play backend verification. Production callers receive an error.
 class MockPurchaseService {
   MockPurchaseService({required this.firebaseReady});
 
@@ -14,11 +15,13 @@ class MockPurchaseService {
   DocumentReference<Map<String, dynamic>> _user(String uid) =>
       FirebaseFirestore.instance.collection('users').doc(uid);
 
-  /// "Beli" pelan (free | plus | pro). Mock: terus aktif tanpa bayaran.
   Future<void> purchase({
     required String uid,
     required String plan,
   }) async {
+    if (!kDebugMode) {
+      throw StateError('Mock billing is disabled outside debug builds.');
+    }
     if (!firebaseReady || uid.isEmpty) return;
     await _user(uid).set({
       'plan': plan,

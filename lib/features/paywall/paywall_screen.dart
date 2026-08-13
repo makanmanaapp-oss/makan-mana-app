@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/localization/app_localizations.dart';
 import '../../core/constants/app_colors.dart';
@@ -7,7 +9,6 @@ import '../../core/constants/plan_constants.dart';
 import '../../core/providers.dart';
 import '../../core/services/purchase_service.dart';
 
-/// Paywall (paparan; gating + mock RevenueCat penuh di Milestone 5).
 class PaywallScreen extends ConsumerStatefulWidget {
   const PaywallScreen({super.key});
 
@@ -16,6 +17,8 @@ class PaywallScreen extends ConsumerStatefulWidget {
 }
 
 class _PaywallScreenState extends ConsumerState<PaywallScreen> {
+  static const _packageName = 'com.makanmana.apps';
+
   @override
   void initState() {
     super.initState();
@@ -24,70 +27,63 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     });
   }
 
-  /// Mock purchase: sahkan -> kemas kini users/{uid}.plan.
-  /// (RevenueCat sebenar akan ganti MockPurchaseService sahaja.)
-  Future<void> _purchase(String plan) async {
-    final l = AppLocalizations.of(context);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('${l.t('confirmPurchase')} ${_planLabel(l, plan)}?'),
-        content: Text(l.t('mockNotice')),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(l.t('cancelAction')),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            style:
-                ElevatedButton.styleFrom(minimumSize: const Size(88, 40)),
-            child: Text(l.t('upgradeNow')),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
+  String _productForPlan(String plan) => plan == 'pro'
+      ? PlanConstants.proSubscriptionId
+      : PlanConstants.plusSubscriptionId;
 
+  Future<void> _openPlaySubscription(String currentPlan) async {
+    final productId = _productForPlan(currentPlan == 'pro' ? 'pro' : 'plus');
+    final uri = Uri.https(
+      'play.google.com',
+      '/store/account/subscriptions',
+      {'sku': productId, 'package': _packageName},
+    );
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened) {
+      throw StateError('Google Play subscription management unavailable.');
+    }
+  }
+
+  Future<void> _purchase(String targetPlan) async {
+    final l = AppLocalizations.of(context);
     final uid = ref.read(authRepositoryProvider).currentUser?.uid ?? '';
+    final currentPlan = ref.read(userPlanProvider).value ?? 'free';
+    if (uid.isEmpty || targetPlan == currentPlan) return;
+
     ref.read(spinControllerProvider).logAppEvent('upgrade_clicked');
     try {
-      // Cuba Google Play Billing sebenar dahulu (M6). Downgrade ke free
-      // dan keadaan store-belum-sedia jatuh ke mock.
-      if (plan != 'free') {
+      // Existing paid subscriptions are changed/cancelled in Google Play.
+      // This prevents accidental parallel subscriptions and keeps Play as the
+      // lifecycle authority. RTDN/backend updates the app after the change.
+      if (currentPlan != 'free') {
+        await _openPlaySubscription(currentPlan);
+        return;
+      }
+
+      // From Free -> paid: launch a new Google Play purchase.
+      if (targetPlan != 'free') {
         final flow = await ref
             .read(purchaseServiceProvider)
-            .buy(uid: uid, plan: plan);
-        if (flow == PurchaseFlow.storeStarted) {
-          // Play uruskan UI pembayaran; plan dikemaskini via purchaseStream.
+            .buy(uid: uid, plan: targetPlan);
+        if (flow == PurchaseFlow.storeStarted) return;
+
+        // Developer convenience only. Release builds fail closed and never
+        // grant a paid plan without backend-verified Google Play state.
+        if (kDebugMode) {
+          await ref
+              .read(mockPurchaseServiceProvider)
+              .purchase(uid: uid, plan: targetPlan);
           return;
         }
       }
-      await ref
-          .read(mockPurchaseServiceProvider)
-          .purchase(uid: uid, plan: plan);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l.t('planUpdated'))),
-        );
-      }
-    } catch (e) {
+
+      throw StateError('Google Play billing unavailable.');
+    } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('📡 ${l.t('postFailed')}')),
         );
       }
-    }
-  }
-
-  String _planLabel(AppLocalizations l, String plan) {
-    switch (plan) {
-      case 'plus':
-        return l.t('planPlus');
-      case 'pro':
-        return l.t('planPro');
-      default:
-        return l.t('planFree');
     }
   }
 
