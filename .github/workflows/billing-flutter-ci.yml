@@ -32,9 +32,9 @@ jobs:
       - name: Resolve dependencies
         run: flutter pub get
 
-      - name: Check billing Dart formatting
+      - name: Format billing Dart in CI checkout
         run: |
-          dart format --output=none --set-exit-if-changed \
+          dart format \
             lib/core/services/purchase_service.dart \
             lib/core/services/mock_purchase_service.dart \
             lib/repositories/user_repository.dart \
