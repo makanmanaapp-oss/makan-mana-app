@@ -1,6 +1,6 @@
 import {defineSecret} from "firebase-functions/params";
 
-import {NormalizedSubscription, hashPurchaseToken} from "./googlePlayDomain";
+import {NormalizedSubscription} from "./googlePlayDomain";
 
 export const CONTROL_CENTER_SYNC_SECRET = defineSecret(
   "CONTROL_CENTER_SYNC_SECRET",
@@ -11,7 +11,6 @@ const CONTROL_CENTER_MIRROR_URL =
 
 export interface SubscriptionMirrorInput {
   uid: string;
-  purchaseToken: string;
   subscription: NormalizedSubscription;
   eventId: string;
 }
@@ -25,8 +24,8 @@ export async function mirrorSubscriptionToControlCenter(
     product_id: input.subscription.productId,
     plan: input.subscription.plan,
     status: input.subscription.status,
-    // Google subscriptionsv2 exposes subscription startTime and expiryTime,
-    // but not an unambiguous current-renewal-period start. Keep it unknown.
+    // subscriptionsv2 startTime is the lifetime subscription start, not an
+    // unambiguous current renewal-period start. Keep this field unknown.
     current_period_start: null,
     current_period_end: input.subscription.expiryTime,
     auto_renew: input.subscription.autoRenew,
@@ -34,11 +33,11 @@ export async function mirrorSubscriptionToControlCenter(
     trial_started_at: null,
     trial_ends_at: null,
     coupon_id: null,
-    cancelled_at: input.subscription.status === "canceled" ?
-      new Date().toISOString() : null,
+    // Do not invent a cancellation timestamp from ingestion time. Google Play
+    // remains authoritative and this compact mirror only carries known facts.
+    cancelled_at: null,
     expired_at: input.subscription.status === "expired" ?
       input.subscription.expiryTime : null,
-    purchase_token_hash: hashPurchaseToken(input.purchaseToken),
   };
 
   const response = await fetch(CONTROL_CENTER_MIRROR_URL, {
