@@ -21,8 +21,24 @@ service cloud.firestore {
       );
     }
 
+    // Billing fields are backend-owned. A client may create its own initial
+    // Free profile, but cannot grant/revoke/alter paid entitlement afterwards.
     match /users/{uid} {
-      allow read, write: if isOwner(uid);
+      allow read: if isOwner(uid);
+      allow create: if isOwner(uid)
+        && request.resource.data.uid == uid
+        && request.resource.data.plan == 'free'
+        && request.resource.data.planStatus == 'active'
+        && !request.resource.data.keys().hasAny([
+          'planSource', 'planPeriodEnd', 'billingProvider',
+          'subscriptionProductId', 'billingUpdatedAt'
+        ]);
+      allow update: if isOwner(uid)
+        && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'plan', 'planStatus', 'planSource', 'planPeriodEnd',
+          'billingProvider', 'subscriptionProductId', 'billingUpdatedAt'
+        ]);
+      allow delete: if isOwner(uid);
 
       match /suggestions/{suggestionId} {
         allow read, write: if isOwner(uid);
@@ -77,6 +93,33 @@ service cloud.firestore {
     }
 
     match /brain_metrics/{date} {
+      allow read, write: if false;
+    }
+
+    // ---------- Google Play Billing Authority ----------
+    // Purchase ownership, raw tokens, entitlement state and RTDN receipts are
+    // server-only. Firebase Admin SDK bypasses these client rules.
+    match /billing_account_links/{docId} {
+      allow read, write: if false;
+    }
+
+    match /billing_purchase_tokens/{tokenHash} {
+      allow read, write: if false;
+    }
+
+    match /billing_entitlements/{uid} {
+      allow read, write: if false;
+    }
+
+    match /billing_events/{eventId} {
+      allow read, write: if false;
+    }
+
+    match /billing_rtdn_receipts/{messageId} {
+      allow read, write: if false;
+    }
+
+    match /billing_unmatched_rtdn/{messageId} {
       allow read, write: if false;
     }
 
