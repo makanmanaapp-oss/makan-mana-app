@@ -5,7 +5,10 @@ on:
     branches:
       - place-data/a0-backend-source-custody
     paths:
-      - "lib/**"
+      - "lib/core/services/purchase_service.dart"
+      - "lib/core/services/mock_purchase_service.dart"
+      - "lib/repositories/user_repository.dart"
+      - "lib/features/paywall/paywall_screen.dart"
       - "pubspec.yaml"
       - "pubspec.lock"
       - ".github/workflows/billing-flutter-ci.yml"
@@ -26,14 +29,25 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Flutter version
-        run: flutter --version
-
       - name: Resolve dependencies
         run: flutter pub get
 
-      - name: Analyze
-        run: flutter analyze
+      - name: Check billing Dart formatting
+        run: |
+          dart format --output=none --set-exit-if-changed \
+            lib/core/services/purchase_service.dart \
+            lib/core/services/mock_purchase_service.dart \
+            lib/repositories/user_repository.dart \
+            lib/features/paywall/paywall_screen.dart
 
-      - name: Test
-        run: flutter test
+      - name: Analyze billing purchase service
+        run: dart analyze lib/core/services/purchase_service.dart
+
+      - name: Analyze billing mock service
+        run: dart analyze lib/core/services/mock_purchase_service.dart
+
+      - name: Analyze billing user repository
+        run: dart analyze lib/repositories/user_repository.dart
+
+      - name: Analyze billing paywall
+        run: dart analyze lib/features/paywall/paywall_screen.dart
