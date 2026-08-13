@@ -36,6 +36,14 @@ export interface PlaySubscriptionPurchaseV2 {
     obfuscatedExternalAccountId?: string;
     obfuscatedExternalProfileId?: string;
   };
+  outOfAppPurchaseContext?: {
+    expiredPurchaseToken?: string;
+    expiredExternalAccountIdentifiers?: {
+      externalAccountId?: string;
+      obfuscatedExternalAccountId?: string;
+      obfuscatedExternalProfileId?: string;
+    };
+  };
   testPurchase?: Record<string, unknown>;
 }
 
@@ -94,6 +102,43 @@ function latestExpiry(items: PlaySubscriptionLineItem[]): string | null {
   return selected?.value ?? null;
 }
 
+/**
+ * RTDN carries a purchase token, not a trusted product id. Select the line item
+ * that represents current entitlement. This also handles deferred replacement:
+ * the old item keeps a future expiry until the replacement actually takes over.
+ */
+export function selectCurrentSubscriptionProduct(
+  purchase: PlaySubscriptionPurchaseV2,
+  nowMillis: number,
+): string {
+  const allowed = (purchase.lineItems ?? [])
+    .filter((item) => item.productId && ALLOWED_SUBSCRIPTION_PRODUCTS.has(item.productId))
+    .map((item) => ({
+      productId: item.productId as string,
+      expiryMillis: parseTime(item.expiryTime),
+      hasExpiry: Boolean(item.expiryTime),
+    }));
+
+  if (allowed.length === 0) {
+    throw new Error("Google Play response contains no supported subscription product");
+  }
+
+  const current = allowed
+    .filter((item) => item.expiryMillis !== null && item.expiryMillis > nowMillis)
+    .sort((a, b) => (b.expiryMillis ?? 0) - (a.expiryMillis ?? 0));
+  if (current.length > 0) return current[0].productId;
+
+  const uniqueProducts = [...new Set(allowed.map((item) => item.productId))];
+  if (uniqueProducts.length === 1) return uniqueProducts[0];
+
+  // A no-expiry line item can represent a pending deferred replacement. Never
+  // guess between multiple products when there is no currently-expiring item.
+  const noExpiry = allowed.filter((item) => !item.hasExpiry);
+  if (noExpiry.length === 1) return noExpiry[0].productId;
+
+  throw new Error("Ambiguous Google Play subscription line items");
+}
+
 export function normalizedStatus(subscriptionState: string | undefined): string {
   switch (subscriptionState) {
     case "SUBSCRIPTION_STATE_ACTIVE":
@@ -122,8 +167,8 @@ export function isEntitledState(
   expiryTime: string | null,
   nowMillis: number,
 ): boolean {
-  const expiryMillis = expiryTime ? parseTime(expiryTime) : null;
-  if (expiryMillis !== null && expiryMillis <= nowMillis) return false;
+  const parsedExpiry = expiryTime ? parseTime(expiryTime) : null;
+  if (parsedExpiry !== null && parsedExpiry <= nowMillis) return false;
 
   // Google Play keeps access during grace period. A canceled auto-renewing
   // subscription remains entitled until its paid period actually expires.
@@ -176,7 +221,8 @@ export function normalizeSubscriptionPurchase(
   };
 }
 
-export function rtdnTransactionType(notificationType: number): string | null {
+/** Only lifecycle events that can safely map to the current finance vocabulary. */
+export function rtdnFinanceTransactionType(notificationType: number): string | null {
   switch (notificationType) {
     case 4:
       return "purchase";
@@ -184,10 +230,6 @@ export function rtdnTransactionType(notificationType: number): string | null {
       return "renewal";
     case 12:
       return "reversal";
-    case 13:
-      return "expiration";
-    case 3:
-      return "cancellation";
     default:
       return null;
   }
