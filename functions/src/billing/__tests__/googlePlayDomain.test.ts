@@ -10,7 +10,8 @@ import {
   normalizeSubscriptionPurchase,
   obfuscatedAccountIdForUid,
   planForProduct,
-  rtdnTransactionType,
+  rtdnFinanceTransactionType,
+  selectCurrentSubscriptionProduct,
 } from "../googlePlayDomain";
 
 const NOW = Date.parse("2026-08-13T10:00:00Z");
@@ -97,16 +98,45 @@ test("Google Play response must contain the requested product", () => {
   ));
 });
 
+test("RTDN derives the currently entitled line item, including deferred replacement", () => {
+  const product = selectCurrentSubscriptionProduct({
+    subscriptionState: "SUBSCRIPTION_STATE_ACTIVE",
+    lineItems: [
+      {productId: PLUS_PRODUCT_ID, expiryTime: "2026-08-20T00:00:00Z"},
+      {productId: PRO_PRODUCT_ID},
+    ],
+  }, NOW);
+  assert.equal(product, PLUS_PRODUCT_ID);
+
+  const afterReplacement = selectCurrentSubscriptionProduct({
+    subscriptionState: "SUBSCRIPTION_STATE_ACTIVE",
+    lineItems: [
+      {productId: PLUS_PRODUCT_ID, expiryTime: "2026-08-01T00:00:00Z"},
+      {productId: PRO_PRODUCT_ID, expiryTime: "2026-09-20T00:00:00Z"},
+    ],
+  }, NOW);
+  assert.equal(afterReplacement, PRO_PRODUCT_ID);
+});
+
+test("ambiguous RTDN line items fail closed instead of guessing", () => {
+  assert.throws(() => selectCurrentSubscriptionProduct({
+    lineItems: [
+      {productId: PLUS_PRODUCT_ID},
+      {productId: PRO_PRODUCT_ID},
+    ],
+  }, NOW));
+});
+
 test("order id is masked for operational mirrors", () => {
   const masked = maskOrderId("GPA.1234-5678-9012-34567");
   assert.equal(masked, "GPA.…4567");
 });
 
-test("RTDN notification types map only to supported finance lifecycle events", () => {
-  assert.equal(rtdnTransactionType(4), "purchase");
-  assert.equal(rtdnTransactionType(2), "renewal");
-  assert.equal(rtdnTransactionType(12), "reversal");
-  assert.equal(rtdnTransactionType(13), "expiration");
-  assert.equal(rtdnTransactionType(3), "cancellation");
-  assert.equal(rtdnTransactionType(6), null);
+test("RTDN maps only events represented by current finance vocabulary", () => {
+  assert.equal(rtdnFinanceTransactionType(4), "purchase");
+  assert.equal(rtdnFinanceTransactionType(2), "renewal");
+  assert.equal(rtdnFinanceTransactionType(12), "reversal");
+  assert.equal(rtdnFinanceTransactionType(13), null);
+  assert.equal(rtdnFinanceTransactionType(3), null);
+  assert.equal(rtdnFinanceTransactionType(6), null);
 });
