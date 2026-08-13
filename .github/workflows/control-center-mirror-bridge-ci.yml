@@ -36,3 +36,10 @@ jobs:
 
       - name: Run full Functions unit suite
         run: npm test
+
+      - name: Apply guarded billing rules patch in CI checkout
+        working-directory: .
+        run: node scripts/patch_billing_firestore_rules.mjs
+
+      - name: Run Firestore rules emulator suite
+        run: npm run test:rules
