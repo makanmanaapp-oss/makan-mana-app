@@ -94,3 +94,6 @@ export {expireCouponTrials} from "./scheduled/expireCouponTrials";
 // Phase 1.14A — callable pembetulan dipercayai (BELUM DI-DEPLOY; berpagar-pemilik).
 export {submitPlaceCorrection} from "./callable/submitPlaceCorrection";
 export {nextSuggestion} from "./callable/nextSuggestion";
+
+// Control Center — privacy-safe aggregate Place Coverage sync. Manual/read-only.
+export {syncPlaceCoverageToControlCenter} from "./controlCenter/placeCoverageSync";
