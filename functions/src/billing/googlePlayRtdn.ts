@@ -70,7 +70,7 @@ async function finishReceipt(
 
 export const handleGooglePlayRtdn = onMessagePublished(
   {
-    topic: "google-play-rtdn",
+    topic: "play-rtdn",
     secrets: [CONTROL_CENTER_SYNC_SECRET],
     timeoutSeconds: 120,
     memory: "256MiB",
