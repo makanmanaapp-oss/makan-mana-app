@@ -1,0 +1,35 @@
+name: Functions Control Center Sync CI
+
+on:
+  push:
+    branches:
+      - feature/control-center-ai-brain-sync
+  pull_request:
+    paths:
+      - "functions/**"
+      - ".github/workflows/functions-control-center-sync-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  functions:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: functions
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: TypeScript production build
+        run: npm run build
+      - name: Domain unit tests
+        run: npm test
