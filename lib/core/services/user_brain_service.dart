@@ -37,6 +37,9 @@ class UserBrainService {
         now.difference(_lastCall!) < _minGap) {
       return false; // terlalu kerap — langkau senyap
     }
+    // Tandakan in-flight awal supaya dua tindakan pantas tidak mencetus dua
+    // recalc serentak. Jika barrier/callable gagal, marker ini dibuka semula
+    // dalam catch supaya retry sebenar tidak terkunci selama 3 minit.
     _lastCall = now;
     try {
       // Phase 2.4A hardening — EventRepository.log() memang fire-and-forget,
@@ -58,7 +61,11 @@ class UserBrainService {
       // Kegagalan barrier/callable tidak boleh menjatuhkan aliran pengguna.
       // Jika write event belum di-ACK, recalc tidak dihantar. Ini lebih selamat
       // daripada mengira brain tanpa signal terbaru dan menganggap learning
-      // sudah berjaya.
+      // sudah berjaya. Buka semula throttle hanya jika marker masih milik call
+      // ini, supaya retry selepas kegagalan tidak disekat secara palsu.
+      if (_lastCall == now) {
+        _lastCall = null;
+      }
       debugPrint('MakanMana: recalculateUserBrain gagal: $e');
       return false;
     }
