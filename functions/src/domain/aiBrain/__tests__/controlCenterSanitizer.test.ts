@@ -60,11 +60,26 @@ test("Control Center AI Brain sanitizer clamps malformed numeric values", () => 
   const row = sanitizeAiBrainProfile(UID, {
     brainVersion: -3,
     confidence: {overall: 9},
+    preferredPriceLevel: 99,
     sourceEventCount: -20,
     sourceMealCount: Number.NaN,
   });
   assert.equal(row.brain_version, 0);
   assert.equal(row.confidence_overall, 1);
+  assert.equal(row.preferred_price_level, 4);
   assert.equal(row.source_event_count, 0);
   assert.equal(row.source_meal_count, 0);
+});
+
+test("Control Center AI Brain reset profile uses reset timestamp when last calculation is zero", () => {
+  const row = sanitizeAiBrainProfile(UID, {
+    brainVersion: 6,
+    insufficientData: true,
+    lastCalculatedAtMs: 0,
+    resetAtMs: 1_710_000_000_000,
+    resetBoundaryMs: 1_710_000_000_000,
+  });
+  assert.equal(row.last_calculated_at, undefined);
+  assert.equal(row.source_updated_at, "2024-03-09T16:00:00.000Z");
+  assert.equal(row.reset_boundary_at, "2024-03-09T16:00:00.000Z");
 });
