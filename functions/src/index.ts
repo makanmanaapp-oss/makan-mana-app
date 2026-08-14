@@ -95,7 +95,8 @@ export {expireCouponTrials} from "./scheduled/expireCouponTrials";
 export {submitPlaceCorrection} from "./callable/submitPlaceCorrection";
 export {nextSuggestion} from "./callable/nextSuggestion";
 
-// Control Center — privacy-safe, manual/read-only production sync bridges.
+// Control Center — privacy-safe production sync/control bridges.
 export {syncPlaceCoverageToControlCenter} from "./controlCenter/placeCoverageSync";
 export {syncAiBrainToControlCenter} from "./controlCenter/aiBrainSync";
 export {syncPlaceReferencesToControlCenter} from "./controlCenter/placeReferenceSync";
+export {controlCenterAiBrainAdminBridge} from "./controlCenter/aiBrainAdminBridge";
