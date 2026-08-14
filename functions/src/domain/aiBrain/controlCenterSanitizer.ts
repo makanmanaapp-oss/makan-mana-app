@@ -56,6 +56,14 @@ function isoFromMs(value: unknown): string | undefined {
   return ms === undefined ? undefined : new Date(ms).toISOString();
 }
 
+function firstIso(...values: unknown[]): string | undefined {
+  for (const value of values) {
+    const iso = isoFromMs(value);
+    if (iso) return iso;
+  }
+  return undefined;
+}
+
 /**
  * Stable non-reversible admin reference. Firebase UID never leaves the backend
  * in the operational profile mirror.
@@ -76,7 +84,12 @@ export function sanitizeAiBrainProfile(
   const confidence = data.confidence && typeof data.confidence === "object" && !Array.isArray(data.confidence)
     ? data.confidence as Record<string, unknown>
     : {};
-  const sourceUpdatedAt = isoFromMs(data.lastCalculatedAtMs ?? data.resetAtMs);
+  const sourceUpdatedAt = firstIso(
+    data.lastCalculatedAtMs,
+    data.lastCalculatedAt,
+    data.resetAtMs,
+    data.resetAt,
+  );
   const record: AiBrainControlCenterRecord = {
     user_ref: aiBrainUserRef(uid),
     brain_version: nonNegativeInt(data.brainVersion),
@@ -96,14 +109,16 @@ export function sanitizeAiBrainProfile(
   const preferredPrice = finiteNumber(data.preferredPriceLevel);
   const eventWindow = finiteNumber(data.eventWindowDays);
   const mealWindow = finiteNumber(data.mealWindowDays);
-  const lastCalculated = isoFromMs(data.lastCalculatedAtMs ?? data.lastCalculatedAt);
-  const resetBoundary = isoFromMs(data.resetBoundaryMs ?? data.resetAtMs);
+  const lastCalculated = firstIso(data.lastCalculatedAtMs, data.lastCalculatedAt);
+  const resetBoundary = firstIso(data.resetBoundaryMs, data.resetAtMs, data.resetAt);
 
   if (schemaVersion !== undefined) record.schema_version = Math.max(0, Math.trunc(schemaVersion));
   if (privacyVersion !== undefined) record.privacy_version = Math.max(0, Math.trunc(privacyVersion));
   if (overall !== undefined) record.confidence_overall = Math.max(0, Math.min(1, overall));
   if (preferredDistance !== undefined && preferredDistance >= 0) record.preferred_distance_km = preferredDistance;
-  if (preferredPrice !== undefined && preferredPrice >= 0) record.preferred_price_level = Math.trunc(preferredPrice);
+  if (preferredPrice !== undefined && preferredPrice >= 0) {
+    record.preferred_price_level = Math.max(0, Math.min(4, Math.trunc(preferredPrice)));
+  }
   if (eventWindow !== undefined && eventWindow > 0) record.event_window_days = Math.trunc(eventWindow);
   if (mealWindow !== undefined && mealWindow > 0) record.meal_window_days = Math.trunc(mealWindow);
   if (lastCalculated) record.last_calculated_at = lastCalculated;
