@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 
@@ -15,6 +16,14 @@ class UserBrainService {
   static DateTime? _lastCall;
   static const _minGap = Duration(minutes: 3);
 
+  /// Barrier pendek untuk memastikan semua write Firestore yang sudah di-queue
+  /// (terutamanya suggestion_reject + metadata.reason) sudah di-ACK pelayan
+  /// SEBELUM callable brain membaca koleksi `events`.
+  ///
+  /// Event biasa kekal fire-and-forget. Barrier ini hanya berada pada laluan
+  /// recalculate, jadi UX tidak menunggu analytics biasa.
+  static const _pendingWritesTimeout = Duration(seconds: 8);
+
   FirebaseFunctions get _functions =>
       FirebaseFunctions.instanceFor(region: AppConstants.functionsRegion);
 
@@ -30,6 +39,15 @@ class UserBrainService {
     }
     _lastCall = now;
     try {
+      // Phase 2.4A hardening — EventRepository.log() memang fire-and-forget,
+      // tetapi Firestore .add() sudah di-queue sebelum logEvent() kembali.
+      // Tunggu semua pending write itu diakui server sebelum recalc supaya
+      // suggestion_reject yang baru (cth. reason=too_far) tidak berlumba dengan
+      // query `events` di recalculateUserBrain.
+      await FirebaseFirestore.instance
+          .waitForPendingWrites()
+          .timeout(_pendingWritesTimeout);
+
       final callable = _functions.httpsCallable(
         'recalculateUserBrain',
         options: HttpsCallableOptions(timeout: const Duration(seconds: 20)),
@@ -37,7 +55,10 @@ class UserBrainService {
       await callable.call<Map<Object?, Object?>>({'force': force});
       return true;
     } catch (e) {
-      // Kegagalan tidak boleh menjatuhkan aliran pengguna.
+      // Kegagalan barrier/callable tidak boleh menjatuhkan aliran pengguna.
+      // Jika write event belum di-ACK, recalc tidak dihantar. Ini lebih selamat
+      // daripada mengira brain tanpa signal terbaru dan menganggap learning
+      // sudah berjaya.
       debugPrint('MakanMana: recalculateUserBrain gagal: $e');
       return false;
     }
