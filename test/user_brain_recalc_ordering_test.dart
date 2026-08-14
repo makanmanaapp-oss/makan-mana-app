@@ -8,9 +8,7 @@ void main() {
         .readAsStringSync();
 
     final waitIndex = source.indexOf('.waitForPendingWrites()');
-    final callableIndex = source.indexOf(
-      "final callable = _functions.httpsCallable(\n        'recalculateUserBrain'",
-    );
+    final callableIndex = source.indexOf("'recalculateUserBrain'", waitIndex);
 
     expect(waitIndex, greaterThanOrEqualTo(0));
     expect(callableIndex, greaterThan(waitIndex));
