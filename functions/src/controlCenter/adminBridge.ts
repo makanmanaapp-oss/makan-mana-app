@@ -16,7 +16,7 @@ import {
 import {aiBrainUserRef} from "../domain/aiBrain/controlCenterSanitizer";
 import {normalizeLower, normalizeUsernameLower} from "../domain/peopleSearch/normalize";
 
-const FIREBASE_ADMIN_BRIDGE_SECRET = defineSecret("FIREBASE_ADMIN_BRIDGE_SECRET");
+const CONTROL_CENTER_ADMIN_BRIDGE_SECRET = defineSecret("CONTROL_CENTER_ADMIN_BRIDGE_SECRET");
 const LEDGER = "control_center_admin_commands";
 const BRAIN = "user_brain_profiles";
 const USERNAME_RE = /^[a-z0-9_.]{3,20}$/;
@@ -701,7 +701,7 @@ async function execute(commandType: string, resourceType: string, resourceId: st
 export const controlCenterAdminBridge = onRequest(
   {
     invoker: "public",
-    secrets: [FIREBASE_ADMIN_BRIDGE_SECRET],
+    secrets: [CONTROL_CENTER_ADMIN_BRIDGE_SECRET],
     timeoutSeconds: 540,
     memory: "1GiB",
     maxInstances: 2,
@@ -711,7 +711,7 @@ export const controlCenterAdminBridge = onRequest(
       response.status(405).json({message: "POST required."});
       return;
     }
-    const secret = FIREBASE_ADMIN_BRIDGE_SECRET.value();
+    const secret = CONTROL_CENTER_ADMIN_BRIDGE_SECRET.value();
     const presented = tokenFrom(request.header("authorization"));
     if (!secret || !presented || !secretMatches(presented, secret)) {
       response.status(401).json({message: "Unauthorized admin bridge request."});
