@@ -101,3 +101,4 @@ export {syncAiBrainToControlCenter} from "./controlCenter/aiBrainSync";
 export {syncPlaceReferencesToControlCenter} from "./controlCenter/placeReferenceSync";
 export {syncSubscriptionsToControlCenter} from "./controlCenter/subscriptionSync";
 export {controlCenterAiBrainAdminBridge} from "./controlCenter/aiBrainAdminBridge";
+export {controlCenterAdminBridge} from "./controlCenter/adminBridge";
