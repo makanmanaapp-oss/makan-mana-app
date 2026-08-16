@@ -158,6 +158,7 @@ async function pushBatch(records: JsonRecord[], secret: string): Promise<void> {
  */
 export const syncSubscriptionsToControlCenter = onRequest(
   {
+    invoker: "public",
     secrets: [CONTROL_CENTER_SYNC_SECRET],
     timeoutSeconds: 540,
     memory: "512MiB",
