@@ -5,7 +5,7 @@ import {FieldPath} from "firebase-admin/firestore";
 import {defineSecret} from "firebase-functions/params";
 import {onRequest} from "firebase-functions/v2/https";
 
-import {db, FieldValue, Timestamp} from "../config/firebase";
+import {db, FieldValue} from "../config/firebase";
 import {
   BRAIN_SCHEMA_VERSION,
   BrainEvent,
@@ -17,17 +17,13 @@ import {aiBrainUserRef} from "../domain/aiBrain/controlCenterSanitizer";
 import {normalizeLower, normalizeUsernameLower} from "../domain/peopleSearch/normalize";
 
 const FIREBASE_ADMIN_BRIDGE_SECRET = defineSecret("FIREBASE_ADMIN_BRIDGE_SECRET");
-
-const COMMAND_LEDGER = "control_center_admin_commands";
-const BRAIN_COLLECTION = "user_brain_profiles";
+const LEDGER = "control_center_admin_commands";
+const BRAIN = "user_brain_profiles";
 const USERNAME_RE = /^[a-z0-9_.]{3,20}$/;
-const EVENT_WINDOW_DAYS = 30;
-const MEAL_WINDOW_DAYS = 60;
-const BRAIN_LOCK_MS = 60_000;
 const COMMAND_STALE_MS = 120_000;
-const UID_LOOKUP_PAGE_SIZE = 200;
-const UID_LOOKUP_MAX_PAGES = 100;
+const BRAIN_LOCK_MS = 60_000;
 
+type Plain = Record<string, unknown>;
 type CommandBody = {
   requestId?: unknown;
   commandType?: unknown;
@@ -37,8 +33,6 @@ type CommandBody = {
   reason?: unknown;
 };
 
-type Plain = Record<string, unknown>;
-
 class BridgeError extends Error {
   constructor(public readonly status: number, message: string) {
     super(message);
@@ -46,41 +40,21 @@ class BridgeError extends Error {
   }
 }
 
-function sha256(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
-}
-
-function bearerToken(header: string | undefined): string {
-  if (!header?.startsWith("Bearer ")) return "";
-  return header.slice(7).trim();
-}
-
-function safeEqual(left: string, right: string): boolean {
-  const a = Buffer.from(left);
-  const b = Buffer.from(right);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
+const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 
 function requiredText(value: unknown, label: string, max = 200): string {
-  if (typeof value !== "string" || !value.trim()) {
-    throw new BridgeError(400, `${label} is required.`);
-  }
+  if (typeof value !== "string" || !value.trim()) throw new BridgeError(400, `${label} is required.`);
   return value.trim().slice(0, max);
 }
 
 function optionalText(value: unknown, max = 1000): string | null {
   if (typeof value !== "string") return null;
-  const trimmed = value.trim();
-  return trimmed ? trimmed.slice(0, max) : null;
+  const text = value.trim();
+  return text ? text.slice(0, max) : null;
 }
 
-function plainObject(value: unknown): Plain {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
-  return value as Plain;
-}
-
-function finiteNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
+function objectValue(value: unknown): Plain {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Plain : {};
 }
 
 function toMs(value: unknown, fallback: number): number {
@@ -95,11 +69,21 @@ function toMs(value: unknown, fallback: number): number {
   return fallback;
 }
 
-function commandLedgerId(requestId: string): string {
-  return sha256(requestId);
+function finite(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-async function acquireCommand(params: {
+function tokenFrom(header: string | undefined): string {
+  return header?.startsWith("Bearer ") ? header.slice(7).trim() : "";
+}
+
+function secretMatches(left: string, right: string): boolean {
+  const a = Buffer.from(left);
+  const b = Buffer.from(right);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+async function acquire(body: {
   requestId: string;
   commandType: string;
   resourceType: string;
@@ -107,23 +91,21 @@ async function acquireCommand(params: {
   reason: string;
 }): Promise<Plain | null> {
   const now = Date.now();
-  const ref = db.collection(COMMAND_LEDGER).doc(commandLedgerId(params.requestId));
+  const ref = db.collection(LEDGER).doc(hash(body.requestId));
   return db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
-    const existing = (snap.data() ?? {}) as Plain;
-    if (snap.exists && existing.status === "succeeded") {
-      return plainObject(existing.result);
-    }
-    const startedAtMs = typeof existing.startedAtMs === "number" ? existing.startedAtMs : 0;
-    if (snap.exists && existing.status === "processing" && now - startedAtMs < COMMAND_STALE_MS) {
+    const old = (snap.data() ?? {}) as Plain;
+    if (old.status === "succeeded") return objectValue(old.result);
+    const started = typeof old.startedAtMs === "number" ? old.startedAtMs : 0;
+    if (old.status === "processing" && now - started < COMMAND_STALE_MS) {
       throw new BridgeError(425, "Command is already processing; retry later.");
     }
     tx.set(ref, {
-      requestIdHash: sha256(params.requestId),
-      commandType: params.commandType,
-      resourceType: params.resourceType,
-      resourceIdHash: sha256(params.resourceId),
-      reasonHash: sha256(params.reason),
+      requestIdHash: hash(body.requestId),
+      commandType: body.commandType,
+      resourceType: body.resourceType,
+      resourceIdHash: hash(body.resourceId),
+      reasonHash: hash(body.reason),
       status: "processing",
       startedAtMs: now,
       startedAt: FieldValue.serverTimestamp(),
@@ -134,8 +116,8 @@ async function acquireCommand(params: {
   });
 }
 
-async function markCommandSucceeded(requestId: string, result: Plain): Promise<void> {
-  await db.collection(COMMAND_LEDGER).doc(commandLedgerId(requestId)).set({
+async function succeed(requestId: string, result: Plain) {
+  await db.collection(LEDGER).doc(hash(requestId)).set({
     status: "succeeded",
     result,
     completedAtMs: Date.now(),
@@ -144,18 +126,17 @@ async function markCommandSucceeded(requestId: string, result: Plain): Promise<v
   }, {merge: true});
 }
 
-async function markCommandFailed(requestId: string, error: unknown): Promise<void> {
-  const message = error instanceof Error ? error.message.slice(0, 500) : "unknown";
-  await db.collection(COMMAND_LEDGER).doc(commandLedgerId(requestId)).set({
+async function fail(requestId: string, error: unknown) {
+  await db.collection(LEDGER).doc(hash(requestId)).set({
     status: "failed",
-    errorMessage: message,
+    errorMessage: error instanceof Error ? error.message.slice(0, 500) : "unknown",
     failedAtMs: Date.now(),
     failedAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   }, {merge: true}).catch(() => undefined);
 }
 
-async function changeUserStatus(uid: string, payload: Plain, requestId: string): Promise<Plain> {
+async function userStatus(uid: string, payload: Plain, requestId: string): Promise<Plain> {
   const status = requiredText(payload.status, "payload.status", 40);
   if (!["active", "suspended", "banned", "deletion_pending"].includes(status)) {
     throw new BridgeError(400, "Unsupported user status.");
@@ -163,8 +144,9 @@ async function changeUserStatus(uid: string, payload: Plain, requestId: string):
   try {
     await getAuth().updateUser(uid, {disabled: status !== "active"});
   } catch (error) {
-    const code = (error as {code?: string}).code ?? "";
-    if (code.includes("user-not-found")) throw new BridgeError(404, "Firebase Auth user was not found.");
+    if (((error as {code?: string}).code ?? "").includes("user-not-found")) {
+      throw new BridgeError(404, "Firebase Auth user was not found.");
+    }
     throw error;
   }
   await db.collection("users").doc(uid).set({
@@ -177,35 +159,31 @@ async function changeUserStatus(uid: string, payload: Plain, requestId: string):
   return {status, authDisabled: status !== "active"};
 }
 
-async function updateUserProfile(uid: string, payload: Plain, requestId: string): Promise<Plain> {
+async function userProfile(uid: string, payload: Plain, requestId: string): Promise<Plain> {
   const displayName = optionalText(payload.displayName, 30);
-  const usernameRaw = optionalText(payload.username, 20);
-  const username = usernameRaw ? normalizeUsernameLower(usernameRaw) : null;
+  const rawUsername = optionalText(payload.username, 20);
+  const username = rawUsername ? normalizeUsernameLower(rawUsername) : null;
   if (!displayName && !username) throw new BridgeError(400, "At least one profile field is required.");
-  if (username && !USERNAME_RE.test(username)) {
-    throw new BridgeError(400, "Username must be 3-20 lowercase letters, numbers, dots or underscores.");
-  }
+  if (username && !USERNAME_RE.test(username)) throw new BridgeError(400, "Invalid username format.");
 
   const userRef = db.collection("users").doc(uid);
   const publicRef = db.collection("public_profiles").doc(uid);
   await db.runTransaction(async (tx) => {
-    const userSnap = await tx.get(userRef);
-    if (!userSnap.exists) throw new BridgeError(404, "User profile was not found.");
-    const oldUsername = optionalText(userSnap.data()?.username, 20) ?? "";
+    const snap = await tx.get(userRef);
+    if (!snap.exists) throw new BridgeError(404, "User profile was not found.");
+    const oldUsername = optionalText(snap.data()?.username, 20) ?? "";
     if (username && username !== oldUsername) {
-      const usernameRef = db.collection("usernames").doc(username);
-      const usernameSnap = await tx.get(usernameRef);
-      if (usernameSnap.exists && usernameSnap.data()?.uid !== uid) {
-        throw new BridgeError(409, "Username is already taken.");
-      }
-      tx.set(usernameRef, {uid, claimedAt: FieldValue.serverTimestamp()});
+      const newRef = db.collection("usernames").doc(username);
+      const newSnap = await tx.get(newRef);
+      if (newSnap.exists && newSnap.data()?.uid !== uid) throw new BridgeError(409, "Username is already taken.");
+      tx.set(newRef, {uid, claimedAt: FieldValue.serverTimestamp()});
       if (oldUsername) tx.delete(db.collection("usernames").doc(oldUsername));
     }
     const shared: Plain = {
       ...(displayName ? {displayName} : {}),
       ...(username ? {username} : {}),
-      updatedAt: FieldValue.serverTimestamp(),
       controlCenterProfileRequestId: requestId,
+      updatedAt: FieldValue.serverTimestamp(),
     };
     tx.set(userRef, shared, {merge: true});
     tx.set(publicRef, {
@@ -218,17 +196,15 @@ async function updateUserProfile(uid: string, payload: Plain, requestId: string)
   return {displayNameUpdated: Boolean(displayName), usernameUpdated: Boolean(username)};
 }
 
-async function moderatePost(postId: string, commandType: string, requestId: string): Promise<Plain> {
+async function socialPost(postId: string, commandType: string, requestId: string): Promise<Plain> {
   const action = commandType.replace("social.post.", "");
-  if (!["hide", "remove", "restore"].includes(action)) throw new BridgeError(400, "Unsupported social action.");
   const ref = db.collection("feed_posts").doc(postId);
   return db.runTransaction(async (tx) => {
     const snap = await tx.get(ref);
     if (!snap.exists) throw new BridgeError(404, "Post was not found.");
     const data = (snap.data() ?? {}) as Plain;
-    if (data.controlCenterModerationRequestId === requestId) {
-      return {action, idempotent: true};
-    }
+    if (data.controlCenterModerationRequestId === requestId) return {action, idempotent: true};
+
     if (action === "restore") {
       const previousStatus = data.controlCenterPreviousStatus;
       const previousVisibility = data.controlCenterPreviousVisibility;
@@ -249,17 +225,17 @@ async function moderatePost(postId: string, commandType: string, requestId: stri
       return {action, restored: true};
     }
 
+    if (action !== "hide" && action !== "remove") throw new BridgeError(400, "Unsupported social action.");
     const update: Plain = {
       moderationStatus: action === "hide" ? "hidden" : "removed",
       controlCenterModerationAction: action,
       controlCenterModerationRequestId: requestId,
       controlCenterModeratedAt: FieldValue.serverTimestamp(),
+      ...(data.controlCenterPreviousStatus === undefined ? {controlCenterPreviousStatus: data.status ?? "active"} : {}),
+      ...(data.controlCenterPreviousVisibility === undefined ? {controlCenterPreviousVisibility: data.visibility ?? "public"} : {}),
     };
-    if (data.controlCenterPreviousStatus === undefined) update.controlCenterPreviousStatus = data.status ?? "active";
-    if (data.controlCenterPreviousVisibility === undefined) update.controlCenterPreviousVisibility = data.visibility ?? "public";
-    if (action === "hide") {
-      update.visibility = "private";
-    } else {
+    if (action === "hide") update.visibility = "private";
+    if (action === "remove") {
       update.status = "deleted";
       update.deletedAt = FieldValue.serverTimestamp();
     }
@@ -268,40 +244,34 @@ async function moderatePost(postId: string, commandType: string, requestId: stri
   });
 }
 
-async function resolveCanonicalId(placeId: string): Promise<string> {
-  const registry = await db.collection("place_registry").doc(placeId).get();
-  if (registry.exists) return placeId;
+async function canonicalId(placeId: string): Promise<string> {
+  if ((await db.collection("place_registry").doc(placeId).get()).exists) return placeId;
   const alias = await db.collection("place_migration_aliases").doc(placeId).get();
-  const canonical = optionalText(alias.data()?.canonicalPlaceId, 240);
-  if (canonical) return canonical;
-  throw new BridgeError(404, "Canonical place was not found.");
+  const target = optionalText(alias.data()?.canonicalPlaceId, 240);
+  if (!target) throw new BridgeError(404, "Canonical place was not found.");
+  return target;
 }
 
-function publicationId(requestId: string): string {
-  return `CCPUB-${sha256(requestId).slice(0, 24)}`;
-}
+const ccPubId = (requestId: string) => `CCPUB-${hash(requestId).slice(0, 24)}`;
 
-async function archiveCanonicalPlace(placeId: string, requestId: string): Promise<Plain> {
-  const canonicalId = await resolveCanonicalId(placeId);
-  const registryRef = db.collection("place_registry").doc(canonicalId);
-  const headRef = db.collection("place_publication_heads").doc(canonicalId);
-  const newPublicationId = publicationId(requestId);
-  const newPubRef = db.collection("place_publications").doc(newPublicationId);
+async function placeArchive(placeId: string, requestId: string): Promise<Plain> {
+  const id = await canonicalId(placeId);
+  const registryRef = db.collection("place_registry").doc(id);
+  const headRef = db.collection("place_publication_heads").doc(id);
+  const newId = ccPubId(requestId);
   await db.runTransaction(async (tx) => {
-    const [registrySnap, headSnap] = await Promise.all([tx.get(registryRef), tx.get(headRef)]);
-    if (!registrySnap.exists || !headSnap.exists) throw new BridgeError(404, "Active canonical place was not found.");
-    const activePublicationId = optionalText(headSnap.data()?.activePublicationId, 240);
-    if (!activePublicationId) throw new BridgeError(409, "Place has no active publication.");
-    const activeRef = db.collection("place_publications").doc(activePublicationId);
-    const activeSnap = await tx.get(activeRef);
-    if (!activeSnap.exists) throw new BridgeError(409, "Active publication was not found.");
-    const active = (activeSnap.data() ?? {}) as Plain;
-    const version = typeof active.versionNumber === "number" ? active.versionNumber + 1 : 2;
-    tx.create(newPubRef, {
-      ...active,
-      publicationId: newPublicationId,
-      placeId: canonicalId,
-      versionNumber: version,
+    const [registry, head] = await Promise.all([tx.get(registryRef), tx.get(headRef)]);
+    if (!registry.exists || !head.exists) throw new BridgeError(404, "Active canonical place was not found.");
+    const activeId = optionalText(head.data()?.activePublicationId, 240);
+    if (!activeId) throw new BridgeError(409, "Place has no active publication.");
+    const active = await tx.get(db.collection("place_publications").doc(activeId));
+    if (!active.exists) throw new BridgeError(409, "Active publication was not found.");
+    const old = (active.data() ?? {}) as Plain;
+    tx.create(db.collection("place_publications").doc(newId), {
+      ...old,
+      publicationId: newId,
+      placeId: id,
+      versionNumber: typeof old.versionNumber === "number" ? old.versionNumber + 1 : 2,
       blocked: true,
       publicationStatus: "published",
       controlCenterLifecycleStatus: "archived",
@@ -309,58 +279,51 @@ async function archiveCanonicalPlace(placeId: string, requestId: string): Promis
       publishedAt: Date.now(),
       createdAt: Date.now(),
     });
-    tx.set(headRef, {activePublicationId: newPublicationId, updatedAt: Date.now()}, {merge: true});
-    tx.set(registryRef, {
-      lifecycleStatus: "archived",
-      archivedAt: Date.now(),
-      controlCenterRequestId: requestId,
-    }, {merge: true});
-    tx.set(db.collection("place_migration_audit").doc(`cc_archive_${sha256(requestId).slice(0, 24)}`), {
+    tx.set(headRef, {activePublicationId: newId, updatedAt: Date.now()}, {merge: true});
+    tx.set(registryRef, {lifecycleStatus: "archived", archivedAt: Date.now(), controlCenterRequestId: requestId}, {merge: true});
+    tx.set(db.collection("place_migration_audit").doc(`cc_archive_${hash(requestId).slice(0, 24)}`), {
       type: "control_center_archive",
-      canonicalPlaceId: canonicalId,
-      fromPublicationId: activePublicationId,
-      toPublicationId: newPublicationId,
-      requestIdHash: sha256(requestId),
+      canonicalPlaceId: id,
+      fromPublicationId: activeId,
+      toPublicationId: newId,
+      requestIdHash: hash(requestId),
       at: FieldValue.serverTimestamp(),
     });
   });
-  return {canonicalPlaceId: canonicalId, archived: true, activePublicationId: newPublicationId};
+  return {canonicalPlaceId: id, archived: true, activePublicationId: newId};
 }
 
-async function mergeCanonicalPlaces(sourceId: string, payload: Plain, requestId: string): Promise<Plain> {
+async function placeMerge(sourceRaw: string, payload: Plain, requestId: string): Promise<Plain> {
   const targetRaw = requiredText(payload.targetPlaceId, "payload.targetPlaceId", 240);
-  const [source, target] = await Promise.all([resolveCanonicalId(sourceId), resolveCanonicalId(targetRaw)]);
-  if (source === target) throw new BridgeError(400, "Source and target canonical place cannot be the same.");
-
+  const [source, target] = await Promise.all([canonicalId(sourceRaw), canonicalId(targetRaw)]);
+  if (source === target) throw new BridgeError(400, "Source and target cannot be the same.");
+  const aliases = await db.collection("place_migration_aliases").where("canonicalPlaceId", "==", source).get();
+  if (aliases.size > 450) throw new BridgeError(409, "Merge has too many aliases for one atomic operation.");
   const sourceRef = db.collection("place_registry").doc(source);
   const targetRef = db.collection("place_registry").doc(target);
   const sourceHeadRef = db.collection("place_publication_heads").doc(source);
   const targetHeadRef = db.collection("place_publication_heads").doc(target);
-  const aliasesQuery = db.collection("place_migration_aliases").where("canonicalPlaceId", "==", source);
-  const aliasesSnap = await aliasesQuery.get();
-  if (aliasesSnap.size > 450) throw new BridgeError(409, "Merge has too many aliases for one atomic operation.");
-  const archivedPublicationId = publicationId(requestId);
+  const archivedPubId = ccPubId(requestId);
 
   await db.runTransaction(async (tx) => {
-    const [sourceSnap, targetSnap, sourceHeadSnap, targetHeadSnap] = await Promise.all([
+    const [sourceSnap, targetSnap, sourceHead, targetHead] = await Promise.all([
       tx.get(sourceRef), tx.get(targetRef), tx.get(sourceHeadRef), tx.get(targetHeadRef),
     ]);
     if (!sourceSnap.exists || !targetSnap.exists) throw new BridgeError(404, "Source or target place was not found.");
     if (sourceSnap.data()?.mergedIntoCanonicalPlaceId === target) return;
-    const targetActiveId = optionalText(targetHeadSnap.data()?.activePublicationId, 240);
+    const targetActiveId = optionalText(targetHead.data()?.activePublicationId, 240);
     if (!targetActiveId) throw new BridgeError(409, "Target place has no active publication.");
     const targetActive = await tx.get(db.collection("place_publications").doc(targetActiveId));
     if (!targetActive.exists || targetActive.data()?.blocked === true) throw new BridgeError(409, "Target place is not active.");
 
-    const sourceActiveId = optionalText(sourceHeadSnap.data()?.activePublicationId, 240);
+    const sourceActiveId = optionalText(sourceHead.data()?.activePublicationId, 240);
     if (sourceActiveId) {
-      const sourceActiveRef = db.collection("place_publications").doc(sourceActiveId);
-      const sourceActive = await tx.get(sourceActiveRef);
+      const sourceActive = await tx.get(db.collection("place_publications").doc(sourceActiveId));
       if (sourceActive.exists) {
         const old = (sourceActive.data() ?? {}) as Plain;
-        tx.create(db.collection("place_publications").doc(archivedPublicationId), {
+        tx.create(db.collection("place_publications").doc(archivedPubId), {
           ...old,
-          publicationId: archivedPublicationId,
+          publicationId: archivedPubId,
           placeId: source,
           versionNumber: typeof old.versionNumber === "number" ? old.versionNumber + 1 : 2,
           blocked: true,
@@ -371,11 +334,10 @@ async function mergeCanonicalPlaces(sourceId: string, payload: Plain, requestId:
           publishedAt: Date.now(),
           createdAt: Date.now(),
         });
-        tx.set(sourceHeadRef, {activePublicationId: archivedPublicationId, updatedAt: Date.now()}, {merge: true});
+        tx.set(sourceHeadRef, {activePublicationId: archivedPubId, updatedAt: Date.now()}, {merge: true});
       }
     }
-
-    for (const alias of aliasesSnap.docs) {
+    for (const alias of aliases.docs) {
       tx.set(alias.ref, {canonicalPlaceId: target, mergedFromCanonicalPlaceId: source, updatedAt: Date.now()}, {merge: true});
     }
     tx.set(db.collection("place_migration_aliases").doc(source), {
@@ -391,50 +353,44 @@ async function mergeCanonicalPlaces(sourceId: string, payload: Plain, requestId:
       mergedAt: Date.now(),
       controlCenterRequestId: requestId,
     }, {merge: true});
-    tx.set(db.collection("place_migration_audit").doc(`cc_merge_${sha256(requestId).slice(0, 24)}`), {
+    tx.set(db.collection("place_migration_audit").doc(`cc_merge_${hash(requestId).slice(0, 24)}`), {
       type: "control_center_merge",
       sourceCanonicalPlaceId: source,
       targetCanonicalPlaceId: target,
-      aliasesRepointed: aliasesSnap.size,
-      requestIdHash: sha256(requestId),
+      aliasesRepointed: aliases.size,
+      requestIdHash: hash(requestId),
       at: FieldValue.serverTimestamp(),
     });
   });
-
-  return {sourceCanonicalPlaceId: source, targetCanonicalPlaceId: target, aliasesRepointed: aliasesSnap.size};
+  return {sourceCanonicalPlaceId: source, targetCanonicalPlaceId: target, aliasesRepointed: aliases.size};
 }
 
-async function publishFromStaging(stagingId: string, payload: Plain, requestId: string): Promise<Plain> {
+async function placePublish(stagingId: string, payload: Plain, requestId: string): Promise<Plain> {
   const name = requiredText(payload.name, "payload.name", 240);
   const address = optionalText(payload.address, 1000);
-  const lat = finiteNumber(payload.latitude);
-  const lng = finiteNumber(payload.longitude);
+  const lat = finite(payload.latitude);
+  const lng = finite(payload.longitude);
   if (lat === null || lng === null || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-    throw new BridgeError(400, "Approved staging place requires valid latitude and longitude.");
+    throw new BridgeError(400, "Approved staging place requires valid coordinates.");
   }
   if (payload.reviewStatus !== "approved") throw new BridgeError(409, "Only approved staging records may be published.");
-
   const sourceType = optionalText(payload.sourceType, 80) ?? "admin_manual";
   const sourceReference = optionalText(payload.sourceReference, 500);
-  const providerPlaceId = optionalText(payload.providerPlaceId, 240) ??
-    (sourceType.includes("google") ? sourceReference : null);
-  const identityKey = providerPlaceId ? `provider:${providerPlaceId}` : `control_center_staging:${stagingId}`;
-  const canonicalId = `CCP-${sha256(identityKey).slice(0, 32)}`;
-  const pubId = publicationId(requestId);
+  const providerPlaceId = optionalText(payload.providerPlaceId, 240) ?? (sourceType.includes("google") ? sourceReference : null);
+  const identity = providerPlaceId ? `provider:${providerPlaceId}` : `control_center_staging:${stagingId}`;
+  const id = `CCP-${hash(identity).slice(0, 32)}`;
+  const pubId = ccPubId(requestId);
   const now = Date.now();
-  const registryRef = db.collection("place_registry").doc(canonicalId);
-  const pubRef = db.collection("place_publications").doc(pubId);
-  const headRef = db.collection("place_publication_heads").doc(canonicalId);
+  const registryRef = db.collection("place_registry").doc(id);
 
   await db.runTransaction(async (tx) => {
-    const registrySnap = await tx.get(registryRef);
-    if (registrySnap.exists) {
-      const existingSource = optionalText(registrySnap.data()?.controlCenterStagingId, 120);
-      if (existingSource !== stagingId) throw new BridgeError(409, "Canonical identity already exists from another source.");
+    const registry = await tx.get(registryRef);
+    if (registry.exists && registry.data()?.controlCenterStagingId !== stagingId) {
+      throw new BridgeError(409, "Canonical identity already exists from another source.");
     }
-    const contentHash = sha256(JSON.stringify({canonicalId, name, address, lat, lng, sourceType, sourceReference}));
+    const contentHash = hash(JSON.stringify({id, name, address, lat, lng, sourceType, sourceReference}));
     tx.set(registryRef, {
-      canonicalPlaceId: canonicalId,
+      canonicalPlaceId: id,
       ...(providerPlaceId ? {providerPlaceId} : {}),
       displayName: name,
       lat,
@@ -451,9 +407,9 @@ async function publishFromStaging(stagingId: string, payload: Plain, requestId: 
       createdAt: now,
       updatedAt: now,
     }, {merge: true});
-    tx.create(pubRef, {
+    tx.create(db.collection("place_publications").doc(pubId), {
       publicationId: pubId,
-      placeId: canonicalId,
+      placeId: id,
       versionNumber: 1,
       title: name,
       address,
@@ -474,51 +430,47 @@ async function publishFromStaging(stagingId: string, payload: Plain, requestId: 
       createdAt: now,
       controlCenterRequestId: requestId,
     });
-    tx.set(headRef, {placeId: canonicalId, activePublicationId: pubId, updatedAt: now}, {merge: true});
+    tx.set(db.collection("place_publication_heads").doc(id), {placeId: id, activePublicationId: pubId, updatedAt: now}, {merge: true});
     if (providerPlaceId) {
       tx.set(db.collection("place_migration_aliases").doc(providerPlaceId), {
-        canonicalPlaceId: canonicalId,
+        canonicalPlaceId: id,
         aliasType: "provider_place_id",
         status: "active",
         createdAt: now,
         controlCenterRequestId: requestId,
       }, {merge: true});
     }
-    tx.set(db.collection("place_migration_audit").doc(`cc_publish_${sha256(requestId).slice(0, 24)}`), {
+    tx.set(db.collection("place_migration_audit").doc(`cc_publish_${hash(requestId).slice(0, 24)}`), {
       type: "control_center_publish_from_staging",
       stagingId,
-      canonicalPlaceId: canonicalId,
+      canonicalPlaceId: id,
       publicationId: pubId,
-      requestIdHash: sha256(requestId),
+      requestIdHash: hash(requestId),
       at: FieldValue.serverTimestamp(),
     });
   });
-  return {stagingId, canonicalPlaceId: canonicalId, publicationId: pubId, published: true};
+  return {stagingId, canonicalPlaceId: id, publicationId: pubId, published: true};
 }
 
-async function subscriptionAction(uid: string, commandType: string, requestId: string): Promise<Plain> {
+async function subscription(uid: string, commandType: string, requestId: string): Promise<Plain> {
   const action = commandType.replace("subscription.", "");
-  if (!["force_sync", "cancel", "restore_entitlement"].includes(action)) {
-    throw new BridgeError(400, "Unsupported subscription action.");
-  }
   const ref = db.collection("users").doc(uid);
   const snap = await ref.get();
   if (!snap.exists) throw new BridgeError(404, "Subscription user was not found.");
   const data = (snap.data() ?? {}) as Plain;
   const source = optionalText(data.planSource, 80) ?? "legacy";
   const plan = optionalText(data.plan, 40) ?? "free";
-
   if (source === "google_play") {
-    throw new BridgeError(409, "Google Play admin mutation requires an authoritative purchase token; no raw token is retained by the current backend.");
+    throw new BridgeError(409, "Google Play mutation requires the authoritative raw purchase token, which the current backend intentionally does not retain.");
   }
-
   const now = Date.now();
-  const expiresAtMs = toMs(data.couponExpiresAt, Number.MAX_SAFE_INTEGER);
+  const expiry = toMs(data.couponExpiresAt, Number.MAX_SAFE_INTEGER);
+
   if (action === "force_sync") {
-    if (source === "coupon" && expiresAtMs <= now) {
-      const restorePlan = optionalText(data.planBeforeCoupon, 40) ?? "free";
+    if (source === "coupon" && expiry <= now) {
+      const restored = optionalText(data.planBeforeCoupon, 40) ?? "free";
       await ref.set({
-        plan: restorePlan,
+        plan: restored,
         planSource: "expired_coupon",
         couponStatus: "expired",
         controlCenterSubscriptionRequestId: requestId,
@@ -526,16 +478,16 @@ async function subscriptionAction(uid: string, commandType: string, requestId: s
       }, {merge: true});
       const code = optionalText(data.couponCode, 100);
       if (code) await db.collection("coupon_redemptions").doc(`${uid}_${code}`).set({status: "expired"}, {merge: true});
-      return {source: "coupon", changed: true, plan: restorePlan, status: "expired"};
+      return {source: "coupon", changed: true, plan: restored, status: "expired"};
     }
     return {source, changed: false, plan, status: optionalText(data.couponStatus, 40) ?? "unknown"};
   }
 
   if (action === "cancel") {
     if (source === "coupon") {
-      const restorePlan = optionalText(data.planBeforeCoupon, 40) ?? "free";
+      const restored = optionalText(data.planBeforeCoupon, 40) ?? "free";
       await ref.set({
-        plan: restorePlan,
+        plan: restored,
         planSource: "expired_coupon",
         couponStatus: "cancelled",
         couponCancelledAt: FieldValue.serverTimestamp(),
@@ -544,7 +496,7 @@ async function subscriptionAction(uid: string, commandType: string, requestId: s
       }, {merge: true});
       const code = optionalText(data.couponCode, 100);
       if (code) await db.collection("coupon_redemptions").doc(`${uid}_${code}`).set({status: "cancelled"}, {merge: true});
-      return {source: "coupon", cancelled: true, plan: restorePlan};
+      return {source: "coupon", cancelled: true, plan: restored};
     }
     if (source === "mock") {
       await ref.set({
@@ -556,102 +508,103 @@ async function subscriptionAction(uid: string, commandType: string, requestId: s
       }, {merge: true});
       return {source: "mock", cancelled: true, plan: "free"};
     }
-    throw new BridgeError(409, "This entitlement source cannot be cancelled authoritatively by Control Center.");
+    throw new BridgeError(409, "This entitlement source cannot be cancelled authoritatively.");
   }
 
-  if (source === "coupon" && expiresAtMs > now) {
-    return {source: "coupon", restored: false, alreadyActive: true, plan};
+  if (action === "restore_entitlement") {
+    if (source === "coupon" && expiry > now) return {source: "coupon", restored: false, alreadyActive: true, plan};
+    throw new BridgeError(409, "Entitlement cannot be restored without a currently valid authoritative source.");
   }
-  throw new BridgeError(409, "Entitlement cannot be restored without a currently valid authoritative source.");
+  throw new BridgeError(400, "Unsupported subscription action.");
 }
 
-async function resolveAiBrainUid(userRef: string): Promise<string> {
+async function brainUid(userRef: string): Promise<string> {
   let cursor: string | undefined;
-  for (let page = 0; page < UID_LOOKUP_MAX_PAGES; page++) {
-    let query = db.collection(BRAIN_COLLECTION).orderBy(FieldPath.documentId()).limit(UID_LOOKUP_PAGE_SIZE);
+  for (let page = 0; page < 100; page++) {
+    let query = db.collection(BRAIN).orderBy(FieldPath.documentId()).limit(200);
     if (cursor) query = query.startAfter(cursor);
     const snapshot = await query.get();
     if (snapshot.empty) break;
     for (const doc of snapshot.docs) if (aiBrainUserRef(doc.id) === userRef) return doc.id;
     cursor = snapshot.docs[snapshot.docs.length - 1].id;
-    if (snapshot.size < UID_LOOKUP_PAGE_SIZE) break;
+    if (snapshot.size < 200) break;
   }
   throw new BridgeError(404, "AI Brain user reference was not found.");
 }
 
-async function recalculateAiBrain(uid: string, requestId: string): Promise<Plain> {
+async function brainRecalculate(uid: string, requestId: string): Promise<Plain> {
   const now = Date.now();
-  const brainRef = db.collection(BRAIN_COLLECTION).doc(uid);
+  const ref = db.collection(BRAIN).doc(uid);
   const gate = await db.runTransaction(async (tx) => {
-    const snap = await tx.get(brainRef);
+    const snap = await tx.get(ref);
     const old = (snap.data() ?? {}) as Plain;
     if (old.lastControlCenterRecalcRequestId === requestId) {
-      return {idempotent: true, brainVersion: typeof old.brainVersion === "number" ? old.brainVersion : 0};
+      return {done: true, version: typeof old.brainVersion === "number" ? old.brainVersion : 0};
     }
     const lockUntil = typeof old.recalcLockUntil === "number" ? old.recalcLockUntil : 0;
-    if (now < lockUntil) throw new BridgeError(425, "AI Brain recalculation is currently locked; retry later.");
-    tx.set(brainRef, {recalcLockUntil: now + BRAIN_LOCK_MS}, {merge: true});
-    return {idempotent: false, brainVersion: typeof old.brainVersion === "number" ? old.brainVersion : 0};
+    if (now < lockUntil) throw new BridgeError(425, "AI Brain recalculation is locked; retry later.");
+    tx.set(ref, {recalcLockUntil: now + BRAIN_LOCK_MS}, {merge: true});
+    return {done: false, version: typeof old.brainVersion === "number" ? old.brainVersion : 0};
   });
-  if (gate.idempotent) return gate;
+  if (gate.done) return {idempotent: true, brainVersion: gate.version};
 
   try {
     const [eventsSnap, mealsSnap, profileSnap, brainSnap] = await Promise.all([
       db.collection("events").where("userId", "==", uid).limit(1000).get(),
       db.collection("users").doc(uid).collection("meals").orderBy("mealTime", "desc").limit(150).get(),
       db.collection("user_profiles").doc(uid).get(),
-      brainRef.get(),
+      ref.get(),
     ]);
     const profile = (profileSnap.data() ?? {}) as Plain;
     const oldBrain = (brainSnap.data() ?? {}) as Plain;
     const baseVersion = typeof oldBrain.brainVersion === "number" ? oldBrain.brainVersion : 0;
     const resetBoundaryMs = typeof oldBrain.resetBoundaryMs === "number" ? oldBrain.resetBoundaryMs : null;
     const events: BrainEvent[] = eventsSnap.docs.map((doc) => {
-      const data = doc.data();
+      const d = doc.data();
       return {
-        eventType: data.eventType as string,
-        placeId: (data.placeId as string | undefined) ?? null,
-        timeSlot: (data.timeSlot as string | undefined) ?? null,
-        mood: (data.mood as string | undefined) ?? null,
-        timestampMs: toMs(data.timestamp ?? data.clientTimestampMs, now),
-        metadata: (data.metadata as Plain | undefined) ?? null,
-        isSample: data.isSample === true,
-        sourceMode: (data.sourceMode as string | undefined) ?? null,
-        resultSource: (data.resultSource as string | undefined) ?? null,
+        eventType: d.eventType as string,
+        placeId: (d.placeId as string | undefined) ?? null,
+        timeSlot: (d.timeSlot as string | undefined) ?? null,
+        mood: (d.mood as string | undefined) ?? null,
+        timestampMs: toMs(d.timestamp ?? d.clientTimestampMs, now),
+        metadata: (d.metadata as Plain | undefined) ?? null,
+        isSample: d.isSample === true,
+        sourceMode: (d.sourceMode as string | undefined) ?? null,
+        resultSource: (d.resultSource as string | undefined) ?? null,
       };
     });
     const meals: BrainMeal[] = mealsSnap.docs.map((doc) => {
-      const data = doc.data();
+      const d = doc.data();
       return {
-        cuisine: (data.cuisine as string | undefined) ?? null,
-        cuisineTags: (data.cuisineTags as string[] | undefined) ?? null,
-        mealTimeMs: toMs(data.mealTime, now),
-        source: (data.source as string | undefined) ?? null,
-        satisfactionRating: (data.satisfactionRating as number | undefined) ?? null,
-        wouldRepeat: (data.wouldRepeat as boolean | undefined) ?? null,
-        priceLevel: (data.priceLevel as number | undefined) ?? null,
-        placeId: (data.placeId as string | undefined) ?? null,
-        tags: (data.tags as string[] | undefined) ?? null,
-        healthTags: (data.healthTags as string[] | undefined) ?? null,
+        cuisine: (d.cuisine as string | undefined) ?? null,
+        cuisineTags: (d.cuisineTags as string[] | undefined) ?? null,
+        mealTimeMs: toMs(d.mealTime, now),
+        source: (d.source as string | undefined) ?? null,
+        satisfactionRating: (d.satisfactionRating as number | undefined) ?? null,
+        wouldRepeat: (d.wouldRepeat as boolean | undefined) ?? null,
+        priceLevel: (d.priceLevel as number | undefined) ?? null,
+        placeId: (d.placeId as string | undefined) ?? null,
+        tags: (d.tags as string[] | undefined) ?? null,
+        healthTags: (d.healthTags as string[] | undefined) ?? null,
       };
     });
     const result = computeBrain({uid, events, meals, profile, oldBrain, now, resetBoundaryMs});
     await db.runTransaction(async (tx) => {
-      const latestSnap = await tx.get(brainRef);
-      const latest = (latestSnap.data() ?? {}) as Plain;
+      const latest = (await tx.get(ref)).data() ?? {};
       if (latest.lastControlCenterRecalcRequestId === requestId) return;
-      const latestVersion = typeof latest.brainVersion === "number" ? latest.brainVersion : 0;
-      if (latestVersion !== baseVersion) throw new BridgeError(425, "AI Brain changed during recalculation; retry.");
-      tx.set(brainRef, {
+      if ((typeof latest.brainVersion === "number" ? latest.brainVersion : 0) !== baseVersion) {
+        throw new BridgeError(425, "AI Brain changed during recalculation; retry.");
+      }
+      tx.set(ref, {
         ...result.brainDoc,
         lastCalculatedAt: FieldValue.serverTimestamp(),
         lastCalculatedAtMs: now,
         recalcLockUntil: 0,
-        eventWindowDays: EVENT_WINDOW_DAYS,
-        mealWindowDays: MEAL_WINDOW_DAYS,
+        eventWindowDays: 30,
+        mealWindowDays: 60,
         lastControlCenterRecalcRequestId: requestId,
       }, {merge: true});
-      tx.set(brainRef.collection("brain_audit").doc(`cc_recalc_${requestId}`), {
+      tx.set(ref.collection("brain_audit").doc(`cc_recalc_${requestId}`), {
         type: "control_center_recalculate",
         at: FieldValue.serverTimestamp(),
         atMs: now,
@@ -667,21 +620,20 @@ async function recalculateAiBrain(uid: string, requestId: string): Promise<Plain
       insufficientData: result.insufficientData,
     };
   } catch (error) {
-    await brainRef.set({recalcLockUntil: 0}, {merge: true});
+    await ref.set({recalcLockUntil: 0}, {merge: true});
     throw error;
   }
 }
 
-async function resetAiBrain(uid: string, requestId: string): Promise<Plain> {
+async function brainReset(uid: string, requestId: string): Promise<Plain> {
   const now = Date.now();
-  const brainRef = db.collection(BRAIN_COLLECTION).doc(uid);
+  const ref = db.collection(BRAIN).doc(uid);
   return db.runTransaction(async (tx) => {
-    const snap = await tx.get(brainRef);
-    const old = (snap.data() ?? {}) as Plain;
+    const old = (await tx.get(ref)).data() ?? {};
     const oldVersion = typeof old.brainVersion === "number" ? old.brainVersion : 0;
     if (old.lastControlCenterResetRequestId === requestId) return {idempotent: true, brainVersion: oldVersion};
     const newVersion = oldVersion + 1;
-    tx.set(brainRef, {
+    tx.set(ref, {
       userId: uid,
       schemaVersion: BRAIN_SCHEMA_VERSION,
       brainVersion: newVersion,
@@ -718,7 +670,7 @@ async function resetAiBrain(uid: string, requestId: string): Promise<Plain> {
       lastControlCenterResetRequestId: requestId,
       privacy: {personalizationEnabled: true, excludedSensitiveFields: ["allergies", "gps", "health", "receipt", "tokens"]},
     }, {merge: true});
-    tx.set(brainRef.collection("brain_audit").doc(`cc_reset_${requestId}`), {
+    tx.set(ref.collection("brain_audit").doc(`cc_reset_${requestId}`), {
       type: "control_center_reset",
       at: FieldValue.serverTimestamp(),
       atMs: now,
@@ -730,57 +682,22 @@ async function resetAiBrain(uid: string, requestId: string): Promise<Plain> {
   });
 }
 
-async function executeCommand(params: {
-  requestId: string;
-  commandType: string;
-  resourceType: string;
-  resourceId: string;
-  payload: Plain;
-}): Promise<Plain> {
-  const {requestId, commandType, resourceType, resourceId, payload} = params;
-  switch (commandType) {
-    case "user.status.change":
-      if (resourceType !== "user") throw new BridgeError(400, "Invalid resource type.");
-      return changeUserStatus(resourceId, payload, requestId);
-    case "user.profile.update":
-      if (resourceType !== "user") throw new BridgeError(400, "Invalid resource type.");
-      return updateUserProfile(resourceId, payload, requestId);
-    case "social.post.hide":
-    case "social.post.remove":
-    case "social.post.restore":
-      if (resourceType !== "social_post") throw new BridgeError(400, "Invalid resource type.");
-      return moderatePost(resourceId, commandType, requestId);
-    case "place.archive":
-      if (resourceType !== "place") throw new BridgeError(400, "Invalid resource type.");
-      return archiveCanonicalPlace(resourceId, requestId);
-    case "place.merge":
-      if (resourceType !== "place") throw new BridgeError(400, "Invalid resource type.");
-      return mergeCanonicalPlaces(resourceId, payload, requestId);
-    case "place.publish_from_staging":
-      if (resourceType !== "place_staging") throw new BridgeError(400, "Invalid resource type.");
-      return publishFromStaging(resourceId, payload, requestId);
-    case "subscription.force_sync":
-    case "subscription.cancel":
-    case "subscription.restore_entitlement":
-      if (resourceType !== "subscription") throw new BridgeError(400, "Invalid resource type.");
-      return subscriptionAction(resourceId, commandType, requestId);
-    case "AI_BRAIN_RECALCULATE":
-    case "AI_BRAIN_RESET_FOOD_MEMORY": {
-      if (resourceType !== "ai_brain_profile") throw new BridgeError(400, "Invalid resource type.");
-      const uid = await resolveAiBrainUid(resourceId);
-      return commandType === "AI_BRAIN_RECALCULATE" ? recalculateAiBrain(uid, requestId) : resetAiBrain(uid, requestId);
-    }
-    default:
-      throw new BridgeError(400, "Unsupported Control Center command type.");
+async function execute(commandType: string, resourceType: string, resourceId: string, payload: Plain, requestId: string): Promise<Plain> {
+  if (commandType === "user.status.change" && resourceType === "user") return userStatus(resourceId, payload, requestId);
+  if (commandType === "user.profile.update" && resourceType === "user") return userProfile(resourceId, payload, requestId);
+  if (commandType.startsWith("social.post.") && resourceType === "social_post") return socialPost(resourceId, commandType, requestId);
+  if (commandType === "place.archive" && resourceType === "place") return placeArchive(resourceId, requestId);
+  if (commandType === "place.merge" && resourceType === "place") return placeMerge(resourceId, payload, requestId);
+  if (commandType === "place.publish_from_staging" && resourceType === "place_staging") return placePublish(resourceId, payload, requestId);
+  if (commandType.startsWith("subscription.") && resourceType === "subscription") return subscription(resourceId, commandType, requestId);
+  if ((commandType === "AI_BRAIN_RECALCULATE" || commandType === "AI_BRAIN_RESET_FOOD_MEMORY") && resourceType === "ai_brain_profile") {
+    const uid = await brainUid(resourceId);
+    return commandType === "AI_BRAIN_RECALCULATE" ? brainRecalculate(uid, requestId) : brainReset(uid, requestId);
   }
+  throw new BridgeError(400, "Unsupported Control Center command/resource combination.");
 }
 
-/**
- * Production Control Center command bridge.
- * One secret-gated endpoint handles Firebase operational commands, AI Brain
- * controls and only those subscription mutations that can be performed from an
- * authoritative backend state. It never writes recommendation/session data.
- */
+/** Secret-gated server-only authority for Control Center operational commands. */
 export const controlCenterAdminBridge = onRequest(
   {
     invoker: "public",
@@ -795,8 +712,8 @@ export const controlCenterAdminBridge = onRequest(
       return;
     }
     const secret = FIREBASE_ADMIN_BRIDGE_SECRET.value();
-    const presented = bearerToken(request.header("authorization"));
-    if (!secret || !presented || !safeEqual(presented, secret)) {
+    const presented = tokenFrom(request.header("authorization"));
+    if (!secret || !presented || !secretMatches(presented, secret)) {
       response.status(401).json({message: "Unauthorized admin bridge request."});
       return;
     }
@@ -810,19 +727,17 @@ export const controlCenterAdminBridge = onRequest(
       const resourceId = requiredText(body.resourceId, "resourceId", 240);
       const reason = requiredText(body.reason, "reason", 1000);
       if (reason.length < 8) throw new BridgeError(400, "reason must contain at least 8 characters.");
-      const payload = plainObject(body.payload);
-
-      const replay = await acquireCommand({requestId, commandType, resourceType, resourceId, reason});
+      const payload = objectValue(body.payload);
+      const replay = await acquire({requestId, commandType, resourceType, resourceId, reason});
       if (replay) {
         response.status(200).json({status: "OK", requestId, commandType, idempotent: true, ...replay});
         return;
       }
-
-      const result = await executeCommand({requestId, commandType, resourceType, resourceId, payload});
-      await markCommandSucceeded(requestId, result);
+      const result = await execute(commandType, resourceType, resourceId, payload, requestId);
+      await succeed(requestId, result);
       response.status(200).json({status: "OK", requestId, commandType, ...result});
     } catch (error) {
-      if (requestId) await markCommandFailed(requestId, error);
+      if (requestId) await fail(requestId, error);
       const status = error instanceof BridgeError ? error.status : 500;
       console.error("Control Center admin bridge failed", {
         status,
