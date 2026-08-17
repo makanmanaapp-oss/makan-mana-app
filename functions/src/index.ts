@@ -100,6 +100,12 @@ export {syncPlaceCoverageToControlCenter} from "./controlCenter/placeCoverageSyn
 export {syncAiBrainToControlCenter} from "./controlCenter/aiBrainSync";
 export {syncPlaceReferencesToControlCenter} from "./controlCenter/placeReferenceSync";
 export {syncSubscriptionsToControlCenter} from "./controlCenter/subscriptionSync";
+export {
+  syncUserToDataVault,
+  syncSocialPostToDataVault,
+  syncAiBrainProfileToDataVault,
+  reconcileUniversalDataVault,
+} from "./controlCenter/dataVaultSync";
 export {controlCenterAiBrainAdminBridge} from "./controlCenter/aiBrainAdminBridge";
 export {controlCenterAdminBridge} from "./controlCenter/adminBridge";
 export {controlCenterMasterPlaceAdminBridge} from "./controlCenter/masterPlaceAdminBridge";
