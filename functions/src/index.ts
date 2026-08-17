@@ -102,3 +102,4 @@ export {syncPlaceReferencesToControlCenter} from "./controlCenter/placeReference
 export {syncSubscriptionsToControlCenter} from "./controlCenter/subscriptionSync";
 export {controlCenterAiBrainAdminBridge} from "./controlCenter/aiBrainAdminBridge";
 export {controlCenterAdminBridge} from "./controlCenter/adminBridge";
+export {controlCenterMasterPlaceAdminBridge} from "./controlCenter/masterPlaceAdminBridge";
