@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:makan_mana/app/localization/app_localizations.dart';
 import 'package:makan_mana/core/constants/app_constants.dart';
 import 'package:makan_mana/features/notifications/notification_model.dart';
+import 'package:makan_mana/features/notifications/notification_preferences.dart';
 import 'package:makan_mana/features/notifications/notification_providers.dart';
 import 'package:makan_mana/features/notifications/notification_screen.dart';
 import 'package:makan_mana/core/services/notification_service.dart';
@@ -65,6 +66,26 @@ void main() {
           MakanNotificationType.unknown);
     });
 
+    test('rekod V2 canonical menyimpan kontrak deep-link dan status', () {
+      final n = MakanNotification.fromMap('i', {
+        'type': 'social_comment',
+        'category': 'social',
+        'recipientUid': 'u1',
+        'entityType': 'post',
+        'entityId': 'p1',
+        'deepLink': '/social/post/p1',
+        'openedAt': DateTime(2026, 8, 7).millisecondsSinceEpoch,
+        'isCritical': true,
+        'schemaVersion': 2,
+      });
+      expect(n.type, MakanNotificationType.socialComment);
+      expect(n.rawType, 'social_comment');
+      expect(n.category, MakanNotificationCategory.social);
+      expect(n.entityId, 'p1');
+      expect(n.isCritical, isTrue);
+      expect(n.schemaVersion, 2);
+    });
+
     test('timestamp int (epoch ms) diurai', () {
       final ms = DateTime(2026, 8, 7, 9, 30).millisecondsSinceEpoch;
       final n = MakanNotification.fromMap('i', {'createdAt': ms});
@@ -72,10 +93,12 @@ void main() {
     });
 
     test('imageUrl kosong → null (tiada thumbnail rosak)', () {
-      expect(MakanNotification.fromMap('i', {'imageUrl': '   '}).imageUrl,
-          isNull);
-      expect(MakanNotification.fromMap('i', {'imageUrl': 'https://x/a.png'})
-          .imageUrl, 'https://x/a.png');
+      expect(
+          MakanNotification.fromMap('i', {'imageUrl': '   '}).imageUrl, isNull);
+      expect(
+          MakanNotification.fromMap('i', {'imageUrl': 'https://x/a.png'})
+              .imageUrl,
+          'https://x/a.png');
     });
 
     test('isExpired mengikut expiresAt', () {
@@ -92,8 +115,9 @@ void main() {
 
   group('notificationRoute — pemetaan destinasi selamat', () {
     test('food_suggestion dgn id → laluan restoran; tanpa id → null', () {
-      expect(notificationRoute(_n(MakanNotificationType.foodSuggestion,
-              destId: 'p1')),
+      expect(
+          notificationRoute(
+              _n(MakanNotificationType.foodSuggestion, destId: 'p1')),
           '/restaurant/p1');
       expect(
           notificationRoute(_n(MakanNotificationType.foodSuggestion)), isNull);
@@ -126,6 +150,56 @@ void main() {
     test('unknown → null (gagal-selamat, tiada navigasi buta)', () {
       expect(notificationRoute(_n(MakanNotificationType.unknown)), isNull);
     });
+
+    test('canonical social comment and hostile deep-link are resolved safely',
+        () {
+      expect(
+          notificationRoute(
+              _n(MakanNotificationType.socialComment, destId: 'post1')),
+          '/social/post/post1');
+      final hostile = MakanNotification(
+        id: 'x',
+        type: MakanNotificationType.systemAnnouncement,
+        title: '',
+        body: '',
+        createdAt: DateTime(2026),
+        isRead: false,
+        deepLink: 'https://not-makanmana.example',
+      );
+      expect(notificationRoute(hostile), isNull);
+    });
+
+    test('Prompt 2 social and group destinations stay internal or centre-only',
+        () {
+      expect(
+        notificationRoute(
+            _n(MakanNotificationType.socialReaction, destId: 'post1')),
+        '/social/post/post1',
+      );
+      expect(
+        notificationRoute(
+            _n(MakanNotificationType.socialFollow, destId: 'actor1')),
+        '/u/actor1',
+      );
+      // PROMPT 2.2A — group_invite now routes to the existing Groups-tab invite
+      // inbox (invitee-only list), NOT the private group. Fixes "content
+      // unavailable". Does NOT go to /groups/{id} (which would deny non-members).
+      final inviteRoute = notificationRoute(
+          _n(MakanNotificationType.groupInvite, destId: 'invite1'));
+      expect(inviteRoute, '/social?tab=groups');
+      expect(inviteRoute!.startsWith('/groups/'), isFalse,
+          reason: 'invitee must not be routed into the private group');
+      expect(
+        notificationRoute(
+            _n(MakanNotificationType.groupInviteAccepted, destId: 'group1')),
+        '/groups/group1',
+      );
+      expect(
+        notificationRoute(
+            _n(MakanNotificationType.groupUpdate, destId: 'group1')),
+        '/groups/group1',
+      );
+    });
   });
 
   group('notificationBadgeLabel — 0 / 1-99 / 99+', () {
@@ -156,8 +230,7 @@ void main() {
       expect(routeForMessageData({'type': 'subscription'}), '/paywall');
     });
     test('system hanya laluan mula "/"; jika tidak null', () {
-      expect(
-          routeForMessageData({'type': 'system', 'destinationId': '/home'}),
+      expect(routeForMessageData({'type': 'system', 'destinationId': '/home'}),
           '/home');
       expect(routeForMessageData({'type': 'system', 'destinationId': 'x'}),
           isNull);
@@ -165,6 +238,60 @@ void main() {
     test('payload kosong / jenis tak dikenali → null (gagal-selamat)', () {
       expect(routeForMessageData({}), isNull);
       expect(routeForMessageData({'type': 'weird'}), isNull);
+    });
+
+    test('canonical push type uses the same resolver', () {
+      expect(
+          routeForMessageData(
+              {'type': 'social_comment', 'destinationId': 'p1'}),
+          '/social/post/p1');
+    });
+  });
+
+  group('notification preferences and paging contracts', () {
+    test('defaults preserve in-app/push and quiet-hours data parses safely',
+        () {
+      final preferences = NotificationPreferences.fromMap({
+        'social': {'inAppEnabled': false, 'pushEnabled': true},
+        'quietHoursEnabled': true,
+        'quietHoursStart': '22:00',
+        'quietHoursEnd': '07:00',
+        'timezone': 'Asia/Kuala_Lumpur',
+      });
+      expect(
+          preferences
+              .forCategory(MakanNotificationCategory.social)
+              .inAppEnabled,
+          isFalse);
+      expect(
+          preferences
+              .forCategory(MakanNotificationCategory.billing)
+              .pushEnabled,
+          isTrue);
+      expect(preferences.quietHoursEnabled, isTrue);
+      expect(preferences.timezone, 'Asia/Kuala_Lumpur');
+    });
+
+    test('next page cursor is the oldest visible notification', () {
+      final older = MakanNotification(
+        id: 'older',
+        type: MakanNotificationType.system,
+        title: '',
+        body: '',
+        createdAt: DateTime(2026, 8, 1),
+        isRead: false,
+      );
+      final newer = MakanNotification(
+        id: 'newer',
+        type: MakanNotificationType.system,
+        title: '',
+        body: '',
+        createdAt: DateTime(2026, 8, 2),
+        isRead: false,
+      );
+      final cursor = notificationNextPageCursor([newer, older]);
+      expect(cursor?.id, 'older');
+      expect(cursor?.createdAt, DateTime(2026, 8, 1));
     });
   });
 
@@ -178,6 +305,27 @@ void main() {
       'allCaughtUp',
       'notifLoadError',
       'newNotification',
+      'notificationLoadMore',
+      'notificationSocialCommentTitle',
+      'notificationSocialCommentBody',
+      'notificationSocialReactionTitle',
+      'notificationSocialReactionBody',
+      'notificationSocialReplyTitle',
+      'notificationSocialReplyBody',
+      'notificationSocialFollowTitle',
+      'notificationSocialFollowBody',
+      'notificationSocialRepostTitle',
+      'notificationSocialRepostBody',
+      'notificationSocialQuoteTitle',
+      'notificationSocialQuoteBody',
+      'notificationGroupInviteTitle',
+      'notificationGroupInviteBody',
+      'notificationGroupInviteAcceptedTitle',
+      'notificationGroupInviteAcceptedBody',
+      'notificationGroupUpdateTitle',
+      'notificationGroupUpdateBody',
+      'notificationSystemAnnouncementTitle',
+      'notificationTargetUnavailable',
       'seeAll',
     ];
     test('setiap kunci diselesaikan (bukan kunci mentah) + tidak kosong', () {
