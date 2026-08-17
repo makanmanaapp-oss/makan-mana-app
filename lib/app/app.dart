@@ -6,6 +6,7 @@ import '../core/constants/app_colors.dart';
 import '../core/constants/app_constants.dart';
 import '../core/providers.dart';
 import '../core/providers/makanmana_user_context_provider.dart';
+import '../core/services/notification_service.dart';
 import '../features/dev_qa/canonical_qa_harness.dart';
 import 'localization/app_localizations.dart';
 import 'router.dart';
@@ -42,6 +43,10 @@ class MakanManaApp extends ConsumerWidget {
 
     final locale = ref.watch(languageProvider);
     final router = ref.watch(routerProvider);
+    // PROMPT 3 — push-tap navigation hook: NotificationService resolves a tap to
+    // a safe canonical route, then asks go_router to navigate. Set here where the
+    // router is available (safe no-op until then).
+    NotificationService.onNavigateToRoute = (route) => router.push(route);
     // SP10: Appearance — System/Light/Dark, persist & apply serta-merta.
     final themeMode = ref.watch(appearanceProvider);
 

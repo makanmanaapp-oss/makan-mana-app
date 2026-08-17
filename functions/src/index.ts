@@ -12,6 +12,7 @@ export {updateBrainMetrics} from "./scheduled/updateBrainMetrics";
 export {recalculateUserBrain} from "./callable/recalculateUserBrain";
 export {resetUserBrain} from "./callable/resetUserBrain";
 export {createFeedPost} from "./callable/createFeedPost";
+export {searchCheckinPlaces} from "./callable/searchCheckinPlaces";
 export {repostFeedPost} from "./callable/repostFeedPost";
 export {toggleLike} from "./callable/toggleLike";
 export {checkIn} from "./callable/checkIn";
@@ -91,9 +92,15 @@ export {handleGooglePlayRtdn} from "./triggers/handleGooglePlayRtdn";
 export {createCoupon} from "./callable/createCoupon";
 export {expireCouponTrials} from "./scheduled/expireCouponTrials";
 
+// Notification V2 / Prompt 3 — push device registry (multi-device).
+export {registerPushDevice, unregisterPushDevice} from "./callable/pushDeviceControl";
+
 // Phase 1.14A — callable pembetulan dipercayai (BELUM DI-DEPLOY; berpagar-pemilik).
 export {submitPlaceCorrection} from "./callable/submitPlaceCorrection";
 export {nextSuggestion} from "./callable/nextSuggestion";
+// Notification V2 QA only; callable rejects any non-emulator runtime.
+export {createNotificationFixture} from "./callable/createNotificationFixture";
+export {createNotificationQaFixture} from "./callable/createNotificationQaFixture";
 
 // Control Center — privacy-safe aggregate Place Coverage sync. Manual/read-only.
 export {syncPlaceCoverageToControlCenter} from "./controlCenter/placeCoverageSync";
