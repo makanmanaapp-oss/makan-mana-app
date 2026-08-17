@@ -99,4 +99,10 @@ export {nextSuggestion} from "./callable/nextSuggestion";
 export {syncPlaceCoverageToControlCenter} from "./controlCenter/placeCoverageSync";
 export {syncAiBrainToControlCenter} from "./controlCenter/aiBrainSync";
 export {syncPlaceReferencesToControlCenter} from "./controlCenter/placeReferenceSync";
+export {
+  syncUserToDataVault,
+  syncSocialPostToDataVault,
+  syncAiBrainProfileToDataVault,
+  reconcileUniversalDataVault,
+} from "./controlCenter/dataVaultSync";
 export {controlCenterAiBrainAdminBridge} from "./controlCenter/aiBrainAdminBridge";
