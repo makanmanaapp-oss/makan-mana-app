@@ -14,7 +14,7 @@ import {
 } from "../domain/aiBrain/brainCalculator";
 import {aiBrainUserRef} from "../domain/aiBrain/controlCenterSanitizer";
 
-const FIREBASE_AI_BRAIN_ADMIN_BRIDGE_SECRET = defineSecret("FIREBASE_AI_BRAIN_ADMIN_BRIDGE_SECRET");
+const AI_BRAIN_ADMIN_BRIDGE_SECRET = defineSecret("AI_BRAIN_ADMIN_BRIDGE_SECRET");
 const BRAIN_COLLECTION = "user_brain_profiles";
 const EVENT_WINDOW_DAYS = 30;
 const MEAL_WINDOW_DAYS = 60;
@@ -276,12 +276,12 @@ async function resetForAdmin(uid: string, requestId: string) {
 /**
  * Trusted Control Center command bridge for AI Brain only.
  * Browser never calls this endpoint directly. The Control Center command runner
- * authenticates with FIREBASE_AI_BRAIN_ADMIN_BRIDGE_SECRET and supplies the stable masked
+ * authenticates with AI_BRAIN_ADMIN_BRIDGE_SECRET and supplies the stable masked
  * user reference. Operations are idempotent by requestId and auditable per brain.
  */
 export const controlCenterAiBrainAdminBridge = onRequest(
   {
-    secrets: [FIREBASE_AI_BRAIN_ADMIN_BRIDGE_SECRET],
+    secrets: [AI_BRAIN_ADMIN_BRIDGE_SECRET],
     timeoutSeconds: 540,
     memory: "1GiB",
     maxInstances: 2,
@@ -291,7 +291,7 @@ export const controlCenterAiBrainAdminBridge = onRequest(
       response.status(405).json({message: "POST required."});
       return;
     }
-    const secret = FIREBASE_AI_BRAIN_ADMIN_BRIDGE_SECRET.value();
+    const secret = AI_BRAIN_ADMIN_BRIDGE_SECRET.value();
     const presented = bearerToken(request.header("authorization"));
     if (!secret || !presented || !safeEqual(presented, secret)) {
       response.status(401).json({message: "Unauthorized admin bridge request."});
