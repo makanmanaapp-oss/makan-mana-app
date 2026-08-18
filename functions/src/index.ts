@@ -97,7 +97,10 @@ export {nextSuggestion} from "./callable/nextSuggestion";
 
 // Control Center — privacy-safe production sync/control bridges.
 export {syncPlaceCoverageToControlCenter} from "./controlCenter/placeCoverageSync";
-export {syncAiBrainToControlCenter} from "./controlCenter/aiBrainSync";
+export {
+  syncAiBrainToControlCenter,
+  syncAiBrainProfileMirrorToControlCenter,
+} from "./controlCenter/aiBrainSync";
 export {syncPlaceReferencesToControlCenter} from "./controlCenter/placeReferenceSync";
 export {
   syncUserToDataVault,
