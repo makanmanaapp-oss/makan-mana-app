@@ -2,6 +2,7 @@ import {timingSafeEqual} from "node:crypto";
 
 import {FieldPath} from "firebase-admin/firestore";
 import {defineSecret} from "firebase-functions/params";
+import {onDocumentWritten} from "firebase-functions/v2/firestore";
 import {onRequest} from "firebase-functions/v2/https";
 
 import {db} from "../config/firebase";
@@ -61,7 +62,36 @@ async function pushProfiles(records: Record<string, unknown>[], secret: string):
 }
 
 /**
- * Manual, read-only production AI Brain -> Control Center sync.
+ * Near-real-time privacy-minimised AI Brain mirror refresh.
+ *
+ * Every authoritative Firebase profile write projects only the Control Center
+ * allow-list. Deletes are intentionally not converted into a mirror hard-delete;
+ * the Universal Data Vault remains responsible for authoritative tombstones.
+ */
+export const syncAiBrainProfileMirrorToControlCenter = onDocumentWritten(
+  {
+    document: "user_brain_profiles/{uid}",
+    secrets: [CONTROL_CENTER_SYNC_SECRET],
+    maxInstances: 2,
+  },
+  async (event) => {
+    const after = event.data?.after;
+    if (!after?.exists) return;
+
+    const secret = CONTROL_CENTER_SYNC_SECRET.value();
+    if (!secret) throw new Error("CONTROL_CENTER_SYNC_SECRET is unavailable.");
+
+    await pushProfiles([
+      sanitizeAiBrainProfile(
+        event.params.uid,
+        after.data() as Record<string, unknown>,
+      ),
+    ], secret);
+  },
+);
+
+/**
+ * Manual, read-only production AI Brain -> Control Center reconciliation sync.
  *
  * Reads the already-computed user_brain_profiles collection and sends only a
  * strict operational allow-list. Firebase UID is replaced with a stable hash;
