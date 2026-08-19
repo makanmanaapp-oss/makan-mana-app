@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  buildSupabaseAdminHeaders,
   normalizeClaimedBroadcastRun,
   type ClaimedBroadcastRun,
 } from "../broadcastControlPlane";
@@ -26,6 +27,26 @@ function baseRun(): ClaimedBroadcastRun {
     delivery_purpose: "qa",
   };
 }
+
+test("current Supabase secret key uses apikey only", () => {
+  const headers = buildSupabaseAdminHeaders("sb_secret_example_only");
+  assert.equal(headers.apikey, "sb_secret_example_only");
+  assert.equal(headers["content-type"], "application/json");
+  assert.equal(headers.authorization, undefined);
+});
+
+test("legacy service-role JWT keeps bearer compatibility", () => {
+  const headers = buildSupabaseAdminHeaders("legacy.jwt.example");
+  assert.equal(headers.apikey, "legacy.jwt.example");
+  assert.equal(headers.authorization, "Bearer legacy.jwt.example");
+});
+
+test("publishable key is rejected for admin control-plane RPC", () => {
+  assert.throws(
+    () => buildSupabaseAdminHeaders("sb_publishable_example_only"),
+    /admin_key_not_secret/,
+  );
+});
 
 test("test_recipients normalizes to QA and Notification Center", () => {
   const run = normalizeClaimedBroadcastRun(baseRun());
