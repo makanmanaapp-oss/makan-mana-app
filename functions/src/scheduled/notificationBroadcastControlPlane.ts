@@ -2,7 +2,7 @@ import {defineSecret} from "firebase-functions/params";
 import {logger} from "firebase-functions";
 import {onSchedule} from "firebase-functions/v2/scheduler";
 
-import {db, FieldValue, Timestamp} from "../config/firebase";
+import {db, Timestamp} from "../config/firebase";
 import {
   ClaimedBroadcastRun,
   normalizeClaimedBroadcastRun,
