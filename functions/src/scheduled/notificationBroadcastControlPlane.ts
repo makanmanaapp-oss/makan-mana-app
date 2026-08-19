@@ -4,6 +4,7 @@ import {onSchedule} from "firebase-functions/v2/scheduler";
 
 import {db, Timestamp} from "../config/firebase";
 import {
+  buildSupabaseAdminHeaders,
   ClaimedBroadcastRun,
   normalizeClaimedBroadcastRun,
 } from "../domain/notifications/broadcastControlPlane";
@@ -13,7 +14,7 @@ const CLAIM_LIMIT = 10;
 const SYNC_LIMIT = 50;
 
 const SUPABASE_URL = defineSecret("NOTIFICATION_CONTROL_PLANE_SUPABASE_URL");
-const SUPABASE_SERVICE_ROLE_KEY = defineSecret("NOTIFICATION_CONTROL_PLANE_SUPABASE_SERVICE_ROLE_KEY");
+const SUPABASE_SECRET_KEY = defineSecret("NOTIFICATION_CONTROL_PLANE_SUPABASE_SECRET_KEY");
 
 function controlPlaneBaseUrl(): string {
   const raw = SUPABASE_URL.value().trim().replace(/\/+$/, "");
@@ -24,15 +25,10 @@ function controlPlaneBaseUrl(): string {
 }
 
 async function rpcJson<T>(name: string, payload: Record<string, unknown>): Promise<T> {
-  const key = SUPABASE_SERVICE_ROLE_KEY.value().trim();
-  if (!key) throw new Error("notification_control_plane_service_key_missing");
+  const key = SUPABASE_SECRET_KEY.value().trim();
   const response = await fetch(`${controlPlaneBaseUrl()}/rest/v1/rpc/${name}`, {
     method: "POST",
-    headers: {
-      apikey: key,
-      authorization: `Bearer ${key}`,
-      "content-type": "application/json",
-    },
+    headers: buildSupabaseAdminHeaders(key),
     body: JSON.stringify(payload),
     signal: AbortSignal.timeout(20_000),
   });
@@ -186,7 +182,7 @@ export const broadcastControlPlaneSync = onSchedule(
     timeoutSeconds: 180,
     memory: "256MiB",
     maxInstances: 1,
-    secrets: [SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY],
+    secrets: [SUPABASE_URL, SUPABASE_SECRET_KEY],
   },
   async () => {
     try {
