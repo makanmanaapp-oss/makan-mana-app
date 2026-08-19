@@ -53,6 +53,31 @@ export type NormalizedBroadcastRun = {
   metrics: ReturnType<typeof emptyMetrics>;
 };
 
+/**
+ * Supabase's current `sb_secret_` keys authenticate through the `apikey` header
+ * and must not be treated as JWT bearer tokens. Legacy service-role JWT keys
+ * still need the Authorization bearer header. This helper keeps both server-side
+ * key generations compatible without exposing either value.
+ */
+export function buildSupabaseAdminHeaders(rawKey: string): Record<string, string> {
+  const key = rawKey.trim();
+  if (!key) throw new Error("notification_control_plane_admin_key_missing");
+  if (key.startsWith("sb_publishable_")) {
+    throw new Error("notification_control_plane_admin_key_not_secret");
+  }
+
+  const headers: Record<string, string> = {
+    apikey: key,
+    "content-type": "application/json",
+  };
+
+  if (!key.startsWith("sb_secret_")) {
+    headers.authorization = `Bearer ${key}`;
+  }
+
+  return headers;
+}
+
 function textRecord(value: unknown): Record<string, string> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const out: Record<string, string> = {};
