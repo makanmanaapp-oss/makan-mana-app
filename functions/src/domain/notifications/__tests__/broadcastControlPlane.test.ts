@@ -1,9 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import {normalizeClaimedBroadcastRun} from "../broadcastControlPlane";
+import {
+  normalizeClaimedBroadcastRun,
+  type ClaimedBroadcastRun,
+} from "../broadcastControlPlane";
 
-function baseRun() {
+function baseRun(): ClaimedBroadcastRun {
   return {
     id: "11111111-1111-1111-1111-111111111111",
     campaign_id: "22222222-2222-2222-2222-222222222222",
@@ -20,7 +23,7 @@ function baseRun() {
     destination_id: "notification_center",
     scheduled_at: "2026-08-20T00:00:00.000Z",
     firebase_run_id: null,
-    delivery_purpose: "qa" as const,
+    delivery_purpose: "qa",
   };
 }
 
@@ -39,7 +42,7 @@ test("QA purpose cannot be used with a production audience", () => {
 });
 
 test("production purpose is required for non-QA audience", () => {
-  const input = {...baseRun(), delivery_purpose: "production" as const};
+  const input: ClaimedBroadcastRun = {...baseRun(), delivery_purpose: "production"};
   input.audience_snapshot = {id: "locale_en"};
   const run = normalizeClaimedBroadcastRun(input);
   assert.equal(run.deliveryPurpose, "production");
@@ -62,6 +65,10 @@ test("unknown destination is rejected", () => {
 
 test("fallback copy is mandatory", () => {
   const input = baseRun();
-  input.content_snapshot = {title: {en: "Only EN"}, body: {en: "Only EN"}, fallbackLang: "bm"};
+  input.content_snapshot = {
+    title: {en: "Only EN"},
+    body: {en: "Only EN"},
+    fallbackLang: "bm",
+  };
   assert.throws(() => normalizeClaimedBroadcastRun(input), /missing_fallback_copy/);
 });
