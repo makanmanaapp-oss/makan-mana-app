@@ -1,8 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../models/place_summary.dart';
-
 import '../core/constants/app_constants.dart';
 import '../core/entitlement/entitlement.dart';
 import '../core/events/event_types.dart';
@@ -124,8 +122,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: RoutePaths.restaurant,
         builder: (context, state) => RestaurantDetailScreen(
           placeId: state.pathParameters['placeId'] ?? '',
-          initialPlace:
-              state.extra is PlaceSummary ? state.extra as PlaceSummary : null,
         ),
       ),
       GoRoute(
