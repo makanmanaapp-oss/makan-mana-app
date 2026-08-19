@@ -1,18 +1,18 @@
 /**
- * PROMPT 7 — production broadcast fanout worker (server-only, scheduled).
+ * PROMPT 7 production broadcast fanout worker (server-only, scheduled).
  *
  * Firestore-run-driven: `notification_broadcast_runs/{runId}` is the immutable
  * approved snapshot + cursor + aggregate metrics. Each invocation atomically
- * LEASES one due run, resolves its audience in bounded pages, fans each
+ * leases one due run, resolves its audience in bounded pages, fans each
  * recipient through Notification V2 (`notifySafely`), advances the cursor, folds
  * honest metrics, then completes or yields for the next invocation. Bounded,
- * resumable, idempotent (exactly-once per recipient per campaign VERSION via
+ * resumable, idempotent (exactly-once per recipient per campaign version via
  * createNotification dedup), and race-safe (lease). No direct FCM, no bypass.
  */
 import {onSchedule} from "firebase-functions/v2/scheduler";
 import {logger} from "firebase-functions";
 
-import {db, Timestamp} from "../config/firebase";
+import {db, FieldValue, Timestamp} from "../config/firebase";
 import {notifySafely} from "../domain/notifications/notificationProducers";
 import {resolveLocalizedCopy} from "../domain/notifications/adminNotifications";
 import {
@@ -30,8 +30,8 @@ import {
 const RUNS = "notification_broadcast_runs";
 const TEST_RECIPIENTS = "notification_test_recipients";
 const PAGE = 300;
-const MAX_RECIPIENTS_PER_INVOCATION = 3000; // bounded work; leftovers continue next run
-const LEASE_MS = 110_000; // > invocation budget; expires so a crashed lease resumes
+const MAX_RECIPIENTS_PER_INVOCATION = 3000;
+const LEASE_MS = 110_000;
 
 type RunDoc = {
   campaignId: string; campaignVersion: number; runKey: string;
@@ -50,6 +50,13 @@ function gate() {
   };
 }
 
+function syncTouch() {
+  return {
+    syncPending: true,
+    syncVersion: FieldValue.increment(1),
+  };
+}
+
 /** Atomically lease one due, deliverable run. Returns its id + data, or null. */
 async function leaseDueRun(nowMs: number): Promise<{id: string; run: RunDoc} | null> {
   const nowTs = Timestamp.fromMillis(nowMs);
@@ -63,12 +70,13 @@ async function leaseDueRun(nowMs: number): Promise<{id: string; run: RunDoc} | n
       const fresh = await tx.get(doc.ref);
       const r = fresh.data() as RunDoc | undefined;
       if (!r || (r.status !== "queued" && r.status !== "delivering")) return null;
-      if ((r.leaseUntil ?? 0) > nowMs) return null; // another worker holds it
+      if ((r.leaseUntil ?? 0) > nowMs) return null;
       tx.update(doc.ref, {
         status: "delivering",
         leaseUntil: nowMs + LEASE_MS,
         startedAt: r.status === "queued" ? nowTs : (fresh.get("startedAt") ?? nowTs),
         updatedAt: nowMs,
+        ...syncTouch(),
       });
       return {id: doc.id, run: r};
     });
@@ -77,7 +85,7 @@ async function leaseDueRun(nowMs: number): Promise<{id: string; run: RunDoc} | n
   return null;
 }
 
-/** One page of recipient uids for the audience, plus cursor + exhausted flag. */
+/** One page of recipient UIDs for the audience, plus cursor + exhausted flag. */
 async function audiencePage(
   audienceId: BroadcastAudienceId, appVersionMin: string | null, cursor: string | null,
 ): Promise<{uids: string[]; nextCursor: string | null; exhausted: boolean}> {
@@ -91,7 +99,7 @@ async function audiencePage(
       exhausted: snap.size < PAGE,
     };
   }
-  // Population audiences: page users, filter by the pure predicate.
+
   let q = db.collection("users").orderBy("__name__").limit(PAGE);
   if (cursor) q = q.startAfter(cursor);
   const snap = await q.get();
@@ -102,7 +110,8 @@ async function audiencePage(
       language: u.language ?? u.languageCode ?? null,
       plan: (u.plan ?? u.entitlement ?? null) as string | null,
       appVersion: (u.appVersion ?? null) as string | null,
-      deletedAt: u.deletedAt, disabled: u.disabled === true,
+      deletedAt: u.deletedAt,
+      disabled: u.disabled === true,
     }, {appVersionMin});
     if (match === true) uids.push(d.id);
   }
@@ -129,16 +138,26 @@ export const broadcastFanout = onSchedule(
     const {id: runId, run} = leased;
     const ref = db.collection(RUNS).doc(runId);
 
-    // Safety: type allowlist + audience + gate. A bad run is failed, not delivered.
     if (!isBroadcastableType(run.notificationType) || !isBroadcastAudience(run.audienceId)) {
-      await ref.update({status: "failed", leaseUntil: 0, lastError: "invalid_type_or_audience", updatedAt: now});
+      await ref.update({
+        status: "failed",
+        leaseUntil: 0,
+        lastError: "invalid_type_or_audience",
+        updatedAt: now,
+        ...syncTouch(),
+      });
       logger.error("broadcast run invalid", {runId});
       return;
     }
+
     const decision = canDeliverRun(run.deliveryPurpose, run.audienceId, gate());
     if (!decision.allowed) {
-      // Not authorised to deliver yet — release the lease, leave it queued/delivering.
-      await ref.update({leaseUntil: 0, lastGateReason: decision.reason, updatedAt: now});
+      await ref.update({
+        leaseUntil: 0,
+        lastGateReason: decision.reason,
+        updatedAt: now,
+        ...syncTouch(),
+      });
       logger.info("broadcast run gated", {runId, reason: decision.reason});
       return;
     }
@@ -167,8 +186,10 @@ export const broadcastFanout = onSchedule(
               body: resolveLocalizedCopy(run.content.body, lang, "bm"),
               deepLink: run.destinationRoute ?? undefined,
               metadata: {
-                campaignId: run.campaignId, campaignVersion: run.campaignVersion,
-                broadcastRunId: runId, deliveryPurpose: run.deliveryPurpose,
+                campaignId: run.campaignId,
+                campaignVersion: run.campaignVersion,
+                broadcastRunId: runId,
+                deliveryPurpose: run.deliveryPurpose,
               },
               source: "trusted_backend",
             });
@@ -179,24 +200,51 @@ export const broadcastFanout = onSchedule(
             };
           }
         } catch (e) {
-          logger.warn("broadcast recipient failed", {runId, error: e instanceof Error ? e.message : String(e)});
+          logger.warn("broadcast recipient failed", {
+            runId,
+            error: e instanceof Error ? e.message : String(e),
+          });
           outcome = {recordStatus: "failed"};
         }
         metrics = foldOutcome(metrics, outcome);
         processed++;
       }
+
       cursor = page.nextCursor;
-      // Persist progress each page (crash-safe resume) + renew the lease.
-      await ref.update({cursor, metrics, leaseUntil: now + LEASE_MS, updatedAt: Date.now()});
-      if (page.exhausted) {exhausted = true; break;}
+      await ref.update({
+        cursor,
+        metrics,
+        leaseUntil: now + LEASE_MS,
+        updatedAt: Date.now(),
+        ...syncTouch(),
+      });
+      if (page.exhausted) {
+        exhausted = true;
+        break;
+      }
     }
 
     if (exhausted) {
-      await ref.update({status: "completed", completedAt: Timestamp.now(), leaseUntil: 0, updatedAt: Date.now()});
+      await ref.update({
+        status: "completed",
+        completedAt: Timestamp.now(),
+        leaseUntil: 0,
+        updatedAt: Date.now(),
+        ...syncTouch(),
+      });
     } else {
-      // More to do — release the lease so the next invocation resumes from cursor.
-      await ref.update({leaseUntil: 0, updatedAt: Date.now()});
+      await ref.update({
+        leaseUntil: 0,
+        updatedAt: Date.now(),
+        ...syncTouch(),
+      });
     }
-    logger.info("broadcast fanout page", {runId, invocationProcessed: processed, exhausted, ...metrics});
+
+    logger.info("broadcast fanout page", {
+      runId,
+      invocationProcessed: processed,
+      exhausted,
+      ...metrics,
+    });
   },
 );
