@@ -40,6 +40,7 @@ export const editUserPost = onCall(async (request) => {
 
   const update: Record<string, unknown> = {
     editedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
     editHistoryCount: FieldValue.increment(1),
   };
   if (typeof text === "string") {
@@ -82,6 +83,7 @@ export const deleteUserPost = onCall(async (request) => {
   await ref.update({
     status: "deleted",
     deletedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
   await logEvent({userId: uid, eventType: "post_deleted", metadata: {postId}});
   return {status: "OK"};
@@ -111,6 +113,7 @@ export const editUserComment = onCall(async (request) => {
   await ref.update({
     text: body.trim(),
     editedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
   await logEvent({
     userId: uid,
@@ -140,6 +143,7 @@ export const deleteUserComment = onCall(async (request) => {
   await ref.update({
     status: "deleted",
     deletedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
   await logEvent({
     userId: uid,

@@ -60,6 +60,22 @@ const PUSH_COPY: Partial<Record<NotificationType, Copy>> = {
     title: {ms: "Jemputan diterima", en: "Invite accepted", zh: "邀请已接受", ta: "அழைப்பு ஏற்கப்பட்டது"},
     body: {ms: "Seseorang menerima jemputan grup anda.", en: "Someone accepted your group invite.", zh: "有人接受了你的群组邀请。", ta: "உங்கள் குழு அழைப்பை ஒருவர் ஏற்றார்."},
   },
+  meal_reminder: {
+    title: {ms: "Dah waktu makan", en: "Time to eat", zh: "用餐时间到了", ta: "சாப்பிடும் நேரம்"},
+    body: {ms: "Nak makan mana hari ni? Jom cari & log makanan anda.", en: "What's for the meal? Find a spot & log it.", zh: "今天吃什么？来找个地方并记录一下。", ta: "இன்று என்ன சாப்பிடுவது? ஒரு இடம் தேடி பதிவு செய்யுங்கள்."},
+  },
+  subscription_started: {
+    title: {ms: "Langganan aktif", en: "Subscription active", zh: "订阅已启用", ta: "சந்தா செயலில்"},
+    body: {ms: "Langganan Pro anda kini aktif. Terima kasih!", en: "Your Pro subscription is now active. Thank you!", zh: "你的 Pro 订阅已启用。谢谢！", ta: "உங்கள் Pro சந்தா இப்போது செயலில் உள்ளது. நன்றி!"},
+  },
+  subscription_renewed: {
+    title: {ms: "Langganan diperbaharui", en: "Subscription renewed", zh: "订阅已续订", ta: "சந்தா புதுப்பிக்கப்பட்டது"},
+    body: {ms: "Langganan Pro anda telah diperbaharui.", en: "Your Pro subscription has renewed.", zh: "你的 Pro 订阅已续订。", ta: "உங்கள் Pro சந்தா புதுப்பிக்கப்பட்டது."},
+  },
+  subscription_cancelled: {
+    title: {ms: "Langganan dibatalkan", en: "Subscription cancelled", zh: "订阅已取消", ta: "சந்தா ரத்து செய்யப்பட்டது"},
+    body: {ms: "Langganan tidak akan diperbaharui. Akses kekal hingga tamat tempoh.", en: "Your subscription won't renew. Access stays until the period ends.", zh: "订阅将不再续订。到期前仍可使用。", ta: "சந்தா புதுப்பிக்கப்படாது. காலம் முடியும் வரை அணுகல் இருக்கும்."},
+  },
   account_security: {
     title: {ms: "Amaran keselamatan", en: "Security alert", zh: "安全提醒", ta: "பாதுகாப்பு எச்சரிக்கை"},
     body: {ms: "Ada aktiviti keselamatan pada akaun anda.", en: "There's a security activity on your account.", zh: "你的账户有安全活动。", ta: "உங்கள் கணக்கில் பாதுகாப்பு செயல்பாடு உள்ளது."},

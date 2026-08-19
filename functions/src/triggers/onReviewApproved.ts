@@ -41,7 +41,9 @@ export const onReviewApproved = onDocumentUpdated(
           timeSlot: currentTimeSlot(),
           likeCount: 0,
           likedBy: [],
+          // Approval creates a new feed post; this is its one publication time.
           createdAt: FieldValue.serverTimestamp(),
+          updatedAt: FieldValue.serverTimestamp(),
         });
       }
     }

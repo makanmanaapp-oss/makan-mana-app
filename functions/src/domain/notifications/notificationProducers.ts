@@ -11,25 +11,46 @@ import {deliverNotificationPush} from "../../services/pushDeliveryService";
  * attempted here (the ONLY push entry point). Producers never call Admin
  * Messaging directly. Push is DELIVERY-only and fully failure-safe: a push
  * failure never undoes the action nor removes the in-app record. */
-export async function notifySafely(command: CreateNotificationCommand): Promise<void> {
+/**
+ * Failure-safe notification entry point. Returns `{ok}` so schedule-driven
+ * callers can distinguish a HANDLED occurrence (created/duplicate/suppressed —
+ * `ok:true`) from a transient PERSISTENCE failure (`ok:false`) that should be
+ * retried, without ever throwing (Prompt 5A.1 Part 8). `status` is the
+ * createNotification outcome. Existing callers that ignore the return are
+ * unaffected.
+ */
+export async function notifySafely(
+  command: CreateNotificationCommand,
+): Promise<{ok: boolean; status?: string; inAppVisible?: boolean; push?: {sent: number; pruned: number; reason: string}}> {
   try {
     const result = await createNotification(command);
     if (result.status === "created") {
       // Fire push for the freshly-created record only (never duplicate/suppressed).
-      await deliverNotificationPush({
+      // PROMPT 7: the push outcome is now returned (additively) so the broadcast
+      // fanout can aggregate honest push metrics without a second read.
+      const push = await deliverNotificationPush({
         notificationId: result.notificationId,
         recipientUid: command.recipientUid,
         type: command.type,
         category: categoryForType(command.type),
         titleKey: command.titleKey,
         bodyKey: command.bodyKey,
+        title: command.title,
+        body: command.body,
         isCritical: CRITICAL_TYPES.has(command.type),
         expiresAtMs: command.expiresAt ? command.expiresAt.getTime() : null,
         schemaVersion: 2,
-      }).catch((e) => console.error("push_delivery_failed", {type: command.type, e}));
+      }).catch((e) => {
+        console.error("push_delivery_failed", {type: command.type, e});
+        return {sent: 0, pruned: 0, reason: "delivery_error"};
+      });
+      return {ok: true, status: result.status, inAppVisible: result.inAppVisible, push};
     }
+    return {ok: true, status: result.status};
   } catch (error) {
+    // A persistence failure — NOT an expected suppression. Signal retry.
     console.error("notification_side_effect_failed", {type: command.type, error});
+    return {ok: false};
   }
 }
 

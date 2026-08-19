@@ -95,7 +95,18 @@ export function buildDeviceRecord(
  * Push-eligible = social/group category, OR a critical type (security/billing
  * allowlist). tongtong/marketing/food/fit/report/system are NOT pushed here.
  */
-const PUSH_ELIGIBLE_CATEGORIES = new Set<NotificationCategory>(["social", "group"]);
+// PROMPT 5: categories whose non-critical notifications may push (subject to
+// per-category push preference + quiet hours). Adds the domains activated in
+// Prompt 5 (food/fit/report/billing/system).
+// PROMPT 6.1 Gate C: `marketing` becomes push-ELIGIBLE so the marketing push
+// preference is TRUTHFUL — but it remains OPT-IN (OPT_IN_CATEGORIES) with a
+// default of OFF/OFF, so eligibility never means unsolicited delivery: the
+// preference resolver still requires an explicit opt-in, quiet hours still
+// apply, and there is no admin bypass. `tongtong` stays frozen; `account`/
+// `security` push only via the critical allowlist, never as a push category.
+const PUSH_ELIGIBLE_CATEGORIES = new Set<NotificationCategory>([
+  "social", "group", "food", "fit", "report", "billing", "system", "marketing",
+]);
 
 export function isPushEligibleType(type: NotificationType, category: NotificationCategory): boolean {
   return PUSH_ELIGIBLE_CATEGORIES.has(category) || CRITICAL_TYPES.has(type);
@@ -117,6 +128,27 @@ export function withinQuietWindow(minuteOfDay: number, start: number, end: numbe
   if (start === end) return false; // empty window
   if (start < end) return minuteOfDay >= start && minuteOfDay < end;
   return minuteOfDay >= start || minuteOfDay < end; // wraps midnight
+}
+
+/**
+ * PROMPT 4A — recipient's local minute-of-day for an instant, in an IANA zone.
+ * DST-aware (Intl resolves the correct wall-clock offset per date). Falls back
+ * to MYT (UTC+8 wall clock) only if the zone is unusable — callers should have
+ * validated the zone, so this is a last resort, never a silent global default.
+ */
+export function localMinuteOfDay(nowMs: number, timezone: string | null): number {
+  try {
+    const fmt = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone || "Asia/Kuala_Lumpur",
+      hour: "2-digit", minute: "2-digit", hour12: false,
+    });
+    const parts = fmt.formatToParts(new Date(nowMs));
+    const h = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+    const m = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
+    return ((h % 24) * 60 + m) % 1440;
+  } catch {
+    return (((new Date(nowMs).getUTCHours() + 8) % 24) * 60 + new Date(nowMs).getUTCMinutes()) % 1440;
+  }
 }
 
 export type PushDecisionReason =
@@ -191,8 +223,8 @@ export function buildPushPayload(record: {
   notificationId: string;
   type: NotificationType;
   category: NotificationCategory;
-  titleKey: string;
-  bodyKey: string;
+  titleKey?: string;
+  bodyKey?: string;
   schemaVersion: number;
 }): PushPayload {
   return {
@@ -202,8 +234,8 @@ export function buildPushPayload(record: {
       category: record.category,
       schemaVersion: String(record.schemaVersion),
     },
-    titleKey: record.titleKey,
-    bodyKey: record.bodyKey,
+    titleKey: record.titleKey ?? "",
+    bodyKey: record.bodyKey ?? "",
   };
 }
 

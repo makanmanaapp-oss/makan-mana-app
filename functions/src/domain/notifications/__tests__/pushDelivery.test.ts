@@ -14,6 +14,7 @@ import {
   evaluatePushPolicy,
   isPushEligibleType,
   LEGACY_DEVICE_ID,
+  localMinuteOfDay,
   maskToken,
   PushPolicyInput,
   resolveDeliveryOutcomes,
@@ -64,7 +65,7 @@ test("device record never carries sensitive fields (only bounded allowlist)", ()
 });
 
 // ---- push eligibility + policy ----
-test("social/group are push-eligible; tongtong/marketing/fit are not", () => {
+test("social/group push-eligible; tongtong not (marketing covered in prompt5Producers)", () => {
   assert.equal(isPushEligibleType("social_reaction", "social"), true);
   assert.equal(isPushEligibleType("group_invite", "group"), true);
   assert.equal(isPushEligibleType("tongtong_bill_created", "tongtong"), false);
@@ -112,6 +113,39 @@ test("quiet window wraps midnight correctly", () => {
   assert.equal(withinQuietWindow(3 * 60, 22 * 60, 7 * 60), true);
   assert.equal(withinQuietWindow(12 * 60, 22 * 60, 7 * 60), false);
   assert.equal(withinQuietWindow(9 * 60, 9 * 60, 9 * 60), false); // empty window
+});
+
+// ---- PROMPT 4A: recipient-timezone local minute-of-day (Part 20/21) ----
+test("localMinuteOfDay evaluates the RECIPIENT zone, not the server", () => {
+  // 2026-01-15T14:00Z (winter, no DST anywhere here).
+  const t = Date.UTC(2026, 0, 15, 14, 0);
+  assert.equal(localMinuteOfDay(t, "Asia/Kuala_Lumpur"), 22 * 60); // UTC+8 → 22:00
+  assert.equal(localMinuteOfDay(t, "Asia/Tokyo"), 23 * 60); // UTC+9 → 23:00
+  assert.equal(localMinuteOfDay(t, "Europe/London"), 14 * 60); // UTC+0 → 14:00
+  assert.equal(localMinuteOfDay(t, "America/New_York"), 9 * 60); // UTC-5 → 09:00
+});
+test("quiet 22:00→07:00 is per-recipient-zone at the SAME instant", () => {
+  const t = Date.UTC(2026, 0, 15, 14, 0); // 22:00 KL, 23:00 Tokyo, 14:00 London
+  const q = (tz: string) => withinQuietWindow(localMinuteOfDay(t, tz), 22 * 60, 7 * 60);
+  assert.equal(q("Asia/Kuala_Lumpur"), true); // 22:00 → quiet
+  assert.equal(q("Asia/Tokyo"), true); // 23:00 → quiet
+  assert.equal(q("Europe/London"), false); // 14:00 → awake
+  assert.equal(q("America/New_York"), false); // 09:00 → awake
+});
+test("DST-aware: America/New_York summer offset differs from winter", () => {
+  const winter = Date.UTC(2026, 0, 15, 12, 0); // Jan → EST (UTC-5) → 07:00
+  const summer = Date.UTC(2026, 6, 15, 12, 0); // Jul → EDT (UTC-4) → 08:00
+  assert.equal(localMinuteOfDay(winter, "America/New_York"), 7 * 60);
+  assert.equal(localMinuteOfDay(summer, "America/New_York"), 8 * 60);
+});
+test("DST-aware: Europe/London BST vs GMT", () => {
+  assert.equal(localMinuteOfDay(Date.UTC(2026, 0, 15, 9, 0), "Europe/London"), 9 * 60); // GMT
+  assert.equal(localMinuteOfDay(Date.UTC(2026, 6, 15, 9, 0), "Europe/London"), 10 * 60); // BST
+});
+test("same-day window with real zone", () => {
+  const t = Date.UTC(2026, 0, 15, 6, 0); // 14:00 KL
+  assert.equal(withinQuietWindow(localMinuteOfDay(t, "Asia/Kuala_Lumpur"), 13 * 60, 15 * 60), true);
+  assert.equal(withinQuietWindow(localMinuteOfDay(t, "Asia/Tokyo"), 13 * 60, 15 * 60), false); // 15:00 exclusive
 });
 
 // ---- payload minimization ----

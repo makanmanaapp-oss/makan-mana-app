@@ -17,6 +17,8 @@ import {malaysiaNow} from "../utils/timeSlot";
 const CACHE_TTL_DAYS = 7;
 const PLACES_ENDPOINT =
   "https://places.googleapis.com/v1/places:searchNearby";
+const PLACES_TEXT_ENDPOINT =
+  "https://places.googleapis.com/v1/places:searchText";
 const FIELD_MASK = [
   "places.id",
   "places.displayName",
@@ -38,6 +40,15 @@ interface SearchOptions {
   radiusMeters: number;
   languageCode: string;
   apiKey: string;
+}
+
+export interface CheckinTextPlace {
+  providerPlaceId: string;
+  name: string;
+  address: string;
+  areaLabel: string;
+  lat: number | null;
+  lng: number | null;
 }
 
 interface RawPeriodPoint {
@@ -329,4 +340,68 @@ export async function searchNearby(
   await batch.commit();
 
   return candidates;
+}
+
+/**
+ * Carian teks Google Places untuk composer check-in. Hanya dipanggil selepas
+ * DB tempat MakanMana tidak menemui padanan. Keputusan disimpan sebagai
+ * `place_details` supaya pilihan berikutnya menjadi data bersama, bukannya
+ * data peranti atau tempat kanonikal yang direka oleh klien.
+ */
+export async function searchCheckinText(
+  query: string,
+  languageCode: string,
+  apiKey: string,
+): Promise<CheckinTextPlace[]> {
+  const clean = query.trim().slice(0, 120);
+  if (clean.length < 2 || !apiKey) return [];
+  const res = await fetch(PLACES_TEXT_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": apiKey,
+      "X-Goog-FieldMask": FIELD_MASK,
+    },
+    body: JSON.stringify({
+      textQuery: clean,
+      includedType: "restaurant",
+      strictTypeFiltering: false,
+      languageCode,
+      maxResultCount: 8,
+    }),
+  });
+  if (!res.ok) throw new Error(`Places text search ${res.status}`);
+  const raw = ((await res.json()) as {places?: RawPlace[]}).places ?? [];
+  const places = raw
+    .filter((p) => typeof p.id === "string" && p.id.length > 0)
+    .slice(0, 8)
+    .map((p) => {
+      const address = p.shortFormattedAddress ?? "";
+      return {
+        providerPlaceId: p.id!,
+        name: p.displayName?.text?.trim() || "Tempat makan",
+        address,
+        // Google memberi alamat ringkas yang sesuai sebagai kawasan kasar;
+        // ia bukan lokasi semasa pengguna.
+        areaLabel: address,
+        lat: typeof p.location?.latitude === "number" ? p.location.latitude : null,
+        lng: typeof p.location?.longitude === "number" ? p.location.longitude : null,
+      };
+    });
+
+  const batch = db.batch();
+  for (const place of places) {
+    batch.set(db.collection("place_details").doc(place.providerPlaceId), {
+      displayName: place.name,
+      formattedAddress: place.address || null,
+      address: place.address || null,
+      location: place.lat != null && place.lng != null
+        ? {latitude: place.lat, longitude: place.lng}
+        : null,
+      locationSource: "google_places_text_search",
+      lastFetchedAt: FieldValue.serverTimestamp(),
+    }, {merge: true});
+  }
+  if (places.length > 0) await batch.commit();
+  return places;
 }

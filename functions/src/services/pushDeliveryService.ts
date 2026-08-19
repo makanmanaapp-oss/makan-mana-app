@@ -16,6 +16,7 @@ import {db, FieldValue} from "../config/firebase";
 import {
   NotificationCategory,
   NotificationType,
+  resolvePreference,
 } from "../domain/notifications/notificationContract";
 import {
   buildDeviceRecord,
@@ -23,6 +24,7 @@ import {
   deliveryId,
   DeliveryStatus,
   evaluatePushPolicy,
+  localMinuteOfDay,
   maskToken,
   PushDevice,
   resolveDeliveryOutcomes,
@@ -34,8 +36,13 @@ export interface DeliverableRecord {
   recipientUid: string;
   type: NotificationType;
   category: NotificationCategory;
-  titleKey: string;
-  bodyKey: string;
+  titleKey?: string;
+  bodyKey?: string;
+  /** Pre-resolved admin-broadcast copy (PROMPT 6A); used when no static push
+   * copy exists for the type. Push falls back key → text so admin notifications
+   * carry their authored title/body to the tray. */
+  title?: string;
+  body?: string;
   isCritical: boolean;
   expiresAtMs: number | null;
   schemaVersion: number;
@@ -79,22 +86,6 @@ export const adminMessagingSender: MessagingSender = {
 export interface DeliverOptions {
   sender?: MessagingSender;
   now?: number;
-}
-
-/** Recipient's local minute-of-day for quiet-hours (tz default MYT). */
-function localMinuteOfDay(nowMs: number, timezone: string | null): number {
-  try {
-    const fmt = new Intl.DateTimeFormat("en-US", {
-      timeZone: timezone || "Asia/Kuala_Lumpur",
-      hour: "2-digit", minute: "2-digit", hour12: false,
-    });
-    const parts = fmt.formatToParts(new Date(nowMs));
-    const h = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
-    const m = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
-    return ((h % 24) * 60 + m) % 1440;
-  } catch {
-    return (((new Date(nowMs).getUTCHours() + 8) % 24) * 60 + new Date(nowMs).getUTCMinutes()) % 1440;
-  }
 }
 
 /** Active devices from the multi-device registry; legacy fcmToken fallback. */
@@ -148,7 +139,10 @@ export async function deliverNotificationPush(
       db.collection("users").doc(uid).get(),
     ]);
     const prefs = (userSnap.data()?.notificationPreferences ?? {}) as Record<string, Record<string, unknown>>;
-    const catPref = (prefs[record.category] ?? {}) as {pushEnabled?: boolean};
+    // PROMPT 4: fold master + per-category + marketing opt-in into the effective
+    // push flag; evaluatePushPolicy then applies it (critical still bypasses).
+    const effective = resolvePreference(prefs, record.category, record.isCritical);
+    const catPref = {pushEnabled: effective.pushEnabled};
     const quiet = (prefs.quietHours ?? userSnap.data()?.notificationQuietHours ?? {}) as {
       quietHoursEnabled?: boolean; quietHoursStart?: number; quietHoursEnd?: number; timezone?: string;
     };
@@ -169,8 +163,13 @@ export async function deliverNotificationPush(
       return {sent: 0, pruned: 0, reason: decision.reason};
     }
 
-    const copy = pushCopyFor(record.type, lang) ??
-      {title: record.titleKey, body: record.bodyKey};
+    // PROMPT 6.1 Gate B: admin-authored copy (record.title/body) ALWAYS wins over
+    // any static per-type push copy, so a Control Center campaign's chosen copy
+    // reaches the tray and is never silently replaced by a generic fixed string.
+    const copy = (record.title && record.body)
+      ? {title: record.title, body: record.body}
+      : pushCopyFor(record.type, lang) ??
+        {title: record.titleKey ?? "", body: record.bodyKey ?? ""};
     const payload = buildPushPayload(record);
 
     // Only devices not already delivered (idempotency across retries).

@@ -2,6 +2,7 @@ import {HttpsError, onCall} from "firebase-functions/v2/https";
 
 import {db, FieldValue} from "../config/firebase";
 import {logEvent} from "../services/eventService";
+import {actorDisplaySnapshot, notifySafely} from "../domain/notifications/notificationProducers";
 
 /**
  * Sistem sosial makan: follow / unfollow / mute / block / report.
@@ -36,9 +37,9 @@ export const followUser = onCall(async (request) => {
   }
 
   const fRef = db.collection("follows").doc(followId(uid, targetUid));
-  await db.runTransaction(async (tx) => {
+  const created = await db.runTransaction(async (tx) => {
     const snap = await tx.get(fRef);
-    if (snap.exists) return; // sudah ikut
+    if (snap.exists) return false; // sudah ikut
     tx.set(fRef, {
       followerUid: uid,
       followingUid: targetUid,
@@ -54,7 +55,23 @@ export const followUser = onCall(async (request) => {
       {followersCount: FieldValue.increment(1)},
       {merge: true},
     );
+    return true;
   });
+
+  if (created) {
+    await notifySafely({
+      recipientUid: targetUid,
+      type: "social_follow",
+      sourceEventId: `follow:${uid}:${targetUid}`,
+      actorUid: uid,
+      actorDisplaySnapshot: await actorDisplaySnapshot(uid),
+      entityType: "profile",
+      entityId: uid,
+      titleKey: "notificationSocialFollowTitle",
+      bodyKey: "notificationSocialFollowBody",
+      deepLink: `/u/${uid}`,
+    });
+  }
 
   await logEvent({
     userId: uid,

@@ -1,6 +1,7 @@
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 
 import {db, FieldValue} from "../config/firebase";
+import {readCanonicalForProvider} from "../services/canonicalReadService";
 import {logEvent} from "../services/eventService";
 import {currentTimeSlot} from "../utils/timeSlot";
 
@@ -23,6 +24,16 @@ interface CreateFeedPostInput {
   totalSpend?: number;
   userRating?: number;
   moodTags?: string[];
+  checkinPlace?: CheckinPlaceInput;
+}
+
+interface CheckinPlaceInput {
+  placeId?: string;
+  providerPlaceId?: string;
+  provider?: string;
+  name?: string;
+  areaLabel?: string;
+  isManual?: boolean;
 }
 
 const MAX_TEXT_LENGTH = 500;
@@ -87,6 +98,64 @@ function sanitizeCheckinFields(input: CreateFeedPostInput) {
   };
 }
 
+function cleanText(value: unknown, max: number): string {
+  return typeof value === "string" ? value.trim().slice(0, max) : "";
+}
+
+/**
+ * Jangan percaya nama/alamat/verified daripada klien. Tempat terpilih mesti
+ * wujud dalam cache Google/MakanMana, kemudian diselesaikan kepada canonical
+ * bila alias/penerbitan aktif ada. Pilihan manual sengaja tidak diberi ID
+ * global dan kekal `verified:false`.
+ */
+async function resolveCheckinPlace(input: CreateFeedPostInput): Promise<{
+  placeId: string | null; provider: string; providerPlaceId: string | null;
+  name: string; areaLabel: string | null; address: string | null;
+  lat: number | null; lng: number | null; verified: boolean;
+  source: string; isManual: boolean;
+} | null> {
+  const raw = input.checkinPlace;
+  // Klien lama dengan teks bebas dikekalkan sebagai manual; ia tidak boleh
+  // menyamar sebagai rekod kanonikal atau Google.
+  if (!raw || raw.isManual === true || raw.provider === "manual") {
+    const name = cleanText(raw?.name ?? input.placeName, 120);
+    if (!name) return null;
+    return {
+      placeId: null, provider: "manual", providerPlaceId: null, name,
+      areaLabel: cleanText(raw?.areaLabel ?? input.areaLabel, 80) || null,
+      address: null, lat: null, lng: null, verified: false,
+      source: "manual", isManual: true,
+    };
+  }
+  const providerPlaceId = cleanText(raw.providerPlaceId ?? raw.placeId, 180);
+  if (!providerPlaceId) {
+    throw new HttpsError("invalid-argument", "Pilih tempat yang sah atau guna pilihan manual.");
+  }
+  const [detailSnap, canonical] = await Promise.all([
+    db.collection("place_details").doc(providerPlaceId).get(),
+    readCanonicalForProvider(providerPlaceId),
+  ]);
+  const detail = detailSnap.data() ?? {};
+  const canonicalView = canonical.view;
+  if (!detailSnap.exists && !canonicalView) {
+    throw new HttpsError("failed-precondition", "Tempat perlu dipilih daripada carian semasa.");
+  }
+  const name = cleanText(canonicalView?.title ?? detail.displayName, 120);
+  if (!name) throw new HttpsError("failed-precondition", "Maklumat tempat belum lengkap.");
+  const address = cleanText(canonicalView?.address ?? detail.formattedAddress ?? detail.address, 180) || null;
+  const point = detail.location as {latitude?: unknown; longitude?: unknown} | undefined;
+  const lat = canonicalView?.lat ?? (typeof point?.latitude === "number" ? point.latitude : null);
+  const lng = canonicalView?.lng ?? (typeof point?.longitude === "number" ? point.longitude : null);
+  return {
+    placeId: canonicalView?.canonicalPlaceId ?? providerPlaceId,
+    provider: canonicalView ? "makanmana" : "google",
+    providerPlaceId, name, areaLabel: address, address, lat, lng,
+    verified: true,
+    source: canonicalView ? "makanmana_shared" : "google_places",
+    isManual: false,
+  };
+}
+
 /**
  * Siaran ke Feed Makan (awam/pengikut/grup/peribadi) dengan pemilih
  * keterlihatan dan jenis siaran. Melalui pelayan untuk sahkan & moderate.
@@ -125,7 +194,10 @@ export const createFeedPost = onCall(async (request) => {
     postType !== "food_post" && postType !== "status" && !isCheckin;
 
   const checkin = isCheckin ? sanitizeCheckinFields(input) : null;
-  const placeName = (input.placeName ?? "").trim();
+  const resolvedPlace = isCheckin ? await resolveCheckinPlace(input) : null;
+  const placeName = isCheckin
+    ? (resolvedPlace?.name ?? "")
+    : (input.placeName ?? "").trim();
 
   // Check-in: mesti ada nama tempat ATAU cerita ringkas.
   if (isCheckin && placeName.length === 0 && text.length === 0) {
@@ -215,19 +287,30 @@ export const createFeedPost = onCall(async (request) => {
     groupId: groupId.length > 0 ? groupId : null,
     visibility,
     payload: isShareCard ? payload : null,
-    placeId: input.placeId ?? null,
+    placeId: isCheckin ? (resolvedPlace?.placeId ?? null) : (input.placeId ?? null),
     placeName: placeName.length > 0 ? placeName : null,
     emoji: input.emoji ?? "😋",
     likeCount: 0,
     likedBy: [],
     commentCount: 0,
     timeSlot: currentTimeSlot(),
+    // Written exactly once. Every later mutation uses updatedAt / editedAt.
     createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
     // Social Prompt 4: metadata check-in (null jika bukan check-in).
     // PRIVASI: tiada lat/lng — areaLabel teks kasar sahaja.
     ...(isCheckin && checkin ?
       {
-        areaLabel: checkin.areaLabel,
+        // Server-derived only: never accept claimed verification/address/ID.
+        placeProvider: resolvedPlace?.provider ?? "manual",
+        placeProviderId: resolvedPlace?.providerPlaceId ?? null,
+        placeAddress: resolvedPlace?.address ?? null,
+        placeLat: resolvedPlace?.lat ?? null,
+        placeLng: resolvedPlace?.lng ?? null,
+        placeVerified: resolvedPlace?.verified ?? false,
+        placeSource: resolvedPlace?.source ?? "manual",
+        isManualPlace: resolvedPlace?.isManual ?? true,
+        areaLabel: resolvedPlace?.areaLabel ?? checkin.areaLabel,
         menuName: checkin.menuName,
         totalSpend: checkin.totalSpend,
         currency: "MYR",
@@ -235,7 +318,6 @@ export const createFeedPost = onCall(async (request) => {
         moodTags: checkin.moodTags,
         source: "composer_checkin",
         commentEnabled: true,
-        updatedAt: FieldValue.serverTimestamp(),
       } :
       {}),
   });

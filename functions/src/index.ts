@@ -26,7 +26,7 @@ export {scanCalories} from "./callable/scanCalories";
 export {saveScanMeal} from "./callable/saveScanMeal";
 export {adminReviewAction} from "./callable/adminReviewAction";
 export {hideLegacyAutoPosts} from "./callable/hideLegacyAutoPosts";
-export {lunchReminder, dinnerReminder} from "./scheduled/mealReminders";
+export {mealReminderBackfill, mealReminderDispatch} from "./scheduled/mealReminders";
 export {
   editUserPost,
   deleteUserPost,
@@ -94,6 +94,7 @@ export {expireCouponTrials} from "./scheduled/expireCouponTrials";
 
 // Notification V2 / Prompt 3 — push device registry (multi-device).
 export {registerPushDevice, unregisterPushDevice} from "./callable/pushDeviceControl";
+export {setNotificationPreferences} from "./callable/notificationPreferences";
 
 // Phase 1.14A — callable pembetulan dipercayai (BELUM DI-DEPLOY; berpagar-pemilik).
 export {submitPlaceCorrection} from "./callable/submitPlaceCorrection";
@@ -104,3 +105,13 @@ export {createNotificationQaFixture} from "./callable/createNotificationQaFixtur
 
 // Control Center — privacy-safe aggregate Place Coverage sync. Manual/read-only.
 export {syncPlaceCoverageToControlCenter} from "./controlCenter/placeCoverageSync";
+
+// PROMPT 6A — Control Center → Notification V2 trusted bridge (BELUM DI-DEPLOY).
+// Secret-authenticated, single approved test recipient, admin type allowlist,
+// no critical/bypass, delivers ONLY via notifySafely. Deployed in Prompt 6.1.
+export {controlCenterNotificationAdminBridge} from "./triggers/controlCenterNotificationAdminBridge";
+
+// PROMPT 7 — production broadcast fanout worker (server-only, scheduled).
+// Firestore-run-driven, bounded, resumable, idempotent, race-safe (lease);
+// delivers ONLY via notifySafely. Gated by NOTIFICATION_BROADCAST_*_ENABLED.
+export {broadcastFanout} from "./scheduled/notificationBroadcast";
