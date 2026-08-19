@@ -115,3 +115,6 @@ export {controlCenterNotificationAdminBridge} from "./triggers/controlCenterNoti
 // Firestore-run-driven, bounded, resumable, idempotent, race-safe (lease);
 // delivers ONLY via notifySafely. Gated by NOTIFICATION_BROADCAST_*_ENABLED.
 export {broadcastFanout} from "./scheduled/notificationBroadcast";
+
+// PROMPT 7.1 - Supabase control-plane claimer and aggregate run mirror sync.
+export {broadcastControlPlaneSync} from "./scheduled/notificationBroadcastControlPlane";
