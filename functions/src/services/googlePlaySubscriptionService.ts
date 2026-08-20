@@ -64,6 +64,37 @@ export function obfuscatedAccountId(uid: string): string {
   return sha256(`mm_obfuscated_account_v1:${uid}`).slice(0, 32);
 }
 
+/**
+ * Creates the durable server-owned account binding BEFORE Play checkout.
+ * This lets RTDN resolve ownership even if it arrives before client verify.
+ */
+export async function prepareGooglePlayBillingAccount(
+  uid: string,
+): Promise<string> {
+  const accountId = obfuscatedAccountId(uid);
+  const ref = db.collection("subscription_account_links").doc(accountId);
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const existingUid = (snap.data()?.uid as string | undefined) ?? "";
+
+    if (existingUid && existingUid !== uid) {
+      throw new HttpsError(
+        "permission-denied",
+        "Akaun Google Play tidak sepadan dengan pengguna ini.",
+      );
+    }
+
+    tx.set(ref, {
+      uid,
+      obfuscatedAccountId: accountId,
+      updatedAt: FieldValue.serverTimestamp(),
+    }, {merge: true});
+  });
+
+  return accountId;
+}
+
 let playFetcher: PlaySubscriptionFetcher = defaultPlayFetcher;
 let playAcknowledger: PlaySubscriptionAcknowledger = defaultPlayAcknowledger;
 

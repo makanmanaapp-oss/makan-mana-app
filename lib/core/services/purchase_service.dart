@@ -210,7 +210,9 @@ class PurchaseService {
       final planStatus = data['planStatus'] as String?;
 
       // Nama field mesti sama dengan backend production.
-      final localCompletionAllowed = data['allowCompletePurchase'] == true;
+      final localCompletionAllowed =
+          data['localCompletionAllowed'] == true ||
+          data['allowCompletePurchase'] == true;
 
       _results.add(
         PurchaseResult(

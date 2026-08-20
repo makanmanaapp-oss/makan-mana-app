@@ -58,6 +58,8 @@ export const verifyGooglePlaySubscription = onCall(
       autoRenewing: fields.autoRenewing,
       acknowledgementStatus: result.acknowledgementStatus,
       localCompletionAllowed: result.localCompletionAllowed,
+      // Compatibility alias for already-installed Flutter clients.
+      allowCompletePurchase: result.localCompletionAllowed,
     };
   },
 );
