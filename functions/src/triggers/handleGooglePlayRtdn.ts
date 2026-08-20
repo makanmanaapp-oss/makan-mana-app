@@ -9,6 +9,11 @@ import {
   validateGooglePlayRtdn,
 } from "../domain/billing/googlePlayRtdn";
 import {
+  billingNotificationForRtdn,
+  billingSourceEventId,
+} from "../domain/billing/billingNotifications";
+import {notifySafely} from "../domain/notifications/notificationProducers";
+import {
   ANDROID_PACKAGE_NAME,
   fetchGooglePlaySubscription,
   processGooglePlaySubscription,
@@ -179,6 +184,26 @@ export const handleGooglePlayRtdn = onMessagePublished(
       // The entitlement is safe, but Pub/Sub must retry acknowledgement.
       logger.error("Google Play acknowledgement needs retry", {messageIdHash});
       throw new Error("google_play_acknowledgement_pending_retry");
+    }
+
+    // PROMPT 5: notify the VERIFIED owner downstream of the entitlement update.
+    // Failure-safe (Part 51): a notification error must NEVER undo verification,
+    // acknowledgement, the entitlement write, or RTDN completion. notifySafely is
+    // already internally failure-safe; the extra catch is belt-and-braces. Only
+    // the canonical type + generic copy leave here — no purchase token / order id
+    // / Play response (Part 49). One notification per RTDN message (dedup).
+    const billingSpec = billingNotificationForRtdn(validated.notificationType);
+    if (billingSpec) {
+      await notifySafely({
+        recipientUid: uid,
+        type: billingSpec.type,
+        sourceEventId: billingSourceEventId(messageIdHash),
+        titleKey: billingSpec.titleKey,
+        bodyKey: billingSpec.bodyKey,
+        // No raw deepLink: resolver maps billing types → Paywall/plan screen.
+      }).catch((e) => logger.error("billing_notification_failed", {
+        messageIdHash, error: e instanceof Error ? e.message : String(e),
+      }));
     }
 
     await writeRtdnEvent({

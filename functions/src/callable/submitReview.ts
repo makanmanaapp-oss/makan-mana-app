@@ -203,7 +203,9 @@ export const submitReview = onCall(async (request) => {
         timeSlot: currentTimeSlot(),
         likeCount: 0,
         likedBy: [],
+        // Immutable publication instant for the separately created feed post.
         createdAt: FieldValue.serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
       });
     }
   }

@@ -234,7 +234,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: RoutePaths.social,
-        builder: (context, state) => const FeedScreen(),
+        // ?tab=groups → buka terus tab Grup (inbox jemputan) untuk group_invite.
+        builder: (context, state) => FeedScreen(
+          initialTab: FeedScreen.tabIndexFor(state.uri.queryParameters['tab']),
+        ),
       ),
       // Front Page Redesign 1 — Notification Center.
       GoRoute(
@@ -399,12 +402,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/post/:postId/media',
         builder: (context, state) => MediaViewerScreen(
           postId: state.pathParameters['postId'] ?? '',
-          initialPost: state.extra is FeedPostData
-              ? state.extra as FeedPostData
-              : null,
+          initialPost:
+              state.extra is FeedPostData ? state.extra as FeedPostData : null,
           // SP8: buka pada indeks gambar yang ditap dalam carousel.
-          initialIndex:
-              int.tryParse(state.uri.queryParameters['i'] ?? '') ?? 0,
+          initialIndex: int.tryParse(state.uri.queryParameters['i'] ?? '') ?? 0,
         ),
       ),
       GoRoute(
@@ -425,8 +426,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Susunan penting: laluan statik sebelum :groupId.
       GoRoute(
         path: '/groups/:groupId/settings',
-        builder: (context, state) => GroupSettingsScreen(
-            groupId: state.pathParameters['groupId'] ?? ''),
+        builder: (context, state) =>
+            GroupSettingsScreen(groupId: state.pathParameters['groupId'] ?? ''),
       ),
       GoRoute(
         path: '/groups/:groupId/bills/create',

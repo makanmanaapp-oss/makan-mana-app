@@ -1,7 +1,7 @@
 import {onDocumentWritten} from "firebase-functions/v2/firestore";
 
 import {db, FieldValue} from "../config/firebase";
-import {pushToUser} from "../services/pushService";
+import {actorDisplaySnapshot, notifySafely, relationshipBlocked} from "../domain/notifications/notificationProducers";
 
 /**
  * Komen ditambah/dipadam:
@@ -41,7 +41,8 @@ async function syncReplyActivity(
     authorUid: comment.authorUid ?? "",
     postId,
     commentId,
-    createdAt: comment.createdAt ?? FieldValue.serverTimestamp(),
+    // This mirror must never manufacture a publication time for legacy data.
+    createdAt: comment.createdAt ?? null,
     active: true,
   });
 }
@@ -60,7 +61,11 @@ export const onCommentChanged = onDocumentWritten(
     );
     const postRef = db.collection("feed_posts").doc(event.params.postId);
     await postRef.set(
-      {commentCount: FieldValue.increment(created ? 1 : -1)},
+      {
+        commentCount: FieldValue.increment(created ? 1 : -1),
+        // A comment changes aggregate metadata, not the post's publication.
+        updatedAt: FieldValue.serverTimestamp(),
+      },
       {merge: true},
     );
 
@@ -70,13 +75,33 @@ export const onCommentChanged = onDocumentWritten(
       const authorUid = post?.authorUid as string | undefined;
       const commenterUid = comment?.authorUid as string | undefined;
       if (authorUid && commenterUid && authorUid !== commenterUid) {
-        const name = (comment?.displayName as string) ?? "Seseorang";
-        const text = (comment?.text as string) ?? "";
-        await pushToUser(
-          authorUid,
-          "Komen baru pada post anda",
-          `${name}: ${text.length > 80 ? text.slice(0, 77) + "..." : text}`,
-        );
+        const parentCommentId = comment?.parentCommentId as string | undefined;
+        let recipientUid = authorUid;
+        let type: "social_comment" | "social_reply" = "social_comment";
+        if (parentCommentId) {
+          const parent = await postRef.collection("comments").doc(parentCommentId).get();
+          const parentAuthor = parent.data()?.authorUid as string | undefined;
+          if (parentAuthor && parentAuthor !== commenterUid) {
+            recipientUid = parentAuthor;
+            type = "social_reply";
+          }
+        }
+        if (recipientUid !== commenterUid &&
+            !(await relationshipBlocked(commenterUid, recipientUid))) {
+          await notifySafely({
+            recipientUid,
+            type,
+            sourceEventId: `${type === "social_reply" ? "reply" : "comment"}:${event.params.commentId}`,
+            actorUid: commenterUid,
+            actorDisplaySnapshot: await actorDisplaySnapshot(commenterUid),
+            entityType: "post",
+            entityId: event.params.postId,
+            parentEntityId: event.params.commentId,
+            titleKey: type === "social_reply" ? "notificationSocialReplyTitle" : "notificationSocialCommentTitle",
+            bodyKey: type === "social_reply" ? "notificationSocialReplyBody" : "notificationSocialCommentBody",
+            deepLink: "/social",
+          });
+        }
       }
     }
   },
