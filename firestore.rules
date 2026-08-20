@@ -57,6 +57,9 @@ service cloud.firestore {
         // expireCouponTrials). Klien tidak boleh self-grant trial.
         'couponCode', 'couponRedeemedAt', 'couponExpiresAt',
         'planBeforeCoupon', 'couponStatus',
+        // Notification V2: preferences are callable/server-authoritative.
+        // Direct client writes are denied; Admin SDK bypasses rules.
+        'notificationPreferences', 'notificationQuietHours',
       ];
     }
 
@@ -103,7 +106,7 @@ service cloud.firestore {
       // ---------- Front Page Redesign 1: Notification Center ----------
       // Notifikasi milik pengguna (users/{uid}/notifications/{id}). Klien:
       //  - BACA notifikasi SENDIRI sahaja (isOwner).
-      //  - KEMAS KINI keadaan-baca SAHAJA (isRead + readAt). Tiada medan lain
+        //  - KEMAS KINI keadaan-baca/open SAHAJA. Tiada medan kandungan lain
       //    boleh diubah — elak klien memalsu jenis/destinasi/keutamaan/badan.
       //  - TIDAK boleh CIPTA (notifikasi istimewa dicipta HANYA oleh Cloud
       //    Functions / Admin SDK yang memintas rules — elak klien fabrikasi
@@ -114,7 +117,25 @@ service cloud.firestore {
         allow create, delete: if false;
         allow update: if isOwner(uid)
           && request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(['isRead', 'readAt']);
+              .hasOnly(['isRead', 'readAt', 'openedAt', 'status'])
+          && request.resource.data.isRead == true
+          && request.resource.data.readAt != null
+          && request.resource.data.status == 'read';
+      }
+
+      // Notification V2 / Prompt 3 — push device registry (FCM tokens).
+      // Tokens are SENSITIVE. Written ONLY by registerPushDevice/unregister
+      // Push Device (Admin SDK bypasses rules). Klien TIDAK boleh tulis (elak
+      // memalsu token akaun lain) dan TIDAK boleh senaraikan/baca token (elak
+      // pendedahan). Owner boleh baca dokumen SENDIRI sahaja (diagnostik),
+      // tiada enumerasi silang-pengguna kerana ia bersarang di bawah uid.
+      match /pushDevices/{deviceId} {
+        allow read: if isOwner(uid);
+        allow create, update, delete: if false;
+      }
+      // Jejak penghantaran push — server-only sepenuhnya (tokenMask, status).
+      match /push_deliveries/{deliveryId} {
+        allow read, write: if false;
       }
     }
 

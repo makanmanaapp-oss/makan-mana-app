@@ -2,6 +2,7 @@ import {HttpsError, onCall} from "firebase-functions/v2/https";
 
 import {db, FieldValue} from "../config/firebase";
 import {logEvent} from "../services/eventService";
+import {actorDisplaySnapshot, notifySafely, relationshipBlocked} from "../domain/notifications/notificationProducers";
 
 /**
  * FIX 3 — Jemputan grup PERIBADI + pemadaman grup selamat (SOFT DELETE).
@@ -97,6 +98,21 @@ export const inviteToGroup = onCall(async (request) => {
     eventType: "group_invite_sent",
     metadata: {groupId, inviteId: inviteRef.id},
   });
+  if (!(await relationshipBlocked(uid, targetUid))) {
+    await notifySafely({
+      recipientUid: targetUid,
+      type: "group_invite",
+      sourceEventId: `group-invite:${inviteRef.id}`,
+      actorUid: uid,
+      actorDisplaySnapshot: await actorDisplaySnapshot(uid),
+      entityType: "group_invite",
+      entityId: inviteRef.id,
+      parentEntityId: groupId,
+      titleKey: "notificationGroupInviteTitle",
+      bodyKey: "notificationGroupInviteBody",
+      metadata: {groupName: ((g.name as string | undefined) ?? "").slice(0, 80)},
+    });
+  }
   return {status: "OK", inviteId: inviteRef.id};
 });
 
@@ -175,6 +191,22 @@ export const respondGroupInvite = onCall(async (request) => {
     eventType: "group_invite_accepted",
     metadata: {groupId: inv.groupId as string, inviteId},
   });
+  const inviterUid = inv.inviterUid as string | undefined;
+  if (inviterUid && inviterUid !== uid && !(await relationshipBlocked(uid, inviterUid))) {
+    await notifySafely({
+      recipientUid: inviterUid,
+      type: "group_invite_accepted",
+      sourceEventId: `group-invite-accepted:${inviteId}`,
+      actorUid: uid,
+      actorDisplaySnapshot: await actorDisplaySnapshot(uid),
+      entityType: "group",
+      entityId: inv.groupId as string,
+      parentEntityId: inviteId,
+      titleKey: "notificationGroupInviteAcceptedTitle",
+      bodyKey: "notificationGroupInviteAcceptedBody",
+      deepLink: `/groups/${inv.groupId as string}`,
+    });
+  }
   return {status: "OK", result: "accepted"};
 });
 

@@ -21,13 +21,35 @@ import 'social_ui.dart';
 /// Feed Makan V4: 5 tab fokus makanan (Threads/X style).
 /// Untuk Anda • Mengikuti • Berdekatan • Trending • Grup.
 class FeedScreen extends ConsumerWidget {
-  const FeedScreen({super.key});
+  const FeedScreen({super.key, this.initialTab = 0});
+
+  /// Tab awal (0..4). group_invite notification → tab Grup (4) supaya penerima
+  /// terus nampak jemputan tertunggu dalam inbox jemputan sedia ada.
+  final int initialTab;
+
+  /// Peta nama tab deep-link → indeks (selamat; nilai tak dikenali → 0).
+  static int tabIndexFor(String? name) {
+    switch ((name ?? '').trim().toLowerCase()) {
+      case 'groups':
+      case 'group':
+        return 4;
+      case 'trending':
+        return 3;
+      case 'nearby':
+        return 2;
+      case 'following':
+        return 1;
+      default:
+        return 0;
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l = AppLocalizations.of(context);
     return DefaultTabController(
       length: 5,
+      initialIndex: initialTab.clamp(0, 4),
       child: Scaffold(
         backgroundColor: AppColors.threadsBg,
         appBar: AppBar(

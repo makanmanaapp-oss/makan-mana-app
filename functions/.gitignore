@@ -7,3 +7,6 @@ lib-test/
 # Project/local environment files
 .env.*
 !.env.example
+
+# Local QA helper - never commit credentials
+mm_setup.cjs

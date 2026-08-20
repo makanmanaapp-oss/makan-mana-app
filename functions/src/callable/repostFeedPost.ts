@@ -3,6 +3,7 @@ import {HttpsError, onCall} from "firebase-functions/v2/https";
 import {db, FieldValue} from "../config/firebase";
 import {logEvent} from "../services/eventService";
 import {currentTimeSlot} from "../utils/timeSlot";
+import {actorDisplaySnapshot, notifySafely} from "../domain/notifications/notificationProducers";
 
 /**
  * Social Prompt 8: Repost + Quote Repost.
@@ -220,7 +221,9 @@ export const repostFeedPost = onCall(async (request) => {
     likedBy: [],
     commentCount: 0,
     timeSlot: currentTimeSlot(),
+    // Immutable publication instant for this new repost document.
     createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
 
   // Kiraan sebenar pada post asal (atomik; tiada kiraan palsu).
@@ -229,6 +232,8 @@ export const repostFeedPost = onCall(async (request) => {
     .doc(originalPostId)
     .update({
       [isQuote ? "quoteCount" : "repostCount"]: FieldValue.increment(1),
+      // Counter activity is a document update, never a new publication.
+      updatedAt: FieldValue.serverTimestamp(),
     });
 
   if (
@@ -252,6 +257,22 @@ export const repostFeedPost = onCall(async (request) => {
       groupId,
     },
   });
+
+  if (origAuthor && origAuthor !== uid) {
+    await notifySafely({
+      recipientUid: origAuthor,
+      type: isQuote ? "social_quote" : "social_repost",
+      sourceEventId: `${isQuote ? "quote" : "repost"}:${ref.id}`,
+      actorUid: uid,
+      actorDisplaySnapshot: await actorDisplaySnapshot(uid),
+      entityType: "post",
+      entityId: originalPostId,
+      parentEntityId: ref.id,
+      titleKey: isQuote ? "notificationSocialQuoteTitle" : "notificationSocialRepostTitle",
+      bodyKey: isQuote ? "notificationSocialQuoteBody" : "notificationSocialRepostBody",
+      deepLink: "/social",
+    });
+  }
 
   return {status: "OK", postId: ref.id, visibility};
 });

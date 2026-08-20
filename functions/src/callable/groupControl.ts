@@ -2,6 +2,7 @@ import {HttpsError, onCall} from "firebase-functions/v2/https";
 
 import {db, FieldValue} from "../config/firebase";
 import {logEvent} from "../services/eventService";
+import {actorDisplaySnapshot, notifySafely, relationshipBlocked} from "../domain/notifications/notificationProducers";
 
 /**
  * Group Hub: peranan owner/admin/member/viewer, keahlian, tetapan, pin.
@@ -217,6 +218,26 @@ export const changeGroupRole = onCall(async (request) => {
     .collection("members")
     .doc(targetUid)
     .set({role}, {merge: true});
+  await logEvent({
+    userId: uid,
+    eventType: "group_role_changed",
+    metadata: {groupId, targetUid, previousRole: targetRole, role},
+  });
+  if (!(await relationshipBlocked(uid, targetUid))) {
+    await notifySafely({
+      recipientUid: targetUid,
+      type: "group_update",
+      sourceEventId: `group-role:${groupId}:${targetUid}:${targetRole}:${role}`,
+      actorUid: uid,
+      actorDisplaySnapshot: await actorDisplaySnapshot(uid),
+      entityType: "group",
+      entityId: groupId,
+      titleKey: "notificationGroupUpdateTitle",
+      bodyKey: "notificationGroupUpdateBody",
+      deepLink: `/groups/${groupId}`,
+      metadata: {update: "role", role},
+    });
+  }
   return {status: "OK"};
 });
 

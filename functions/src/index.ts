@@ -25,7 +25,7 @@ export {scanCalories} from "./callable/scanCalories";
 export {saveScanMeal} from "./callable/saveScanMeal";
 export {adminReviewAction} from "./callable/adminReviewAction";
 export {hideLegacyAutoPosts} from "./callable/hideLegacyAutoPosts";
-export {lunchReminder, dinnerReminder} from "./scheduled/mealReminders";
+export {mealReminderBackfill, mealReminderDispatch} from "./scheduled/mealReminders";
 export {
   editUserPost,
   deleteUserPost,
@@ -90,10 +90,21 @@ export {verifyGooglePlaySubscription} from "./callable/verifyGooglePlaySubscript
 export {handleGooglePlayRtdn} from "./triggers/handleGooglePlayRtdn";
 export {createCoupon} from "./callable/createCoupon";
 export {expireCouponTrials} from "./scheduled/expireCouponTrials";
+// Notification V2 - push device registry + user preferences.
+export {registerPushDevice, unregisterPushDevice} from "./callable/pushDeviceControl";
+export {setNotificationPreferences} from "./callable/notificationPreferences";
 
 // Phase 1.14A — callable pembetulan dipercayai (BELUM DI-DEPLOY; berpagar-pemilik).
 export {submitPlaceCorrection} from "./callable/submitPlaceCorrection";
 export {nextSuggestion} from "./callable/nextSuggestion";
+// Notification V2 - trusted Control Center test bridge.
+export {controlCenterNotificationAdminBridge} from "./triggers/controlCenterNotificationAdminBridge";
+
+// Notification V2 - bounded broadcast worker; runtime gates remain OFF unless explicitly enabled.
+export {broadcastFanout} from "./scheduled/notificationBroadcast";
+
+// Notification V2 - Supabase control-plane claim/sync worker.
+export {broadcastControlPlaneSync} from "./scheduled/notificationBroadcastControlPlane";
 
 // Control Center — privacy-safe production sync/control bridges.
 export {syncPlaceCoverageToControlCenter} from "./controlCenter/placeCoverageSync";

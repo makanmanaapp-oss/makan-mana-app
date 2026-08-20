@@ -1,6 +1,7 @@
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 
 import {db, FieldValue} from "../config/firebase";
+import {actorDisplaySnapshot, notifySafely, relationshipBlocked} from "../domain/notifications/notificationProducers";
 
 interface ToggleLikeInput {
   postId?: string;
@@ -30,9 +31,28 @@ export const toggleLike = onCall(async (request) => {
         FieldValue.arrayRemove(uid) :
         FieldValue.arrayUnion(uid),
       likeCount: FieldValue.increment(liked ? -1 : 1),
+      // Deliberately not createdAt: reactions must not rewrite publication age.
+      updatedAt: FieldValue.serverTimestamp(),
     });
-    return !liked;
+    return {liked: !liked, ownerUid: (snap.data()?.authorUid as string | undefined) ?? ""};
   });
 
-  return {status: "OK", liked: result};
+  if (result.liked && result.ownerUid && result.ownerUid !== uid &&
+      !(await relationshipBlocked(uid, result.ownerUid))) {
+    await notifySafely({
+      recipientUid: result.ownerUid,
+      type: "social_reaction",
+      sourceEventId: `reaction:${postId}:${uid}`,
+      actorUid: uid,
+      actorDisplaySnapshot: await actorDisplaySnapshot(uid),
+      entityType: "post",
+      entityId: postId,
+      titleKey: "notificationSocialReactionTitle",
+      bodyKey: "notificationSocialReactionBody",
+      deepLink: `/social`,
+      metadata: {reaction: "like"},
+    });
+  }
+
+  return {status: "OK", liked: result.liked};
 });
