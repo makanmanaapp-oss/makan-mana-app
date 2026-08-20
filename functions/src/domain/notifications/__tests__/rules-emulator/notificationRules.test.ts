@@ -48,6 +48,22 @@ test("D: recipient cannot mark another user's notification read", async () => {
 test("recipient may persist only the allowed opened/read state", async () => {
   await assertSucceeds(setDoc(doc(env.authenticatedContext("userA").firestore(), path("userA")), {isRead: true, readAt: new Date(), openedAt: new Date(), status: "read"}, {merge: true}));
 });
+
+test("legacy mobile may mark read without changing status", async () => {
+  await assertSucceeds(setDoc(
+    doc(env.authenticatedContext("userA").firestore(), path("userA")),
+    {isRead: true, readAt: new Date()},
+    {merge: true},
+  ));
+});
+
+test("recipient cannot change notification status to an arbitrary value", async () => {
+  await assertFails(setDoc(
+    doc(env.authenticatedContext("userA").firestore(), path("userA")),
+    {isRead: true, readAt: new Date(), status: "forged"},
+    {merge: true},
+  ));
+});
 test("E: trusted backend fixture path can create a valid persisted record", async () => {
   await env.withSecurityRulesDisabled(async (context) => {
     await assertSucceeds(setDoc(doc(context.firestore(), path("userA", "backend-created")), seeded));

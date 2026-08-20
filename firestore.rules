@@ -120,7 +120,13 @@ service cloud.firestore {
               .hasOnly(['isRead', 'readAt', 'openedAt', 'status'])
           && request.resource.data.isRead == true
           && request.resource.data.readAt != null
-          && request.resource.data.status == 'read';
+          // Backward compatible: current mobile clients write isRead + readAt
+          // without changing status. If status IS changed, it may only become read.
+          && (
+            !request.resource.data.diff(resource.data).affectedKeys()
+                .hasAny(['status'])
+            || request.resource.data.status == 'read'
+          );
       }
 
       // Notification V2 / Prompt 3 — push device registry (FCM tokens).
