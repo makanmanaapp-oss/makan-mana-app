@@ -125,3 +125,7 @@ export {
   syncSubscriptionsToControlCenter,
   syncSubscriptionsToControlCenterEvery5Hours,
 } from "./controlCenter/subscriptionMirrorSync";
+export {
+  syncUsersToControlCenter,
+  syncUsersToControlCenterEvery5Hours,
+} from "./controlCenter/userMirrorSync";
