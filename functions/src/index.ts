@@ -121,3 +121,7 @@ export {
   reconcileUniversalDataVault,
 } from "./controlCenter/dataVaultSync";
 export {controlCenterAiBrainAdminBridge} from "./controlCenter/aiBrainAdminBridge";
+export {
+  syncSubscriptionsToControlCenter,
+  syncSubscriptionsToControlCenterEvery5Hours,
+} from "./controlCenter/subscriptionMirrorSync";
