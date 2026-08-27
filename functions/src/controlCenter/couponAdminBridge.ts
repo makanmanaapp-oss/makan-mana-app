@@ -105,7 +105,7 @@ function markerResult(data: PlainObject): PlainObject {
   const result = data.result;
   return result && typeof result === "object" && !Array.isArray(result)
     ? result as PlainObject
-    : {idempotent: true};
+    : {};
 }
 
 async function createCoupon(
@@ -131,7 +131,7 @@ async function createCoupon(
 
   return db.runTransaction(async (tx) => {
     const markerSnap = await tx.get(markerRef);
-    if (markerSnap.exists) return {idempotent: true, ...markerResult(markerSnap.data() as PlainObject)};
+    if (markerSnap.exists) return {...markerResult(markerSnap.data() as PlainObject), idempotent: true};
 
     const couponSnap = await tx.get(couponRef);
     if (couponSnap.exists) throw new BridgeError(409, "Coupon code already exists.");
@@ -191,7 +191,7 @@ async function setCouponActive(
 
   return db.runTransaction(async (tx) => {
     const markerSnap = await tx.get(markerRef);
-    if (markerSnap.exists) return {idempotent: true, ...markerResult(markerSnap.data() as PlainObject)};
+    if (markerSnap.exists) return {...markerResult(markerSnap.data() as PlainObject), idempotent: true};
 
     const couponSnap = await tx.get(couponRef);
     if (!couponSnap.exists) throw new BridgeError(404, "Coupon was not found.");
@@ -237,7 +237,7 @@ async function extendCouponValidity(
 
   return db.runTransaction(async (tx) => {
     const markerSnap = await tx.get(markerRef);
-    if (markerSnap.exists) return {idempotent: true, ...markerResult(markerSnap.data() as PlainObject)};
+    if (markerSnap.exists) return {...markerResult(markerSnap.data() as PlainObject), idempotent: true};
 
     const couponSnap = await tx.get(couponRef);
     if (!couponSnap.exists) throw new BridgeError(404, "Coupon was not found.");
@@ -295,12 +295,10 @@ async function revokeTrial(
 
   return db.runTransaction(async (tx) => {
     const markerSnap = await tx.get(markerRef);
-    if (markerSnap.exists) return {idempotent: true, ...markerResult(markerSnap.data() as PlainObject)};
+    if (markerSnap.exists) return {...markerResult(markerSnap.data() as PlainObject), idempotent: true};
 
-    const [redemptionSnap, userSnap] = await Promise.all([
-      tx.get(redemptionRef),
-      tx.get(userRef),
-    ]);
+    const redemptionSnap = await tx.get(redemptionRef);
+    const userSnap = await tx.get(userRef);
     if (!redemptionSnap.exists) throw new BridgeError(404, "Coupon redemption was not found.");
     if (!userSnap.exists) throw new BridgeError(404, "User was not found.");
 
