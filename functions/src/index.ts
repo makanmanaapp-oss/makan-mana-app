@@ -133,3 +133,4 @@ export {
   syncCouponsToControlCenter,
   syncCouponsToControlCenterEvery5Hours,
 } from "./controlCenter/couponMirrorSync";
+export {controlCenterCouponAdminBridge} from "./controlCenter/couponAdminBridge";
