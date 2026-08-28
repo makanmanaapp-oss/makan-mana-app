@@ -129,3 +129,7 @@ export {
   syncUsersToControlCenter,
   syncUsersToControlCenterEvery5Hours,
 } from "./controlCenter/userMirrorSync";
+export {
+  syncCouponsToControlCenter,
+  syncCouponsToControlCenterEvery5Hours,
+} from "./controlCenter/couponMirrorSync";
