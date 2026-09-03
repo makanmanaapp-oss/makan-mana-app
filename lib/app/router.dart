@@ -20,6 +20,7 @@ import '../features/history/history_screen.dart';
 import '../features/home/home_screen.dart';
 import '../features/language/language_screen.dart';
 import '../features/legal/legal_screens.dart';
+import '../features/merchant/merchant_center_screen.dart';
 import '../features/onboarding/onboarding_screen.dart';
 import '../features/paywall/coupon_screen.dart';
 import '../features/paywall/paywall_screen.dart';
@@ -141,6 +142,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: RoutePaths.settings,
         builder: (context, state) => const SettingsScreen(),
+      ),
+      GoRoute(
+        path: RoutePaths.merchantCenter,
+        builder: (context, state) => const MerchantCenterScreen(),
       ),
       GoRoute(
         path: RoutePaths.fitToday,
