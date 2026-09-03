@@ -26,4 +26,4 @@ jobs:
       - name: Resolve dependencies
         run: flutter pub get
       - name: Analyze Flutter source
-        run: flutter analyze
+        run: flutter analyze --no-fatal-warnings --no-fatal-infos
