@@ -134,3 +134,11 @@ export {
   syncCouponsToControlCenterEvery5Hours,
 } from "./controlCenter/couponMirrorSync";
 export {controlCenterCouponAdminBridge} from "./controlCenter/couponAdminBridge";
+
+// Upgrade 1D — Firebase-authenticated merchant identity / claim / submission bridge.
+export {
+  getMyMerchantState,
+  registerMerchantAccount,
+  submitMerchantPlaceClaim,
+  submitMerchantPlace,
+} from "./callable/merchantBusiness";
