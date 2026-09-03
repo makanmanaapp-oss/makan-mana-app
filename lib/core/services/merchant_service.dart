@@ -16,7 +16,7 @@ class MerchantService {
 
   Map<String, dynamic> _map(dynamic value) {
     if (value is Map) {
-      return value.map((key, item) => MapEntry(String(key), item));
+      return value.map((key, item) => MapEntry(key.toString(), item));
     }
     return <String, dynamic>{};
   }
@@ -159,9 +159,10 @@ class MerchantState {
   final List<Map<String, dynamic>> memberships;
 
   bool get hasAccount => account != null;
-  String get accountStatus => String(account?['status'] ?? 'not_registered');
+  String get accountStatus =>
+      (account?['status'] ?? 'not_registered').toString();
   String get verificationStatus =>
-      String(account?['verification_status'] ?? 'unverified');
+      (account?['verification_status'] ?? 'unverified').toString();
 }
 
 class MerchantException implements Exception {
