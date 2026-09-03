@@ -1,0 +1,40 @@
+name: Wave 2 Restaurant Profile Backend CI
+
+on:
+  push:
+    branches:
+      - feature/restaurant-profile-v2
+    paths:
+      - "functions/**"
+      - ".github/workflows/wave2-restaurant-profile-backend-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  functions:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: functions
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: TypeScript production build
+        run: npm run build
+      - name: Domain unit tests including merchant profile contract
+        run: npm test
+      - name: Verify callable export and no admin apply bridge action
+        run: |
+          grep -q 'submitMerchantProfileUpdate' src/index.ts
+          grep -q 'action: "merchant.submit_place"' src/callable/merchantBusiness.ts
+          ! grep -Eq '"merchant\.(apply|approve|publish)[^"]*"' src/callable/merchantBusiness.ts
