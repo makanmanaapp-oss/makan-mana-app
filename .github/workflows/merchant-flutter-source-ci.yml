@@ -1,0 +1,29 @@
+name: Merchant Flutter Source CI
+
+on:
+  push:
+    branches:
+      - feature/merchant-business-foundation
+    paths:
+      - "lib/**"
+      - "pubspec.yaml"
+      - ".github/workflows/merchant-flutter-source-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Flutter stable
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Resolve dependencies
+        run: flutter pub get
+      - name: Analyze Flutter source
+        run: flutter analyze --no-fatal-warnings --no-fatal-infos

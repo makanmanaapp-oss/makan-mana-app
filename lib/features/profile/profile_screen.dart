@@ -118,6 +118,10 @@ class ProfileScreen extends ConsumerWidget {
             _tile(context, palette, Icons.history_toggle_off_outlined,
                 l.t('myActivityTitle'),
                 () => context.push('/profile/activity')),
+            // Merchant & Business Foundation — authenticated, review-gated flow.
+            _tile(context, palette, Icons.storefront_outlined,
+                _merchantCenterLabel(context),
+                () => context.push(RoutePaths.merchantCenter)),
             _tile(context, palette, Icons.card_membership, l.t('planLabel'),
                 () => context.push(RoutePaths.paywall)),
             _tile(context, palette, Icons.lock_outline, l.t('privacyLabel'),
@@ -233,6 +237,15 @@ class ProfileScreen extends ConsumerWidget {
       ),
     );
   }
+}
+
+String _merchantCenterLabel(BuildContext context) {
+  return switch (Localizations.localeOf(context).languageCode) {
+    'en' => 'Register / Claim Business',
+    'zh' => '注册 / 认领商家',
+    'ta' => 'வணிகத்தை பதிவு / உரிமைகோரு',
+    _ => 'Daftar / Claim Kedai',
+  };
 }
 
 String _planKey(String? plan) {
