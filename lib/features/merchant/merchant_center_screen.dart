@@ -364,7 +364,7 @@ class _MerchantCenterScreenState extends ConsumerState<MerchantCenterScreen> {
         children: [
           _statusRow('Akaun', state.accountStatus),
           _statusRow('Pengesahan', state.verificationStatus),
-          _statusRow('ID akaun', String(account['id'] ?? '—')),
+          _statusRow('ID akaun', (account['id'] ?? '—').toString()),
           if (account['verified_at'] != null)
             _statusRow('Disahkan', _date(account['verified_at'])),
         ],
@@ -480,15 +480,16 @@ class _MerchantCenterScreenState extends ConsumerState<MerchantCenterScreen> {
                 style: TextStyle(color: palette.subtext)),
           ...state.claims.take(8).map((claim) => _historyTile(
                 icon: Icons.verified_user_outlined,
-                title: String(claim['claimed_place_name'] ?? 'Tuntutan kedai'),
-                status: String(claim['claim_status'] ?? 'unknown'),
+                title: (claim['claimed_place_name'] ?? 'Tuntutan kedai').toString(),
+                status: (claim['claim_status'] ?? 'unknown').toString(),
                 subtitle: 'Tuntutan · ${_date(claim['updated_at'])}',
               )),
           ...state.submissions.take(8).map((submission) => _historyTile(
                 icon: Icons.store_mall_directory_outlined,
-                title: String(submission['submission_type'] ?? 'Penghantaran')
+                title: (submission['submission_type'] ?? 'Penghantaran')
+                    .toString()
                     .replaceAll('_', ' '),
-                status: String(submission['status'] ?? 'unknown'),
+                status: (submission['status'] ?? 'unknown').toString(),
                 subtitle: 'Kedai · ${_date(submission['updated_at'])}',
               )),
           if (state.memberships.isNotEmpty) ...[
@@ -499,8 +500,8 @@ class _MerchantCenterScreenState extends ConsumerState<MerchantCenterScreen> {
             const SizedBox(height: 8),
             ...state.memberships.take(12).map((membership) => _historyTile(
                   icon: Icons.badge_outlined,
-                  title: String(membership['registry_id'] ?? 'Kedai'),
-                  status: String(membership['status'] ?? 'unknown'),
+                  title: (membership['registry_id'] ?? 'Kedai').toString(),
+                  status: (membership['status'] ?? 'unknown').toString(),
                   subtitle: 'Peranan: ${membership['role'] ?? '—'}',
                 )),
           ],
@@ -616,8 +617,8 @@ class _MerchantCenterScreenState extends ConsumerState<MerchantCenterScreen> {
 
   String _date(dynamic raw) {
     if (raw == null) return '—';
-    final parsed = DateTime.tryParse(String(raw));
-    if (parsed == null) return String(raw);
+    final parsed = DateTime.tryParse(raw.toString());
+    if (parsed == null) return raw.toString();
     final local = parsed.toLocal();
     String two(int value) => value.toString().padLeft(2, '0');
     return '${two(local.day)}/${two(local.month)}/${local.year} '
