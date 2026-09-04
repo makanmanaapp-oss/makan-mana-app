@@ -71,6 +71,95 @@ test("projects modern immutable publication and strips private provenance", () =
   assert.ok(!("approvedBy" in result.tags[0]));
 });
 
+test("projects only bounded public menu fields and structured two-session hours", () => {
+  const result = projectPublicRestaurantProfileV2({
+    publicationStatus: "published",
+    name: "Restoran Menu",
+    menuItems: [
+      {
+        id: "nasi-1",
+        section: "makanan",
+        category: "Nasi",
+        name: "Nasi Lemak",
+        description: "Sambal dan telur",
+        price: 8.5,
+        currency: "MYR",
+        available: true,
+        imageUrl: "https://example.com/nasi.jpg",
+        sortOrder: 10,
+        approvedBy: "private-admin",
+        costPrice: 3.2,
+      },
+      {
+        section: "minuman",
+        name: "Teh O Ais",
+        price: 3,
+        imageUrl: "javascript:alert(1)",
+        sortOrder: 20,
+      },
+      {section: "dessert", name: "Invalid section", price: 4},
+      {section: "makanan", name: "", price: 1},
+    ],
+    openingHours: {
+      monday: {
+        closed: false,
+        all_day: false,
+        sessions: [
+          {open: "09:00", close: "14:00", privateNote: "hide"},
+          {open: "17:00", close: "22:00", privateNote: "hide"},
+          {open: "23:00", close: "23:30"},
+        ],
+        internalSource: "private",
+      },
+      tuesday: {closed: true, sessions: [{open: "invalid", close: "18:00"}]},
+      wednesday: {all_day: true},
+      hackedDay: {closed: false, sessions: [{open: "00:00", close: "23:59"}]},
+    },
+    specialHours: [
+      {date: "2026-09-16", note: "Cuti Malaysia", closed: true, approvedBy: "private-admin"},
+      {date: "bad-date", note: "Bad"},
+    ],
+  }, canonicalId);
+
+  assert.ok(result);
+  assert.equal(result.menuItems.length, 2);
+  assert.deepEqual(result.menuItems[0], {
+    id: "nasi-1",
+    section: "makanan",
+    category: "Nasi",
+    name: "Nasi Lemak",
+    description: "Sambal dan telur",
+    price: 8.5,
+    currency: "MYR",
+    available: true,
+    imageUrl: "https://example.com/nasi.jpg",
+    sortOrder: 10,
+  });
+  assert.equal(result.menuItems[1].imageUrl, "");
+  assert.ok(!("approvedBy" in result.menuItems[0]));
+  assert.ok(!("costPrice" in result.menuItems[0]));
+
+  assert.deepEqual(result.openingHours?.monday, {
+    closed: false,
+    all_day: false,
+    sessions: [
+      {open: "09:00", close: "14:00"},
+      {open: "17:00", close: "22:00"},
+    ],
+  });
+  assert.deepEqual(result.openingHours?.tuesday, {
+    closed: true,
+    all_day: false,
+    sessions: [],
+  });
+  assert.deepEqual(result.openingHours?.wednesday, {
+    closed: false,
+    all_day: true,
+    sessions: [],
+  });
+  assert.equal(result.openingHours?.hackedDay, undefined);
+});
+
 test("supports bounded flattened master-publication compatibility shape", () => {
   const result = projectPublicRestaurantProfileV2({
     publicationStatus: "published",
@@ -90,11 +179,17 @@ test("supports bounded flattened master-publication compatibility shape", () => 
     cuisineTags: ["sarawak"],
     foodTags: ["laksa"],
     signatureDishes: ["Laksa Sarawak"],
+    menuItems: [
+      {section: "makanan", name: "Laksa Sarawak", price: 12, currency: "MYR", available: true},
+      {section: "minuman", name: "Kopi O", price: null, currency: "MYR", available: true},
+    ],
     serviceModes: ["dine_in"],
     amenities: ["parking"],
     priceRange: "mid",
     businessStatus: "active",
-    openingHours: {monday: "08:00-18:00"},
+    openingHours: {
+      monday: {closed: false, all_day: false, sessions: [{open: "08:00", close: "18:00"}]},
+    },
     specialHours: [],
     halalStatus: "verified_halal",
     coverImageUrl: "https://images.example/b.jpg",
@@ -105,8 +200,12 @@ test("supports bounded flattened master-publication compatibility shape", () => 
   assert.equal(result.name, "Restoran B");
   assert.equal(result.whatsapp, "60122222222");
   assert.deepEqual(result.signatureDishes, ["Laksa Sarawak"]);
+  assert.equal(result.menuItems.length, 2);
+  assert.equal(result.menuItems[0].price, 12);
+  assert.equal(result.menuItems[1].price, null);
   assert.equal(result.priceBandId, "mid");
   assert.equal(result.media.length, 1);
+  assert.equal(result.hoursState, "hours_known");
 });
 
 test("rejects unpublished, blocked and nameless publication records", () => {
