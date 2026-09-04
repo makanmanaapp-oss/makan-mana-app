@@ -1,0 +1,105 @@
+name: Wave 2 Full Regression 2F
+
+on:
+  push:
+    branches:
+      - feature/restaurant-profile-v2
+  pull_request:
+    paths:
+      - "lib/**"
+      - "test/**"
+      - "functions/**"
+      - "android/**"
+      - "pubspec.yaml"
+      - "pubspec.lock"
+      - ".github/workflows/wave2-full-regression-2f.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  source-safety:
+    name: Source safety locks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Verify Wave 2 safety contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin feature/merchant-business-foundation --depth=1
+
+          changed="$(git diff --name-only origin/feature/merchant-business-foundation...HEAD)"
+          printf '%s\n' "$changed"
+
+          if grep -Eq '^(firestore\.rules|firestore\.indexes\.json)$' <<<"$changed"; then
+            echo "Wave 2 must not modify Firestore rules/indexes."
+            exit 1
+          fi
+
+          grep -q 'static bool canonicalRestaurantDetailEnabled = false;' \
+            lib/features/restaurant/canonical/restaurant_detail_flags.dart
+          grep -q "httpsCallable('getRestaurantProfileV2')" \
+            lib/core/services/restaurant_profile_v2_service.dart
+          grep -q 'export {getRestaurantProfileV2}' functions/src/index.ts
+          grep -q 'publicationStatus) !== "published"' \
+            functions/src/domain/merchant/publicRestaurantProfile.ts
+
+          if grep -R -n -E "collection\(['\"]place_(publications|publication_heads)['\"]\)" lib; then
+            echo "Mobile must not read canonical publication collections directly."
+            exit 1
+          fi
+
+          if grep -R -n -E "httpsCallable\(['\"](approve|apply|publish).*merchant" lib/features/merchant lib/core/services; then
+            echo "Merchant mobile surface must not expose admin/apply/publish callables."
+            exit 1
+          fi
+
+          echo "Wave 2 source safety locks PASS"
+
+  flutter-regression:
+    name: Flutter analyze, all tests, Android debug build
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Flutter stable
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Resolve dependencies
+        run: flutter pub get
+      - name: Analyze full Flutter source
+        run: flutter analyze --no-fatal-warnings --no-fatal-infos
+      - name: Run full Flutter test suite
+        run: flutter test
+      - name: Build Android debug APK only
+        run: flutter build apk --debug
+
+  functions-regression:
+    name: Functions build and full domain tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: functions
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - name: Install exact dependencies
+        run: npm ci
+      - name: TypeScript production build
+        run: npm run build
+      - name: Run full domain test suite
+        run: npm test
