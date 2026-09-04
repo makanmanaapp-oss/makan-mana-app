@@ -85,6 +85,9 @@ void main() {
   });
 
   testWidgets('editor submits a review-gated profile proposal', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1400));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
     const registryId = '11111111-1111-4111-8111-111111111111';
     const state = MerchantState(
       account: {'id': 'merchant-1'},
@@ -130,8 +133,7 @@ void main() {
 
     await tester.enterText(find.byType(TextField).first, 'Kedai Baru');
     final submit = find.byKey(const Key('restaurant-profile-submit'));
-    await tester.ensureVisible(submit);
-    await tester.pumpAndSettle();
+    expect(submit, findsOneWidget);
     await tester.tap(submit);
     await tester.pumpAndSettle();
 
