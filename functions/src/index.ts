@@ -143,3 +143,6 @@ export {
   submitMerchantPlace,
   submitMerchantProfileUpdate,
 } from "./callable/merchantBusiness";
+
+// Wave 2 — authenticated, read-only public projection of the active canonical publication.
+export {getRestaurantProfileV2} from "./callable/getRestaurantProfileV2";
