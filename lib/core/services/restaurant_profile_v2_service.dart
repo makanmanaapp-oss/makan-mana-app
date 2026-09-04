@@ -57,6 +57,10 @@ class PublicRestaurantProfileV2 {
     required this.verificationStatus,
     required this.freshnessState,
     required this.warnings,
+    this.menuItems = const [],
+    this.openingHours = const {},
+    this.openingPeriods = const [],
+    this.specialHours = const [],
     this.officialName,
     this.branchName,
     this.description,
@@ -79,6 +83,8 @@ class PublicRestaurantProfileV2 {
     this.currency,
     this.rating,
     this.reviewCount,
+    this.temporaryClosedFrom,
+    this.temporaryClosedUntil,
     this.lastVerifiedAt,
   });
 
@@ -121,6 +127,17 @@ class PublicRestaurantProfileV2 {
           .toList(growable: false);
     }
 
+    Map<String, dynamic> object(String key) {
+      final value = map[key];
+      if (value is! Map) return const {};
+      return value.map((key, value) => MapEntry(key.toString(), value));
+    }
+
+    List<dynamic> values(String key) {
+      final value = map[key];
+      return value is List ? List<dynamic>.unmodifiable(value) : const [];
+    }
+
     final canonicalPlaceId = text('canonicalPlaceId') ?? '';
     final name = text('name') ?? '';
     if (canonicalPlaceId.isEmpty || name.isEmpty) {
@@ -151,6 +168,7 @@ class PublicRestaurantProfileV2 {
       cuisineTags: strings('cuisineTags'),
       foodTags: strings('foodTags'),
       signatureDishes: strings('signatureDishes'),
+      menuItems: objects('menuItems'),
       serviceModes: strings('serviceModes'),
       amenities: strings('amenities'),
       tags: objects('tags'),
@@ -160,6 +178,11 @@ class PublicRestaurantProfileV2 {
       currency: text('currency'),
       businessState: text('businessState') ?? 'status_unknown',
       hoursState: text('hoursState') ?? 'hours_unknown',
+      openingHours: object('openingHours'),
+      openingPeriods: objects('openingPeriods'),
+      specialHours: values('specialHours'),
+      temporaryClosedFrom: text('temporaryClosedFrom'),
+      temporaryClosedUntil: text('temporaryClosedUntil'),
       ratingState: text('ratingState') ?? 'rating_hidden',
       rating: number('rating'),
       reviewCount: integer('reviewCount'),
@@ -199,6 +222,7 @@ class PublicRestaurantProfileV2 {
   final List<String> cuisineTags;
   final List<String> foodTags;
   final List<String> signatureDishes;
+  final List<Map<String, dynamic>> menuItems;
   final List<String> serviceModes;
   final List<String> amenities;
   final List<Map<String, dynamic>> tags;
@@ -208,6 +232,11 @@ class PublicRestaurantProfileV2 {
   final String? currency;
   final String businessState;
   final String hoursState;
+  final Map<String, dynamic> openingHours;
+  final List<Map<String, dynamic>> openingPeriods;
+  final List<dynamic> specialHours;
+  final String? temporaryClosedFrom;
+  final String? temporaryClosedUntil;
   final String ratingState;
   final double? rating;
   final int? reviewCount;
