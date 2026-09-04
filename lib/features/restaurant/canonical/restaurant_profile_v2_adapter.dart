@@ -149,7 +149,7 @@ List<CardWarning> _warnings(PublicRestaurantProfileV2 profile) {
         out.add(const CardWarning(
           id: 'price_expired',
           severity: 'caution',
-          labelKey: 'priceExpired',
+          labelKey: 'priceRecheck',
           relatedField: 'price',
         ));
         break;
@@ -165,7 +165,7 @@ List<CardWarning> _warnings(PublicRestaurantProfileV2 profile) {
         out.add(const CardWarning(
           id: 'halal_recheck_required',
           severity: 'important',
-          labelKey: 'halalRecheckRequired',
+          labelKey: 'halalRecheck',
           relatedField: 'halal',
         ));
         break;
@@ -310,17 +310,10 @@ RestaurantDetailViewModel restaurantDetailFromPublicProfile(
     dishHighlights: profile.signatureDishes
         .map((dish) => DishHighlight(name: dish))
         .toList(growable: false),
-    verificationBadges: profile.verificationStatus == 'merchant_verified' ||
-            profile.verificationStatus == 'admin_verified'
-        ? [
-            CardBadge(
-              id: profile.verificationStatus,
-              labelKey: profile.verificationStatus == 'admin_verified'
-                  ? 'adminVerifiedLabel'
-                  : 'merchantVerifiedLabel',
-            ),
-          ]
-        : const [],
+    // Verification status is retained in the safe DTO/provenance metadata, but
+    // no raw backend enum is surfaced as a badge until a localized user-facing
+    // label is explicitly defined for that status.
+    verificationBadges: const [],
     warnings: warnings,
     freshness: FreshnessSummary(
       state: freshness,
@@ -330,7 +323,7 @@ RestaurantDetailViewModel restaurantDetailFromPublicProfile(
       sourceMode: CardSourceMode.approvedCache,
       lastUpdatedLabel: lastVerified,
       lastVerifiedLabel: lastVerified,
-      verificationLevelKey: profile.verificationStatus,
+      verificationLevelKey: null,
     ),
     actions: DetailActionConfig(
       canOpenMaps: profile.latitude != null && profile.longitude != null,
