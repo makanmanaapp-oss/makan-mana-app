@@ -3,8 +3,12 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:makan_mana/core/services/merchant_service.dart';
+import 'package:makan_mana/core/services/restaurant_profile_v2_service.dart';
 import 'package:makan_mana/features/merchant/restaurant_profile_editor_card.dart';
 import 'package:makan_mana/features/merchant/restaurant_profile_proposal.dart';
+import 'package:makan_mana/features/restaurant/canonical/restaurant_detail_flags.dart';
+import 'package:makan_mana/features/restaurant/canonical/restaurant_detail_view_model.dart';
+import 'package:makan_mana/features/restaurant/canonical/restaurant_profile_v2_adapter.dart';
 
 void main() {
   group('RestaurantProfileProposal', () {
@@ -82,6 +86,84 @@ void main() {
     expect(state.activeMemberships.length, 1);
     expect(state.activeMemberships.single['registry_id'], 'active');
     expect(state.restaurantProfileSubmissions.length, 2);
+  });
+
+  test('published profile DTO maps to honest canonical detail view model', () {
+    final profile = PublicRestaurantProfileV2.fromMap({
+      'canonicalPlaceId': 'canonical-1',
+      'publicationVersion': 9,
+      'name': 'Kedai Makan A',
+      'branchName': 'Satok',
+      'address': 'Jalan Satok, Kuching',
+      'locality': 'Kuching',
+      'postalCode': '93400',
+      'latitude': 1.55,
+      'longitude': 110.34,
+      'phone': '0111111111',
+      'website': 'https://example.com',
+      'primaryCategory': 'restaurant',
+      'cuisineTags': ['malay'],
+      'serviceModes': ['dine_in'],
+      'signatureDishes': ['Laksa Sarawak'],
+      'tags': [
+        {'tagId': 'family_friendly', 'family': 'ambience', 'evidenceLevel': 'reported'},
+      ],
+      'priceState': 'price_verified',
+      'averageSpend': 18,
+      'currency': 'MYR',
+      'businessState': 'operating',
+      'hoursState': 'hours_known',
+      'ratingState': 'rating_shown',
+      'rating': 4.6,
+      'reviewCount': 120,
+      'halalState': 'halal_merchant_claimed',
+      'halalEvidenceLevel': 'reported',
+      'dietaryReported': ['vegetarian_options'],
+      'allergenReported': ['peanut'],
+      'allergenEvidenceLevel': 'reported',
+      'media': [
+        {'url': 'https://images.example/hero.jpg', 'isFallback': false},
+      ],
+      'verificationStatus': 'merchant_verified',
+      'freshnessState': 'stale',
+      'warnings': ['hours_stale'],
+      'lastVerifiedAt': 1700000000000,
+    });
+
+    final vm = restaurantDetailFromPublicProfile(profile);
+    expect(vm.placeId, 'canonical-1');
+    expect(vm.publicationVersion, 9);
+    expect(vm.title, 'Kedai Makan A');
+    expect(vm.businessState, CardBusinessState.active);
+    expect(vm.hours.model.state, CardHoursState.hoursUnknown,
+        reason: 'known schedule must not be promoted to open-now');
+    expect(vm.rating.rating, 4.6);
+    expect(vm.price.state, CardPriceState.verifiedAverage);
+    expect(vm.price.amountLabel, 'RM18');
+    expect(vm.halalState, HalalDisplayState.merchantClaimed);
+    expect(vm.dietaryStates.single.evidence, EvidenceLevel.reported);
+    expect(vm.allergenStates.single.presence, AllergenPresence.present);
+    expect(vm.gallery.hero?.image.url, 'https://images.example/hero.jpg');
+    expect(vm.freshness.state, FreshnessState.stale);
+  });
+
+  test('canonical public read remains default-off and server mediated', () async {
+    RestaurantDetailFlags.resetToSafeDefault();
+    expect(RestaurantDetailFlags.canonicalRestaurantDetailEnabled, isFalse);
+
+    final service = await File(
+      'lib/core/services/restaurant_profile_v2_service.dart',
+    ).readAsString();
+    final detailScreen = await File(
+      'lib/features/restaurant/restaurant_detail_screen.dart',
+    ).readAsString();
+
+    expect(service, contains("httpsCallable('getRestaurantProfileV2')"));
+    expect(service, isNot(contains("collection('place_publications')")));
+    expect(service, isNot(contains("collection('place_publication_heads')")));
+    expect(detailScreen, contains('canonicalRestaurantDetailEnabled'));
+    expect(detailScreen, contains('restaurantDetailFromSummary(place)'));
+    expect(detailScreen, contains('canonical_publication (backend)'));
   });
 
   testWidgets('editor submits a review-gated profile proposal', (tester) async {
