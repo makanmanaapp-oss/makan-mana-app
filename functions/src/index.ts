@@ -135,10 +135,14 @@ export {
 } from "./controlCenter/couponMirrorSync";
 export {controlCenterCouponAdminBridge} from "./controlCenter/couponAdminBridge";
 
-// Upgrade 1D — Firebase-authenticated merchant identity / claim / submission bridge.
+// Upgrade 1D + Wave 2 — Firebase-authenticated merchant proposal bridge.
 export {
   getMyMerchantState,
   registerMerchantAccount,
   submitMerchantPlaceClaim,
   submitMerchantPlace,
+  submitMerchantProfileUpdate,
 } from "./callable/merchantBusiness";
+
+// Wave 2 — authenticated, read-only public projection of the active canonical publication.
+export {getRestaurantProfileV2} from "./callable/getRestaurantProfileV2";

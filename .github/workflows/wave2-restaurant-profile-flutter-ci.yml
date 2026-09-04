@@ -1,0 +1,39 @@
+name: Wave 2 Restaurant Profile Flutter CI
+
+on:
+  push:
+    branches:
+      - feature/restaurant-profile-v2
+    paths:
+      - "lib/**"
+      - "test/merchant_restaurant_profile_v2_test.dart"
+      - "pubspec.yaml"
+      - ".github/workflows/wave2-restaurant-profile-flutter-ci.yml"
+  pull_request:
+    paths:
+      - "lib/**"
+      - "test/merchant_restaurant_profile_v2_test.dart"
+      - "pubspec.yaml"
+      - ".github/workflows/wave2-restaurant-profile-flutter-ci.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  flutter-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Flutter stable
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Resolve dependencies
+        run: flutter pub get
+      - name: Analyze Flutter source
+        run: flutter analyze --no-fatal-warnings --no-fatal-infos
+      - name: Test Restaurant Profile V2 mobile boundary
+        run: flutter test test/merchant_restaurant_profile_v2_test.dart

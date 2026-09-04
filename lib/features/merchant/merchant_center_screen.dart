@@ -4,13 +4,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/merchant_service.dart';
 import '../home/home_palette.dart';
+import 'restaurant_profile_editor_card.dart';
 
 final merchantServiceProvider = Provider<MerchantService>((ref) {
   return MerchantService();
 });
 
-/// Merchant & Business Foundation — public entry point for merchant account
-/// registration, existing-place claims and new-place submissions.
+/// Merchant & Business Foundation public entry point.
 ///
 /// This screen never writes Supabase, Master Place Registry or runtime place
 /// collections directly. Every submit action is a Firebase-authenticated
@@ -144,11 +144,18 @@ class _MerchantCenterScreenState extends ConsumerState<MerchantCenterScreen> {
     if (value.contains('merchant_account_not_active')) {
       return 'Akaun peniaga ini tidak aktif. Hubungi sokongan MakanMana.';
     }
-    if (value.contains('invalid_uuid')) {
-      return 'ID kedai tidak sah. Kosongkan ID jika anda tidak pasti.';
+    if (value.contains('invalid_uuid') || value.contains('registry_id_invalid')) {
+      return 'ID kedai tidak sah.';
+    }
+    if (value.contains('registry_id_required')) {
+      return 'Akses kedai aktif diperlukan untuk menghantar perubahan.';
     }
     if (value.contains('merchant_place_access_required')) {
       return 'Anda belum mempunyai akses yang diluluskan untuk kedai ini.';
+    }
+    if (value.contains('restaurant_profile_field_forbidden') ||
+        value.contains('restaurant_profile_field_not_allowed')) {
+      return 'Medan ini tidak boleh diubah sendiri. Hantar hanya maklumat profil yang dibenarkan.';
     }
     return raw.replaceAll('_', ' ');
   }
@@ -157,7 +164,8 @@ class _MerchantCenterScreenState extends ConsumerState<MerchantCenterScreen> {
     final name = _contactName.text.trim();
     final phone = _contactPhone.text.trim();
     if (name.isEmpty || phone.length < 3) {
-      setState(() => _error = 'Nama untuk dihubungi dan nombor telefon diperlukan.');
+      setState(() =>
+          _error = 'Nama untuk dihubungi dan nombor telefon diperlukan.');
       return;
     }
     await _run(() async {
@@ -179,7 +187,8 @@ class _MerchantCenterScreenState extends ConsumerState<MerchantCenterScreen> {
   Future<void> _submitClaim() async {
     final place = _claimPlaceName.text.trim();
     if (place.isEmpty) {
-      setState(() => _error = 'Nama kedai diperlukan untuk tuntutan pemilikan.');
+      setState(
+          () => _error = 'Nama kedai diperlukan untuk tuntutan pemilikan.');
       return;
     }
     await _run(() async {
@@ -211,7 +220,8 @@ class _MerchantCenterScreenState extends ConsumerState<MerchantCenterScreen> {
       'display_name': name,
       if (_newPlaceAddress.text.trim().isNotEmpty)
         'address_line1': _newPlaceAddress.text.trim(),
-      if (_newPlaceCity.text.trim().isNotEmpty) 'city': _newPlaceCity.text.trim(),
+      if (_newPlaceCity.text.trim().isNotEmpty)
+        'city': _newPlaceCity.text.trim(),
       if (_newPlaceState.text.trim().isNotEmpty)
         'state': _newPlaceState.text.trim(),
       if (_newPlacePostcode.text.trim().isNotEmpty)
@@ -239,6 +249,24 @@ class _MerchantCenterScreenState extends ConsumerState<MerchantCenterScreen> {
       if (mounted) {
         setState(() => _success =
             'Maklumat kedai dihantar untuk semakan. Kedai tidak akan muncul secara automatik sebelum diluluskan.');
+      }
+    });
+  }
+
+  Future<void> _submitProfileUpdate({
+    required String registryId,
+    required String submissionType,
+    required Map<String, dynamic> data,
+  }) async {
+    await _run(() async {
+      await ref.read(merchantServiceProvider).submitProfileUpdate(
+            registryId: registryId,
+            submissionType: submissionType,
+            data: data,
+          );
+      if (mounted) {
+        setState(() => _success =
+            'Perubahan profil dihantar untuk semakan. Diluluskan tidak bermaksud terus live.');
       }
     });
   }
@@ -283,6 +311,12 @@ class _MerchantCenterScreenState extends ConsumerState<MerchantCenterScreen> {
                     _claimCard(palette),
                     const SizedBox(height: 18),
                     _newPlaceCard(palette),
+                    const SizedBox(height: 18),
+                    RestaurantProfileEditorCard(
+                      state: _state!,
+                      submitting: _submitting,
+                      onSubmit: _submitProfileUpdate,
+                    ),
                     const SizedBox(height: 18),
                     _historyCard(palette, _state!),
                   ],
@@ -335,7 +369,8 @@ class _MerchantCenterScreenState extends ConsumerState<MerchantCenterScreen> {
       child: Column(
         children: [
           _field(_contactName, 'Nama untuk dihubungi *'),
-          _field(_contactPhone, 'Nombor telefon *', keyboard: TextInputType.phone),
+          _field(_contactPhone, 'Nombor telefon *',
+              keyboard: TextInputType.phone),
           _field(_contactEmail, 'E-mel', keyboard: TextInputType.emailAddress),
           _field(_displayName, 'Nama peniaga / jenama'),
           _field(_legalName, 'Nama syarikat / perniagaan'),
@@ -359,7 +394,8 @@ class _MerchantCenterScreenState extends ConsumerState<MerchantCenterScreen> {
     return _section(
       palette,
       title: 'Status akaun peniaga',
-      subtitle: 'Pengesahan akaun dan pemilikan kedai ialah dua proses berasingan.',
+      subtitle:
+          'Pengesahan akaun dan pemilikan kedai ialah dua proses berasingan.',
       child: Column(
         children: [
           _statusRow('Akaun', state.accountStatus),
@@ -397,17 +433,22 @@ class _MerchantCenterScreenState extends ConsumerState<MerchantCenterScreen> {
               DropdownMenuItem(value: 'phone', child: Text('Telefon')),
               DropdownMenuItem(value: 'email', child: Text('E-mel')),
               DropdownMenuItem(
-                  value: 'registration_document', child: Text('Dokumen pendaftaran')),
-              DropdownMenuItem(value: 'domain', child: Text('Domain / laman web')),
+                  value: 'registration_document',
+                  child: Text('Dokumen pendaftaran')),
+              DropdownMenuItem(
+                  value: 'domain', child: Text('Domain / laman web')),
               DropdownMenuItem(
                   value: 'social_account', child: Text('Akaun media sosial')),
-              DropdownMenuItem(value: 'storefront', child: Text('Bukti premis')),
-              DropdownMenuItem(value: 'in_person', child: Text('Semakan bersemuka')),
+              DropdownMenuItem(
+                  value: 'storefront', child: Text('Bukti premis')),
+              DropdownMenuItem(
+                  value: 'in_person', child: Text('Semakan bersemuka')),
               DropdownMenuItem(value: 'other', child: Text('Lain-lain')),
             ],
             onChanged: _submitting
                 ? null
-                : (value) => setState(() => _verificationMethod = value ?? 'phone'),
+                : (value) =>
+                    setState(() => _verificationMethod = value ?? 'phone'),
           ),
           const SizedBox(height: 14),
           SizedBox(
@@ -436,7 +477,8 @@ class _MerchantCenterScreenState extends ConsumerState<MerchantCenterScreen> {
           _field(_newPlaceCity, 'Bandar'),
           _field(_newPlaceState, 'Negeri'),
           _field(_newPlacePostcode, 'Poskod', keyboard: TextInputType.number),
-          _field(_newPlacePhone, 'Telefon kedai', keyboard: TextInputType.phone),
+          _field(_newPlacePhone, 'Telefon kedai',
+              keyboard: TextInputType.phone),
           _field(_newPlaceWebsite, 'Laman web', keyboard: TextInputType.url),
           DropdownButtonFormField<String>(
             initialValue: _newPlaceBusinessStatus,
@@ -459,7 +501,8 @@ class _MerchantCenterScreenState extends ConsumerState<MerchantCenterScreen> {
             child: FilledButton.icon(
               onPressed: _submitting ? null : _submitNewPlace,
               icon: const Icon(Icons.add_business_outlined),
-              label: Text(_submitting ? 'Menghantar...' : 'Hantar kedai untuk semakan'),
+              label: Text(
+                  _submitting ? 'Menghantar...' : 'Hantar kedai untuk semakan'),
             ),
           ),
         ],
@@ -480,7 +523,8 @@ class _MerchantCenterScreenState extends ConsumerState<MerchantCenterScreen> {
                 style: TextStyle(color: palette.subtext)),
           ...state.claims.take(8).map((claim) => _historyTile(
                 icon: Icons.verified_user_outlined,
-                title: (claim['claimed_place_name'] ?? 'Tuntutan kedai').toString(),
+                title:
+                    (claim['claimed_place_name'] ?? 'Tuntutan kedai').toString(),
                 status: (claim['claim_status'] ?? 'unknown').toString(),
                 subtitle: 'Tuntutan · ${_date(claim['updated_at'])}',
               )),
