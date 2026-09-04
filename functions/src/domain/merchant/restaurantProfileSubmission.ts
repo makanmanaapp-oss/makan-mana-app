@@ -51,6 +51,12 @@ const MENU_ITEM_FIELDS = new Set([
   "id", "section", "category", "name", "description", "price", "currency",
   "available", "imageUrl", "sortOrder",
 ]);
+const WEEKDAYS = new Set([
+  "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+]);
+const DAY_HOURS_FIELDS = new Set(["closed", "all_day", "sessions"]);
+const SESSION_FIELDS = new Set(["open", "close"]);
+const CLOCK_PATTERN = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 const MAX_MENU_ITEMS = 200;
 const MAX_SERIALIZED_BYTES = 384 * 1024;
 
@@ -140,6 +146,68 @@ function normalizeMenuItems(value: unknown): JsonObject[] {
   });
 }
 
+function normalizeOpeningHours(value: unknown): JsonObject {
+  const hours = asObject(value);
+  if (!hours) throw new Error("restaurant_profile_opening_hours_invalid");
+  const result: JsonObject = {};
+
+  for (const [dayKey, rawDay] of Object.entries(hours)) {
+    if (!WEEKDAYS.has(dayKey)) {
+      throw new Error(`restaurant_profile_opening_hours_day_invalid:${dayKey}`);
+    }
+    const day = asObject(rawDay);
+    if (!day) throw new Error(`restaurant_profile_opening_hours_day_invalid:${dayKey}`);
+    for (const key of Object.keys(day)) {
+      if (!DAY_HOURS_FIELDS.has(key)) {
+        throw new Error(`restaurant_profile_opening_hours_field_not_allowed:${dayKey}:${key}`);
+      }
+    }
+    if (day.closed !== undefined && typeof day.closed !== "boolean") {
+      throw new Error(`restaurant_profile_opening_hours_closed_invalid:${dayKey}`);
+    }
+    if (day.all_day !== undefined && typeof day.all_day !== "boolean") {
+      throw new Error(`restaurant_profile_opening_hours_all_day_invalid:${dayKey}`);
+    }
+    const closed = day.closed === true;
+    const allDay = day.all_day === true;
+    if (closed && allDay) {
+      throw new Error(`restaurant_profile_opening_hours_state_conflict:${dayKey}`);
+    }
+
+    const rawSessions = day.sessions ?? [];
+    if (!Array.isArray(rawSessions) || rawSessions.length > 2) {
+      throw new Error(`restaurant_profile_opening_hours_sessions_invalid:${dayKey}`);
+    }
+    if ((closed || allDay) && rawSessions.length !== 0) {
+      throw new Error(`restaurant_profile_opening_hours_sessions_for_closed_day:${dayKey}`);
+    }
+    if (!closed && !allDay && rawSessions.length === 0) {
+      throw new Error(`restaurant_profile_opening_hours_sessions_required:${dayKey}`);
+    }
+
+    const sessions = rawSessions.map((rawSession, index) => {
+      const session = asObject(rawSession);
+      if (!session) {
+        throw new Error(`restaurant_profile_opening_hours_session_invalid:${dayKey}:${index}`);
+      }
+      for (const key of Object.keys(session)) {
+        if (!SESSION_FIELDS.has(key)) {
+          throw new Error(`restaurant_profile_opening_hours_session_field_not_allowed:${dayKey}:${key}`);
+        }
+      }
+      const open = typeof session.open === "string" ? session.open.trim() : "";
+      const close = typeof session.close === "string" ? session.close.trim() : "";
+      if (!CLOCK_PATTERN.test(open) || !CLOCK_PATTERN.test(close) || open === close) {
+        throw new Error(`restaurant_profile_opening_hours_clock_invalid:${dayKey}:${index}`);
+      }
+      return {open, close};
+    });
+
+    result[dayKey] = {closed, all_day: allDay, sessions};
+  }
+  return result;
+}
+
 function fieldsFor(type: RestaurantProfileSubmissionType): ReadonlySet<string> {
   if (type === "profile_update") return PROFILE_FIELDS;
   if (type === "hours_update") return HOURS_FIELDS;
@@ -178,6 +246,9 @@ export function validateRestaurantProfileProposal(
   const normalized: JsonObject = {...data};
   if (Object.prototype.hasOwnProperty.call(normalized, "menu_items")) {
     normalized.menu_items = normalizeMenuItems(normalized.menu_items);
+  }
+  if (Object.prototype.hasOwnProperty.call(normalized, "opening_hours")) {
+    normalized.opening_hours = normalizeOpeningHours(normalized.opening_hours);
   }
 
   let serialized: string;
