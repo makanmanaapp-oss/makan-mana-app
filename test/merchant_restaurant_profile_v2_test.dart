@@ -129,8 +129,11 @@ void main() {
     expect(find.textContaining('Status halal'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField).first, 'Kedai Baru');
-    await tester.tap(find.byKey(const Key('restaurant-profile-submit')));
-    await tester.pump();
+    final submit = find.byKey(const Key('restaurant-profile-submit'));
+    await tester.ensureVisible(submit);
+    await tester.pumpAndSettle();
+    await tester.tap(submit);
+    await tester.pumpAndSettle();
 
     expect(capturedRegistryId, registryId);
     expect(capturedType, RestaurantProfileProposal.profileUpdate);
