@@ -1,5 +1,6 @@
 import 'package:cloud_functions/cloud_functions.dart';
 
+import '../../features/merchant/restaurant_profile_proposal.dart';
 import '../constants/app_constants.dart';
 
 /// Thin Firebase callable client for Merchant & Business Foundation.
@@ -118,6 +119,8 @@ class MerchantService {
     }
   }
 
+  /// New-place flow only. Existing claimed restaurant profile edits must use
+  /// [submitProfileUpdate], which has a strict Wave 2 proposal allow-list.
   Future<String> submitPlace({
     required String submissionType,
     required Map<String, dynamic> data,
@@ -143,6 +146,46 @@ class MerchantService {
       throw _error(error);
     }
   }
+
+  /// Submit a review-gated change proposal for an existing merchant place.
+  ///
+  /// This callable cannot approve, apply or publish. The registry ID is required
+  /// and the proposal is validated again by Cloud Functions before bridging to
+  /// Control Center.
+  Future<String> submitProfileUpdate({
+    required String registryId,
+    required String submissionType,
+    required Map<String, dynamic> data,
+    String? claimId,
+  }) async {
+    final cleanRegistryId = registryId.trim();
+    if (cleanRegistryId.isEmpty) {
+      throw const MerchantException('registry_id_required');
+    }
+
+    final cleanType = submissionType.trim();
+    final cleanData = RestaurantProfileProposal.validate(cleanType, data);
+
+    try {
+      final result = await _functions
+          .httpsCallable('submitMerchantProfileUpdate')
+          .call<Map<dynamic, dynamic>>({
+        'requestId': _requestId('profile-update'),
+        'registryId': cleanRegistryId,
+        'submissionType': cleanType,
+        'data': cleanData,
+        if (claimId?.trim().isNotEmpty == true) 'claimId': claimId!.trim(),
+      });
+      final response = _map(result.data);
+      final id = response['submissionId'];
+      if (id is String && id.isNotEmpty) return id;
+      throw const MerchantException('merchant_submission_id_missing');
+    } on FirebaseFunctionsException catch (error) {
+      throw _error(error);
+    } on ArgumentError catch (error) {
+      throw MerchantException(error.message?.toString() ?? 'restaurant_profile_proposal_invalid');
+    }
+  }
 }
 
 class MerchantState {
@@ -163,6 +206,16 @@ class MerchantState {
       (account?['status'] ?? 'not_registered').toString();
   String get verificationStatus =>
       (account?['verification_status'] ?? 'unverified').toString();
+
+  List<Map<String, dynamic>> get activeMemberships => memberships
+      .where((membership) => membership['status']?.toString() == 'active')
+      .toList(growable: false);
+
+  List<Map<String, dynamic>> get restaurantProfileSubmissions => submissions
+      .where((submission) => RestaurantProfileProposal.isProfileSubmission(
+            submission['submission_type']?.toString(),
+          ))
+      .toList(growable: false);
 }
 
 class MerchantException implements Exception {
