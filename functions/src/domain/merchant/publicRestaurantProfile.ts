@@ -12,6 +12,19 @@ export interface PublicRestaurantTag {
   evidenceLevel: string;
 }
 
+export interface PublicRestaurantMenuItem {
+  id: string;
+  section: "makanan" | "minuman";
+  category: string;
+  name: string;
+  description: string;
+  price: number | null;
+  currency: "MYR";
+  available: boolean;
+  imageUrl: string;
+  sortOrder: number;
+}
+
 export interface PublicRestaurantProfileV2 {
   canonicalPlaceId: string;
   publicationVersion: number;
@@ -36,6 +49,7 @@ export interface PublicRestaurantProfileV2 {
   cuisineTags: string[];
   foodTags: string[];
   signatureDishes: string[];
+  menuItems: PublicRestaurantMenuItem[];
   serviceModes: string[];
   amenities: string[];
   tags: PublicRestaurantTag[];
@@ -66,6 +80,10 @@ export interface PublicRestaurantProfileV2 {
   sourceMode: "canonical_publication";
 }
 
+const WEEK_DAYS = [
+  "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+] as const;
+
 function object(value: unknown): JsonObject {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as JsonObject
@@ -76,6 +94,11 @@ function text(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const clean = value.trim();
   return clean || undefined;
+}
+
+function boundedText(value: unknown, max: number): string {
+  const clean = text(value) ?? "";
+  return clean.length <= max ? clean : "";
 }
 
 function numberValue(value: unknown): number | undefined {
@@ -155,6 +178,54 @@ function publicTags(place: JsonObject): PublicRestaurantTag[] {
   return out;
 }
 
+function publicMenuItems(place: JsonObject, publication: JsonObject): PublicRestaurantMenuItem[] {
+  const candidates = [
+    place.menuItems,
+    place.menu_items,
+    object(place.menu).items,
+    publication.menuItems,
+    publication.menu_items,
+  ];
+  const source = candidates.find((value) => Array.isArray(value));
+  if (!Array.isArray(source)) return [];
+
+  const out: PublicRestaurantMenuItem[] = [];
+  for (let index = 0; index < source.length && out.length < 200; index++) {
+    const item = object(source[index]);
+    const section = item.section === "makanan" || item.section === "minuman"
+      ? item.section
+      : null;
+    const name = boundedText(item.name, 120);
+    if (!section || !name) continue;
+
+    const rawPrice = numberValue(item.price);
+    const price = rawPrice !== undefined && rawPrice >= 0 && rawPrice <= 100000
+      ? Math.round(rawPrice * 100) / 100
+      : null;
+    const rawSort = numberValue(item.sortOrder);
+    const sortOrder = rawSort !== undefined && Number.isInteger(rawSort) && rawSort >= 0 && rawSort <= 100000
+      ? rawSort
+      : index * 10;
+    const imageUrl = boundedText(item.imageUrl, 1000);
+    const safeImage = /^https?:\/\//i.test(imageUrl) ? imageUrl : "";
+
+    out.push({
+      id: boundedText(item.id, 120) || `menu-${section}-${index + 1}`,
+      section,
+      category: boundedText(item.category, 80),
+      name,
+      description: boundedText(item.description, 400),
+      price,
+      currency: "MYR",
+      available: item.available !== false,
+      imageUrl: safeImage,
+      sortOrder,
+    });
+  }
+
+  return out.sort((left, right) => left.sortOrder - right.sortOrder || left.name.localeCompare(right.name));
+}
+
 function openingPeriods(hours: JsonObject): Array<{openMinuteOfWeek: number; closeMinuteOfWeek: number}> {
   if (!Array.isArray(hours.periods)) return [];
   const out: Array<{openMinuteOfWeek: number; closeMinuteOfWeek: number}> = [];
@@ -163,10 +234,72 @@ function openingPeriods(hours: JsonObject): Array<{openMinuteOfWeek: number; clo
     const open = numberValue(item.openMinuteOfWeek);
     const close = numberValue(item.closeMinuteOfWeek);
     if (open === undefined || close === undefined) continue;
+    if (!Number.isInteger(open) || !Number.isInteger(close) || open < 0 || close <= open || close > 7 * 24 * 60 + 24 * 60) continue;
     out.push({openMinuteOfWeek: open, closeMinuteOfWeek: close});
     if (out.length >= 32) break;
   }
   return out;
+}
+
+function validClock(value: unknown): string | undefined {
+  const clean = text(value);
+  if (!clean || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(clean)) return undefined;
+  return clean;
+}
+
+function safeWeeklyHours(value: unknown): JsonObject | undefined {
+  const source = object(value);
+  if (Object.keys(source).length === 0) return undefined;
+  const result: JsonObject = {};
+  let hasAny = false;
+
+  for (const day of WEEK_DAYS) {
+    const entry = object(source[day]);
+    if (Object.keys(entry).length === 0) continue;
+    const closed = entry.closed === true;
+    const allDay = entry.all_day === true || entry.allDay === true;
+    const sessions: Array<{open: string; close: string}> = [];
+    if (!closed && !allDay && Array.isArray(entry.sessions)) {
+      for (const rawSession of entry.sessions.slice(0, 2)) {
+        const session = object(rawSession);
+        const open = validClock(session.open);
+        const close = validClock(session.close);
+        if (open && close) sessions.push({open, close});
+      }
+    }
+    result[day] = {closed, all_day: allDay, sessions};
+    hasAny = true;
+  }
+  return hasAny ? result : undefined;
+}
+
+function clockFromMinute(minute: number): string {
+  const normalized = ((minute % 1440) + 1440) % 1440;
+  const hour = Math.floor(normalized / 60);
+  const minutes = normalized % 60;
+  return `${hour.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
+}
+
+function weeklyHoursFromPeriods(periods: Array<{openMinuteOfWeek: number; closeMinuteOfWeek: number}>): JsonObject | undefined {
+  if (periods.length === 0) return undefined;
+  const result: JsonObject = {};
+  for (const day of WEEK_DAYS) {
+    result[day] = {closed: true, all_day: false, sessions: []};
+  }
+  for (const period of periods) {
+    const dayIndex = Math.floor(period.openMinuteOfWeek / 1440);
+    if (dayIndex < 0 || dayIndex >= WEEK_DAYS.length) continue;
+    const day = WEEK_DAYS[dayIndex];
+    const entry = object(result[day]);
+    const sessions = Array.isArray(entry.sessions) ? entry.sessions.slice(0, 2) : [];
+    if (sessions.length >= 2) continue;
+    sessions.push({
+      open: clockFromMinute(period.openMinuteOfWeek),
+      close: clockFromMinute(period.closeMinuteOfWeek),
+    });
+    result[day] = {closed: false, all_day: false, sessions};
+  }
+  return result;
 }
 
 function worstFreshness(place: JsonObject, publication: JsonObject): string {
@@ -262,6 +395,11 @@ export function projectPublicRestaurantProfileV2(
   const version = numberValue(publication.versionNumber)
     ?? numberValue(publication.publicationVersion)
     ?? 1;
+  const periods = openingPeriods(hours);
+  const openingHours = safeWeeklyHours(publication.openingHours)
+    ?? safeWeeklyHours(place.openingHours)
+    ?? safeWeeklyHours(place.opening_hours)
+    ?? weeklyHoursFromPeriods(periods);
 
   return {
     canonicalPlaceId,
@@ -301,6 +439,7 @@ export function projectPublicRestaurantProfileV2(
       : flatStringList(publication, "cuisineTags"),
     foodTags: flatStringList(publication, "foodTags"),
     signatureDishes: flatStringList(publication, "signatureDishes"),
+    menuItems: publicMenuItems(place, publication),
     serviceModes: modernTags.filter((tag) => tag.family === "service").map((tag) => tag.tagId).length > 0
       ? modernTags.filter((tag) => tag.family === "service").map((tag) => tag.tagId)
       : flatStringList(publication, "serviceModes"),
@@ -313,9 +452,9 @@ export function projectPublicRestaurantProfileV2(
       ? {averageSpend: numberValue(displayPrice.averageSpend) ?? numberValue(commercial.averageSpend)} : {}),
     ...(text(commercial.currency) ? {currency: text(commercial.currency)} : {}),
     businessState: text(displayBusiness.state) ?? text(publication.businessState) ?? text(publication.businessStatus) ?? text(place.status) ?? "status_unknown",
-    hoursState: text(displayHours.state) ?? text(publication.hoursState) ?? text(hours.hoursState) ?? "hours_unknown",
-    openingPeriods: openingPeriods(hours),
-    ...(Object.keys(object(publication.openingHours)).length > 0 ? {openingHours: object(publication.openingHours)} : {}),
+    hoursState: text(displayHours.state) ?? text(publication.hoursState) ?? text(hours.hoursState) ?? (openingHours ? "hours_known" : "hours_unknown"),
+    openingPeriods: periods,
+    ...(openingHours ? {openingHours} : {}),
     specialHours: unknownList(publication.specialHours),
     ...(text(publication.temporaryClosedFrom) ? {temporaryClosedFrom: text(publication.temporaryClosedFrom)} : {}),
     ...(text(publication.temporaryClosedUntil) ? {temporaryClosedUntil: text(publication.temporaryClosedUntil)} : {}),
