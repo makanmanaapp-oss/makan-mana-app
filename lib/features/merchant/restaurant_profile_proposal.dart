@@ -42,6 +42,7 @@ class RestaurantProfileProposal {
     'cuisine_tags',
     'food_tags',
     'signature_dishes',
+    'menu_items',
     'price_range',
     'service_modes',
     'amenities',
@@ -74,6 +75,7 @@ class RestaurantProfileProposal {
     'cuisine_tags',
     'food_tags',
     'signature_dishes',
+    'menu_items',
     'price_range',
   };
 
