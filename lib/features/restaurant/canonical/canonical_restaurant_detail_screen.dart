@@ -1,8 +1,3 @@
-/// PART 1 Phase 1.10 — skrin Butiran Kedai KANONIKAL (paparan jujur).
-///
-/// Widget paparan tulen (tiada Riverpod) supaya mudah diuji. Skrin legasi
-/// membina view model melalui adapter dan menyuntik callback ke handler legasi
-/// sedia ada. Peraturan kejujuran diwarisi daripada primitif kad Phase 1.9.
 library;
 
 import 'package:flutter/material.dart';
@@ -13,7 +8,6 @@ import '../../place_cards/place_card_primitives.dart';
 import '../../place_corrections/place_correction_flags.dart';
 import 'restaurant_detail_view_model.dart';
 
-/// Callback tindakan butiran (dipetakan ke handler legasi oleh pemanggil).
 class RestaurantDetailCallbacks {
   const RestaurantDetailCallbacks({
     this.onBack,
@@ -39,13 +33,9 @@ class RestaurantDetailCallbacks {
   final VoidCallback? onRate;
   final VoidCallback? onAccept;
   final VoidCallback? onReject;
-
-  /// PART 1 Phase 1.11 — titik masuk laporan/pembetulan. Dipapar HANYA bila
-  /// PlaceCorrectionFlags.placeCorrectionEnabled ON dan data bukan sample.
   final VoidCallback? onReportIncorrectInformation;
 }
 
-/// Skrin butiran kanonikal lengkap dengan AppBar + badan boleh skrol.
 class CanonicalRestaurantDetailScreen extends StatelessWidget {
   const CanonicalRestaurantDetailScreen({
     super.key,
@@ -65,7 +55,6 @@ class CanonicalRestaurantDetailScreen extends StatelessWidget {
   }
 }
 
-/// Badan butiran (tanpa Scaffold) — boleh disemat dalam skrin lain / ujian.
 class CanonicalRestaurantDetailBody extends StatefulWidget {
   const CanonicalRestaurantDetailBody({
     super.key,
@@ -89,14 +78,12 @@ class _CanonicalRestaurantDetailBodyState
 
   RestaurantDetailViewModel get vm => widget.vm;
 
-  /// Bungkus tindakan supaya hantar-dua-kali dicegah + tindakan sample disekat.
   VoidCallback? _guard(VoidCallback? cb, {required bool allowed}) {
     if (cb == null || !allowed || vm.isSample) return null;
     return () {
       if (_submitting) return;
       setState(() => _submitting = true);
       cb();
-      // Lepaskan kunci pada frame seterusnya (cukup untuk cegah dua-kali pantas).
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) setState(() => _submitting = false);
       });
@@ -107,93 +94,68 @@ class _CanonicalRestaurantDetailBodyState
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final mm = context.mm;
-
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 20. Amaran sample/mock (paling atas supaya jujur & jelas).
           if (vm.isSample) _sampleBanner(t, mm),
-          // 1. Hero / galeri.
           _hero(t, mm),
           const SizedBox(height: 14),
-          // 2. Identiti & status.
           _identity(t, mm),
           _businessBanner(t, mm),
           const SizedBox(height: 12),
-          // 3. Fakta ringkas.
           _quickFacts(),
           const SizedBox(height: 16),
-          // 4. Waktu operasi.
           _section(t.t('hoursTitle'), _hours(t, mm)),
-          // 5. Harga.
-          _section(t.t('priceTitle'), _price(t, mm)),
-          // 6. Penilaian & ulasan.
-          _section(t.t('ratingReviewsTitle'), _ratingSummary(t, mm)),
-          // 7. Masakan & jenis + 13. tag lain.
-          if (_hasAnyTag) _section(t.t('cuisineTypeTitle'), _tags(t, mm)),
-          // 8. Hidangan pilihan.
+          _section(t.t('priceTitle'), _price()),
+          _section(t.t('ratingReviewsTitle'), _ratingSummary(t)),
+          if (_hasAnyTag) _section(t.t('cuisineTypeTitle'), _tags(t)),
           if (vm.dishHighlights.isNotEmpty)
             _section(t.t('dishHighlights'), _dishes(mm)),
-          // 9. Perkhidmatan & suasana.
+          if (vm.hasMenu) _section(t.t('menuTitle'), _menu(t, mm)),
           if (vm.serviceLabels.isNotEmpty || vm.ambienceLabels.isNotEmpty)
             _section(t.t('servicesLabel'), _serviceAmbience()),
-          // 10. Halal.
           _section(t.t('halalInfo'), _halal()),
-          // 11. Pemakanan.
           if (vm.dietaryStates.isNotEmpty)
             _section(t.t('dietaryInfo'), _dietary(t, mm)),
-          // 12. Alahan.
           _section(t.t('allergenInfo'), _allergen(t, mm)),
-          // 14. Lokasi.
           _section(t.t('locationLabel'), _location(t, mm)),
-          // 15. Hubungan.
-          _section(t.t('contactLabel'), _contact(t, mm)),
-          // 16-18. Pengesahan, kesegaran & asal data.
+          _section(t.t('contactLabel'), _contact(t)),
           _section(t.t('sourceInformation'), _provenance(t, mm)),
           const SizedBox(height: 8),
-          // 19. Tindakan.
           _actions(t, mm),
         ],
       ),
     );
   }
 
-  // --- Pembantu susun atur -------------------------------------------------
+  Widget _section(String title, Widget child) => Padding(
+        padding: const EdgeInsets.only(bottom: 18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title,
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    color: context.mm.onCard)),
+            const SizedBox(height: 8),
+            child,
+          ],
+        ),
+      );
 
-  Widget _section(String title, Widget child) {
-    final mm = context.mm;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title,
-              style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: mm.onCard)),
-          const SizedBox(height: 8),
-          child,
-        ],
-      ),
-    );
-  }
-
-  Widget _card(Widget child) {
-    final mm = context.mm;
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: mm.card,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: mm.border),
-      ),
-      child: child,
-    );
-  }
+  Widget _card(Widget child) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: context.mm.card,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: context.mm.border),
+        ),
+        child: child,
+      );
 
   Widget _muted(String text) => Text(text,
       style: TextStyle(color: context.mm.onCardMuted, fontSize: 13.5));
@@ -206,8 +168,6 @@ class _CanonicalRestaurantDetailBodyState
       vm.portionTagIds.isNotEmpty ||
       vm.speedTagIds.isNotEmpty;
 
-  // --- Seksyen -------------------------------------------------------------
-
   Widget _sampleBanner(AppLocalizations t, MMColors mm) => Container(
         width: double.infinity,
         margin: const EdgeInsets.only(bottom: 12),
@@ -216,93 +176,87 @@ class _CanonicalRestaurantDetailBodyState
           color: MMColors.accentYellow.withValues(alpha: 0.18),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: Row(
-          children: [
-            const Icon(Icons.science_outlined, size: 18),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                '${t.t('sampleDataLabel')} — ${t.t('sampleActionBlocked')}',
-                style: TextStyle(
-                    color: mm.onCard,
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w600),
-              ),
+        child: Row(children: [
+          const Icon(Icons.science_outlined, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '${t.t('sampleDataLabel')} — ${t.t('sampleActionBlocked')}',
+              style: TextStyle(
+                  color: mm.onCard,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600),
             ),
-          ],
-        ),
+          ),
+        ]),
       );
 
   Widget _hero(AppLocalizations t, MMColors mm) {
     final hero = vm.gallery.hero;
-    return Stack(
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: PlaceCardImage(
-            model: hero?.image ?? const CardImageModel(),
-            title: vm.title,
-            width: double.infinity,
-            height: 210,
-            borderRadius: 20,
+    return Stack(children: [
+      ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: PlaceCardImage(
+          model: hero?.image ?? const CardImageModel(),
+          title: vm.title,
+          width: double.infinity,
+          height: 210,
+          borderRadius: 20,
+        ),
+      ),
+      if (vm.isSample)
+        const Positioned(
+          left: 10,
+          top: 10,
+          child: PlaceCardSampleBadge(sourceMode: CardSourceMode.sample),
+        ),
+      if (vm.gallery.count > 1)
+        Positioned(
+          right: 10,
+          bottom: 10,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.55),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text('${vm.gallery.count} ${t.t('galleryCountLabel')}',
+                style: const TextStyle(color: Colors.white, fontSize: 11.5)),
           ),
         ),
-        if (vm.isSample)
-          const Positioned(
-            left: 10,
-            top: 10,
-            child: PlaceCardSampleBadge(sourceMode: CardSourceMode.sample),
-          ),
-        if (vm.gallery.count > 1)
-          Positioned(
-            right: 10,
-            bottom: 10,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.55),
-                borderRadius: BorderRadius.circular(999),
-              ),
-              child: Text('${vm.gallery.count} ${t.t('galleryCountLabel')}',
-                  style: const TextStyle(color: Colors.white, fontSize: 11.5)),
-            ),
-          ),
-      ],
-    );
+    ]);
   }
 
-  Widget _identity(AppLocalizations t, MMColors mm) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(vm.title,
-                  style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: mm.onCard)),
-              if (vm.subtitle != null && vm.subtitle!.isNotEmpty) ...[
-                const SizedBox(height: 2),
-                Text(vm.subtitle!,
-                    style: TextStyle(color: mm.onCardMuted, fontSize: 13.5)),
+  Widget _identity(AppLocalizations t, MMColors mm) => Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(vm.title,
+                    style: TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.w800,
+                        color: mm.onCard)),
+                if (vm.subtitle != null && vm.subtitle!.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(vm.subtitle!,
+                      style: TextStyle(color: mm.onCardMuted, fontSize: 13.5)),
+                ],
               ],
-            ],
+            ),
           ),
-        ),
-        const SizedBox(width: 8),
-        PlaceStatusChip(hours: vm.hours.model, business: vm.businessState),
-      ],
-    );
-  }
+          const SizedBox(width: 8),
+          PlaceStatusChip(hours: vm.hours.model, business: vm.businessState),
+        ],
+      );
 
   Widget _businessBanner(AppLocalizations t, MMColors mm) {
     IconData? icon;
     String? label;
     Color? color;
-    bool strong = false;
+    var strong = false;
     switch (vm.businessState) {
       case CardBusinessState.temporarilyClosed:
         icon = Icons.pause_circle_outline;
@@ -340,21 +294,17 @@ class _CanonicalRestaurantDetailBodyState
           borderRadius: BorderRadius.circular(12),
           border: strong ? Border.all(color: color) : null,
         ),
-        // Status tidak bergantung pada warna sahaja — ikon + teks jelas.
-        child: Row(
-          children: [
-            Icon(icon, size: 18, color: color),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(label,
-                  style: TextStyle(
-                      color: mm.onCard,
-                      fontSize: 13,
-                      fontWeight:
-                          strong ? FontWeight.w800 : FontWeight.w600)),
-            ),
-          ],
-        ),
+        child: Row(children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(label,
+                style: TextStyle(
+                    color: mm.onCard,
+                    fontSize: 13,
+                    fontWeight: strong ? FontWeight.w800 : FontWeight.w600)),
+          ),
+        ]),
       ),
     );
   }
@@ -371,32 +321,37 @@ class _CanonicalRestaurantDetailBodyState
         ],
       );
 
+  String _localizedHoursLabel(AppLocalizations t, String raw) {
+    if (raw == '__closed__') return t.t('closedAllDay');
+    if (raw == '__24h__') return t.t('open24Hours');
+    final sessions = raw.split('||').where((item) => item.trim().isNotEmpty).toList();
+    if (sessions.length <= 1) return sessions.isEmpty ? raw : sessions.first;
+    return '${sessions.first} · ${t.t('breakLabel')} · ${sessions[1]}';
+  }
+
   Widget _hours(AppLocalizations t, MMColors mm) {
     final h = vm.hours;
     final children = <Widget>[
-      Row(
-        children: [
-          PlaceStatusChip(hours: h.model, business: vm.businessState),
-          if (h.todayLabel != null) ...[
-            const SizedBox(width: 10),
-            Flexible(
-                child: Text('${t.t('todayHours')}: ${h.todayLabel}',
-                    style: TextStyle(color: mm.onCard, fontSize: 13))),
-          ],
+      Row(children: [
+        PlaceStatusChip(hours: h.model, business: vm.businessState),
+        if (h.todayLabel != null) ...[
+          const SizedBox(width: 10),
+          Flexible(
+            child: Text('${t.t('todayHours')}: ${h.todayLabel}',
+                style: TextStyle(color: mm.onCard, fontSize: 13)),
+          ),
         ],
-      ),
+      ]),
     ];
     if (h.model.state == CardHoursState.hoursExpired) {
       children.add(Padding(
-        padding: const EdgeInsets.only(top: 6),
-        child: _recheck(t.t('hoursExpired'), mm),
-      ));
+          padding: const EdgeInsets.only(top: 6),
+          child: _recheck(t.t('hoursExpired'), mm)));
     }
     if (!h.hasWeekly && h.todayLabel == null) {
       children.add(Padding(
-        padding: const EdgeInsets.only(top: 6),
-        child: _muted(t.t('hoursUnknown')),
-      ));
+          padding: const EdgeInsets.only(top: 6),
+          child: _muted(t.t('hoursUnknown'))));
     }
     if (h.hasWeekly) {
       children.add(_expandRow(
@@ -407,14 +362,21 @@ class _CanonicalRestaurantDetailBodyState
       if (_weeklyExpanded) {
         for (final d in h.weeklySchedule) {
           children.add(Padding(
-            padding: const EdgeInsets.only(top: 4),
+            padding: const EdgeInsets.only(top: 5),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(t.t(d.dayLabelKey),
-                    style: TextStyle(color: mm.onCardMuted, fontSize: 12.5)),
-                Text(d.hoursLabel,
-                    style: TextStyle(color: mm.onCard, fontSize: 12.5)),
+                SizedBox(
+                  width: 92,
+                  child: Text(t.t(d.dayLabelKey),
+                      style: TextStyle(color: mm.onCardMuted, fontSize: 12.5)),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(_localizedHoursLabel(t, d.hoursLabel),
+                      textAlign: TextAlign.right,
+                      style: TextStyle(color: mm.onCard, fontSize: 12.5)),
+                ),
               ],
             ),
           ));
@@ -423,21 +385,18 @@ class _CanonicalRestaurantDetailBodyState
     }
     if (h.lastVerifiedLabel != null) {
       children.add(Padding(
-        padding: const EdgeInsets.only(top: 6),
-        child: _muted('${t.t('lastVerified')}: ${h.lastVerifiedLabel}'),
-      ));
+          padding: const EdgeInsets.only(top: 6),
+          child: _muted('${t.t('lastVerified')}: ${h.lastVerifiedLabel}')));
     }
     return _card(Column(
         crossAxisAlignment: CrossAxisAlignment.start, children: children));
   }
 
-  Widget _price(AppLocalizations t, MMColors mm) =>
+  Widget _price() =>
       _card(Align(alignment: Alignment.centerLeft, child: PlacePriceLabel(model: vm.price)));
 
-  Widget _ratingSummary(AppLocalizations t, MMColors mm) {
-    if (!vm.hasRating) {
-      return _card(_muted(t.t('ratingUnavailable')));
-    }
+  Widget _ratingSummary(AppLocalizations t) {
+    if (!vm.hasRating) return _card(_muted(t.t('ratingUnavailable')));
     return _card(Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -450,18 +409,15 @@ class _CanonicalRestaurantDetailBodyState
     ));
   }
 
-  Widget _tags(AppLocalizations t, MMColors mm) {
-    final labels = <String>[
+  Widget _tags(AppLocalizations t) {
+    final all = <String>{
       ...vm.cuisineLabels,
       ...vm.placeTypeLabels,
-    ];
-    final extra = <String>[
       ...vm.healthTagIds,
       ...vm.spiceTagIds,
       ...vm.portionTagIds,
       ...vm.speedTagIds,
-    ];
-    final all = <String>{...labels, ...extra}.toList(); // buang pendua
+    }.toList();
     final shown = _tagsExpanded ? all : all.take(6).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -495,22 +451,84 @@ class _CanonicalRestaurantDetailBodyState
         ],
       );
 
+  Widget _menu(AppLocalizations t, MMColors mm) {
+    final foods = vm.menuItems.where((item) => item.isFood).toList();
+    final drinks = vm.menuItems.where((item) => item.isDrink).toList();
+    return _card(Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (foods.isNotEmpty) ...[
+          Text(t.t('foodMenu'),
+              style: TextStyle(color: mm.onCard, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          for (final item in foods) _menuItem(t, mm, item),
+        ],
+        if (foods.isNotEmpty && drinks.isNotEmpty) const Divider(height: 24),
+        if (drinks.isNotEmpty) ...[
+          Text(t.t('drinkMenu'),
+              style: TextStyle(color: mm.onCard, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          for (final item in drinks) _menuItem(t, mm, item),
+        ],
+      ],
+    ));
+  }
+
+  Widget _menuItem(AppLocalizations t, MMColors mm, DetailMenuItem item) {
+    final subtitle = [item.category, item.description]
+        .whereType<String>()
+        .where((value) => value.trim().isNotEmpty)
+        .join(' · ');
+    return Padding(
+      key: ValueKey('restaurant-menu-${item.id}'),
+      padding: const EdgeInsets.symmetric(vertical: 7),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(item.name,
+                    style: TextStyle(
+                        color: item.available ? mm.onCard : mm.onCardMuted,
+                        fontWeight: FontWeight.w700)),
+                if (subtitle.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(subtitle,
+                      style: TextStyle(color: mm.onCardMuted, fontSize: 12.5)),
+                ],
+                if (!item.available) ...[
+                  const SizedBox(height: 2),
+                  Text(t.t('menuUnavailable'),
+                      style: TextStyle(color: mm.onCardMuted, fontSize: 12)),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          if (item.priceLabel != null)
+            Text(item.priceLabel!,
+                style: TextStyle(color: mm.onCard, fontWeight: FontWeight.w700)),
+        ],
+      ),
+    );
+  }
+
   Widget _serviceAmbience() =>
       PlaceTagChips(labels: [...vm.serviceLabels, ...vm.ambienceLabels], max: 8);
 
   Widget _halal() =>
       _card(PlaceVerificationBadges(halal: vm.halalState, badges: vm.verificationBadges));
 
-  Widget _dietary(AppLocalizations t, MMColors mm) {
-    return _card(Wrap(
-      spacing: 8,
-      runSpacing: 6,
-      children: [
-        for (final d in vm.dietaryStates)
-          _evidenceChip(mm, d.tagId, _evidenceKey(d.evidence), t),
-      ],
-    ));
-  }
+  Widget _dietary(AppLocalizations t, MMColors mm) => _card(Wrap(
+        spacing: 8,
+        runSpacing: 6,
+        children: [
+          for (final d in vm.dietaryStates)
+            _evidenceChip(mm, d.tagId, _evidenceKey(d.evidence), t),
+        ],
+      ));
 
   String _evidenceKey(EvidenceLevel e) {
     switch (e) {
@@ -526,32 +544,27 @@ class _CanonicalRestaurantDetailBodyState
   }
 
   Widget _evidenceChip(
-      MMColors mm, String label, String evidenceKey, AppLocalizations t) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: mm.chipBackground,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: mm.border),
-      ),
-      child: Text('$label · ${t.t(evidenceKey)}',
-          style: TextStyle(color: mm.chipText, fontSize: 11.5)),
-    );
-  }
+          MMColors mm, String label, String evidenceKey, AppLocalizations t) =>
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: mm.chipBackground,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: mm.border),
+        ),
+        child: Text('$label · ${t.t(evidenceKey)}',
+            style: TextStyle(color: mm.chipText, fontSize: 11.5)),
+      );
 
   Widget _allergen(AppLocalizations t, MMColors mm) {
-    // Ketiadaan data TIDAK PERNAH dipapar "selamat".
     final known = vm.allergenStates.where((a) => a.isKnownPresent).toList();
     final provenAbsent = vm.allergenStates.where((a) => a.provesAbsent).toList();
-    final incomplete = known.isEmpty && provenAbsent.isEmpty;
-    if (incomplete) {
-      return _card(Row(
-        children: [
-          Icon(Icons.info_outline_rounded, size: 16, color: mm.onCardMuted),
-          const SizedBox(width: 6),
-          Expanded(child: _muted(t.t('allergenCaution'))),
-        ],
-      ));
+    if (known.isEmpty && provenAbsent.isEmpty) {
+      return _card(Row(children: [
+        Icon(Icons.info_outline_rounded, size: 16, color: mm.onCardMuted),
+        const SizedBox(width: 6),
+        Expanded(child: _muted(t.t('allergenCaution'))),
+      ]));
     }
     return _card(Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -560,8 +573,7 @@ class _CanonicalRestaurantDetailBodyState
           Padding(
             padding: const EdgeInsets.only(bottom: 4),
             child: Row(children: [
-              Icon(Icons.warning_amber_rounded,
-                  size: 16, color: MMColors.danger),
+              Icon(Icons.warning_amber_rounded, size: 16, color: MMColors.danger),
               const SizedBox(width: 6),
               Expanded(
                   child: Text(a.allergenId,
@@ -578,19 +590,16 @@ class _CanonicalRestaurantDetailBodyState
     return _card(Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(Icons.location_on_outlined, size: 18, color: MMColors.danger),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                loc.address.isNotEmpty ? loc.address : t.t('noInfoAvailable'),
-                style: TextStyle(color: mm.onCard, fontSize: 13.5),
-              ),
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(Icons.location_on_outlined, size: 18, color: MMColors.danger),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              loc.address.isNotEmpty ? loc.address : t.t('noInfoAvailable'),
+              style: TextStyle(color: mm.onCard, fontSize: 13.5),
             ),
-          ],
-        ),
+          ),
+        ]),
         if (loc.movedWarningKey != null) ...[
           const SizedBox(height: 6),
           _recheck(t.t(loc.movedWarningKey!), mm),
@@ -608,7 +617,7 @@ class _CanonicalRestaurantDetailBodyState
     ));
   }
 
-  Widget _contact(AppLocalizations t, MMColors mm) {
+  Widget _contact(AppLocalizations t) {
     final c = vm.contact;
     if (!c.hasPhone && !c.hasWebsite) {
       return _card(_muted(t.t('contactUnavailable')));
@@ -619,8 +628,7 @@ class _CanonicalRestaurantDetailBodyState
       children: [
         if (c.hasPhone)
           OutlinedButton.icon(
-            onPressed:
-                _guard(widget.callbacks.onCall, allowed: vm.actions.canCall),
+            onPressed: _guard(widget.callbacks.onCall, allowed: vm.actions.canCall),
             icon: const Icon(Icons.call_outlined, size: 18),
             label: Text(t.t('callAction')),
           ),
@@ -637,9 +645,9 @@ class _CanonicalRestaurantDetailBodyState
 
   Widget _provenance(AppLocalizations t, MMColors mm) {
     final p = vm.provenance;
-    final rows = <Widget>[];
-    // Label sumber selamat-pengguna (TIADA UID/audit/payload dalaman).
-    rows.add(_provRow(mm, t.t('provenanceTitle'), _sourceLabel(t, p.sourceMode)));
+    final rows = <Widget>[
+      _provRow(mm, t.t('provenanceTitle'), _sourceLabel(t, p.sourceMode)),
+    ];
     if (p.lastUpdatedLabel != null) {
       rows.add(_provRow(mm, t.t('lastUpdated'), p.lastUpdatedLabel!));
     }
@@ -681,43 +689,39 @@ class _CanonicalRestaurantDetailBodyState
 
   Widget _provRow(MMColors mm, String k, String v) => Padding(
         padding: const EdgeInsets.only(bottom: 4),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(k, style: TextStyle(color: mm.onCardMuted, fontSize: 12.5)),
-            const SizedBox(width: 12),
-            Flexible(
-                child: Text(v,
-                    textAlign: TextAlign.right,
-                    style: TextStyle(color: mm.onCard, fontSize: 12.5))),
-          ],
+        child: Row(children: [
+          Text(k, style: TextStyle(color: mm.onCardMuted, fontSize: 12.5)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(v,
+                textAlign: TextAlign.right,
+                style: TextStyle(color: mm.onCard, fontSize: 12.5)),
+          ),
+        ]),
+      );
+
+  Widget _recheck(String text, MMColors mm) => Row(children: [
+        Icon(Icons.update_rounded, size: 15, color: MMColors.accentYellow),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(text,
+              style: TextStyle(color: mm.onCardMuted, fontSize: 12.5)),
         ),
-      );
+      ]);
 
-  Widget _recheck(String text, MMColors mm) => Row(
-        children: [
-          Icon(Icons.update_rounded, size: 15, color: MMColors.accentYellow),
-          const SizedBox(width: 6),
-          Flexible(
-              child: Text(text,
-                  style: TextStyle(color: mm.onCardMuted, fontSize: 12.5))),
-        ],
-      );
-
-  Widget _expandRow(
-      {required String label,
-      required bool expanded,
-      required VoidCallback onTap}) {
-    return Semantics(
-      button: true,
-      label: label,
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+  Widget _expandRow({
+    required String label,
+    required bool expanded,
+    required VoidCallback onTap,
+  }) =>
+      Semantics(
+        button: true,
+        label: label,
+        child: InkWell(
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
               Text(label,
                   style: TextStyle(
                       color: MMColors.danger,
@@ -725,12 +729,10 @@ class _CanonicalRestaurantDetailBodyState
                       fontWeight: FontWeight.w600)),
               Icon(expanded ? Icons.expand_less : Icons.expand_more,
                   size: 18, color: MMColors.danger),
-            ],
+            ]),
           ),
         ),
-      ),
-    );
-  }
+      );
 
   Widget _actions(AppLocalizations t, MMColors mm) {
     final a = vm.actions;
@@ -746,7 +748,6 @@ class _CanonicalRestaurantDetailBodyState
         _actionBtn(t.t('save'), Icons.bookmark_border_rounded,
             _guard(widget.callbacks.onSave, allowed: a.canSave)),
       if (a.canShare)
-        // Kongsi dibenarkan walau untuk sample (tiada kesan live berbahaya).
         _actionBtn(t.t('share'), Icons.share_outlined,
             _submitting ? null : widget.callbacks.onShare),
       if (a.canLogMeal)
@@ -763,7 +764,6 @@ class _CanonicalRestaurantDetailBodyState
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Wrap(spacing: 10, runSpacing: 10, children: buttons),
-        // Phase 1.11: laporan adalah tindakan sekunder yang tenang, bukan CTA.
         if (_showReportEntry)
           Padding(
             padding: const EdgeInsets.only(top: 6),
@@ -783,7 +783,6 @@ class _CanonicalRestaurantDetailBodyState
     );
   }
 
-  /// Sample tidak boleh dilaporkan — tiada rekod sebenar untuk dibetulkan.
   bool get _showReportEntry =>
       PlaceCorrectionFlags.placeCorrectionEnabled &&
       widget.callbacks.onReportIncorrectInformation != null &&
@@ -812,36 +811,28 @@ class _CanonicalRestaurantDetailBodyState
   }
 }
 
-// ---------------------------------------------------------------------------
-// KEADAAN UI PERINGKAT SKRIN (loading / not-found / missing-id)
-// ---------------------------------------------------------------------------
-
-/// Keadaan memuat (skeleton butiran).
 class RestaurantDetailLoading extends StatelessWidget {
   const RestaurantDetailLoading({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
-            PlaceCardSkeleton(height: 210),
-            SizedBox(height: 16),
-            PlaceCardSkeleton(height: 90),
-            SizedBox(height: 12),
-            PlaceCardSkeleton(height: 90),
-          ],
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(),
+        body: const Padding(
+          padding: EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              PlaceCardSkeleton(height: 210),
+              SizedBox(height: 16),
+              PlaceCardSkeleton(height: 90),
+              SizedBox(height: 12),
+              PlaceCardSkeleton(height: 90),
+            ],
+          ),
         ),
-      ),
-    );
-  }
+      );
 }
 
-/// Keadaan ID tiada.
 class RestaurantDetailMissingId extends StatelessWidget {
   const RestaurantDetailMissingId({super.key, this.onBack});
   final VoidCallback? onBack;
@@ -851,7 +842,6 @@ class RestaurantDetailMissingId extends StatelessWidget {
       _stateScaffold(context, 'missingPlaceId', onBack);
 }
 
-/// Keadaan kedai tidak dijumpai.
 class RestaurantDetailNotFound extends StatelessWidget {
   const RestaurantDetailNotFound({super.key, this.onBack});
   final VoidCallback? onBack;
