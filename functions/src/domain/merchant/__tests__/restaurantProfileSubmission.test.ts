@@ -18,12 +18,53 @@ test("accepts fields only when they belong to the selected proposal type", () =>
     {phone: "0111111111", instagram: "makanmana"},
   );
   assert.deepEqual(
-    validateRestaurantProfileProposal("hours_update", {business_status: "active", opening_hours: {mon: []}}).data,
-    {business_status: "active", opening_hours: {mon: []}},
+    validateRestaurantProfileProposal("hours_update", {business_status: "active", opening_hours: {monday: {closed: false, all_day: false, sessions: [{open: "09:00", close: "14:00"}, {open: "17:00", close: "22:00"}]}}}).data,
+    {business_status: "active", opening_hours: {monday: {closed: false, all_day: false, sessions: [{open: "09:00", close: "14:00"}, {open: "17:00", close: "22:00"}]}}},
   );
-  assert.deepEqual(
-    validateRestaurantProfileProposal("menu_update", {signature_dishes: ["Nasi Lemak"], price_range: "budget"}).data,
-    {signature_dishes: ["Nasi Lemak"], price_range: "budget"},
+});
+
+test("normalizes itemized food and drink menu proposals", () => {
+  const result = validateRestaurantProfileProposal("menu_update", {
+    menu_items: [
+      {section: "makanan", name: "Nasi Lemak", price: 8.5, available: true},
+      {section: "minuman", name: "Teh O Ais", category: "Teh", price: 3, imageUrl: "https://example.com/teh.jpg"},
+    ],
+  }).data.menu_items as Array<Record<string, unknown>>;
+
+  assert.equal(result.length, 2);
+  assert.deepEqual(result[0], {
+    id: "menu-makanan-1",
+    section: "makanan",
+    category: "",
+    name: "Nasi Lemak",
+    description: "",
+    price: 8.5,
+    currency: "MYR",
+    available: true,
+    imageUrl: "",
+    sortOrder: 0,
+  });
+  assert.equal(result[1].section, "minuman");
+  assert.equal(result[1].currency, "MYR");
+  assert.equal(result[1].sortOrder, 10);
+});
+
+test("rejects malformed menu items before they reach the merchant bridge", () => {
+  assert.throws(
+    () => validateRestaurantProfileProposal("menu_update", {menu_items: [{section: "makanan", name: "", price: 5}]}),
+    /restaurant_profile_menu_item_name:0:required/,
+  );
+  assert.throws(
+    () => validateRestaurantProfileProposal("menu_update", {menu_items: [{section: "dessert", name: "Cake"}]}),
+    /restaurant_profile_menu_item_section_invalid:0/,
+  );
+  assert.throws(
+    () => validateRestaurantProfileProposal("menu_update", {menu_items: [{section: "minuman", name: "Kopi", price: -1}]}),
+    /restaurant_profile_menu_item_price_invalid:0/,
+  );
+  assert.throws(
+    () => validateRestaurantProfileProposal("menu_update", {menu_items: [{section: "minuman", name: "Kopi", imageUrl: "javascript:bad"}]}),
+    /restaurant_profile_menu_item_image_invalid:0/,
   );
 });
 
@@ -69,7 +110,7 @@ test("rejects unsupported type, empty body and oversized proposal", () => {
     /restaurant_profile_data_empty/,
   );
   assert.throws(
-    () => validateRestaurantProfileProposal("profile_update", {short_description: "x".repeat(40 * 1024)}),
+    () => validateRestaurantProfileProposal("profile_update", {short_description: "x".repeat(400 * 1024)}),
     /restaurant_profile_data_too_large/,
   );
 });
