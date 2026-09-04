@@ -15,6 +15,7 @@ import '../../core/entitlement/entitlement.dart';
 import '../../core/entitlement/plan_tier.dart';
 import '../../core/providers.dart';
 import '../../core/providers/makanmana_user_context_provider.dart';
+import '../../core/services/restaurant_profile_v2_service.dart';
 import '../../core/utils/place_actions.dart';
 import '../../core/widgets/location_preview_card.dart';
 import '../../core/widgets/place_image.dart';
@@ -24,6 +25,8 @@ import '../place_migration/cohort_diagnostics_overlay.dart';
 import '../reviews/rating_page.dart';
 import 'canonical/canonical_restaurant_detail_screen.dart';
 import 'canonical/restaurant_detail_adapter.dart';
+import 'canonical/restaurant_detail_view_model.dart';
+import 'canonical/restaurant_profile_v2_adapter.dart';
 import '../place_corrections/correction_providers.dart';
 import '../place_corrections/correction_snapshot.dart';
 import '../place_corrections/report_entry_sheet.dart';
@@ -42,6 +45,26 @@ class RestaurantDetailScreen extends ConsumerStatefulWidget {
 class _RestaurantDetailScreenState
     extends ConsumerState<RestaurantDetailScreen> {
   String get placeId => widget.placeId;
+
+  Future<RestaurantDetailViewModel?>? _canonicalProfileFuture;
+  String? _canonicalProfilePlaceId;
+
+  Future<RestaurantDetailViewModel?> _loadCanonicalProfile(
+      String requestedPlaceId) async {
+    final profile = await RestaurantProfileV2Service()
+        .getPublishedProfile(requestedPlaceId);
+    if (profile == null) return null;
+    return restaurantDetailFromPublicProfile(profile);
+  }
+
+  Future<RestaurantDetailViewModel?> _canonicalFuture() {
+    if (_canonicalProfileFuture == null ||
+        _canonicalProfilePlaceId != placeId) {
+      _canonicalProfilePlaceId = placeId;
+      _canonicalProfileFuture = _loadCanonicalProfile(placeId);
+    }
+    return _canonicalProfileFuture!;
+  }
 
   Future<void> _share(BuildContext context, PlaceSummary place) async {
     // Selesaikan sebelum jurang async - context mungkin hilang selepas await.
@@ -186,41 +209,69 @@ class _RestaurantDetailScreenState
         ? current
         : ref.read(dummySuggestionServiceProvider).byId(placeId) ?? current;
 
+    // WAVE 2 Restaurant Profile V2: hanya apabila flag canonical ON, cuba baca
+    // ACTIVE published canonical profile melalui callable server-only. Flutter
+    // tidak pernah membaca place_publications / place_publication_heads terus.
+    // Jika tiada publication atau callable gagal, PlaceSummary legasi kekal
+    // fallback supaya skrin produksi tidak menjadi kosong.
+    if (RestaurantDetailFlags.canonicalRestaurantDetailEnabled) {
+      final legacyVm = place == null ? null : restaurantDetailFromSummary(place);
+      return FutureBuilder<RestaurantDetailViewModel?>(
+        future: _canonicalFuture(),
+        builder: (context, snapshot) {
+          final publishedVm = snapshot.data;
+          final vm = publishedVm ?? legacyVm;
+
+          if (vm == null) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return Scaffold(
+                appBar: AppBar(),
+                body: const Center(child: CircularProgressIndicator()),
+              );
+            }
+            return RestaurantDetailNotFound(onBack: () => context.pop());
+          }
+
+          return diag(
+            CanonicalRestaurantDetailScreen(
+              vm: vm,
+              callbacks: RestaurantDetailCallbacks(
+                onBack: () => context.pop(),
+                onOpenMaps: place == null
+                    ? null
+                    : () => openPlaceInMaps(
+                          ref,
+                          place,
+                          source: 'restaurant_detail',
+                        ),
+                onSave:
+                    place == null ? null : () => _toggleFavorite(place, false),
+                onShare:
+                    place == null ? null : () => _share(context, place),
+                onRate: place == null ? null : () => _rate(place, 'checkin'),
+                onLogMeal: place == null ? null : () => _logMeal(place),
+                // Laporan pembetulan sentiasa menggunakan VM yang sedang
+                // dipapar, termasuk published canonical publication.
+                onReportIncorrectInformation: () => showReportEntrySheet(
+                  context,
+                  snapshot: captureSnapshot(vm, capturedAt: DateTime.now()),
+                  repository: ref.read(placeCorrectionRepositoryProvider),
+                ),
+              ),
+            ),
+            publishedVm != null
+                ? 'detail:canonical_publication (backend)'
+                : 'detail:${place?.dataSource ?? "legacy"} (fallback)',
+          );
+        },
+      );
+    }
+
     if (place == null) {
-      // Flag OFF: kekalkan paparan legasi (ralat ringkas). Flag ON: keadaan
-      // "tidak dijumpai" jujur kanonikal.
-      if (RestaurantDetailFlags.canonicalRestaurantDetailEnabled) {
-        return RestaurantDetailNotFound(onBack: () => context.pop());
-      }
       return Scaffold(
         appBar: AppBar(),
         body: const Center(child: Icon(Icons.error_outline)),
       );
-    }
-
-    // PHASE 1.10: laluan KANONIKAL di belakang flag (default OFF). Laluan baca
-    // produksi TIDAK berubah — view model dibina dari PlaceSummary legasi yang
-    // sama; skrin legasi di bawah kekal utuh & tersedia bila flag OFF.
-    if (RestaurantDetailFlags.canonicalRestaurantDetailEnabled) {
-      final vm = restaurantDetailFromSummary(place);
-      return diag(CanonicalRestaurantDetailScreen(
-        vm: vm,
-        callbacks: RestaurantDetailCallbacks(
-          onBack: () => context.pop(),
-          onOpenMaps: () =>
-              openPlaceInMaps(ref, place, source: 'restaurant_detail'),
-          onSave: () => _toggleFavorite(place, false),
-          onShare: () => _share(context, place),
-          onRate: () => _rate(place, 'checkin'),
-          onLogMeal: () => _logMeal(place),
-          // PHASE 1.11: titik masuk laporan (flag OFF = butang tidak dipapar).
-          onReportIncorrectInformation: () => showReportEntrySheet(
-            context,
-            snapshot: captureSnapshot(vm, capturedAt: DateTime.now()),
-            repository: ref.read(placeCorrectionRepositoryProvider),
-          ),
-        ),
-      ), 'detail:${place.dataSource ?? "legacy"} (backend)');
     }
 
     // ================= REDESIGN (Image 3) — laluan LEGASI (produksi) =========
