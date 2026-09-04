@@ -226,7 +226,6 @@ export function projectPublicRestaurantProfileV2(
 
   const flatContact = object(publication.contact);
   const flatAddress = object(publication.addressFields);
-  const modern = Object.keys(place).length > 0;
 
   const name = text(identity.canonicalName)
     ?? text(displaySnapshot.name)
