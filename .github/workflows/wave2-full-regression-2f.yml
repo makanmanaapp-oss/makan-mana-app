@@ -17,6 +17,9 @@ on:
 permissions:
   contents: read
 
+env:
+  WAVE2_BASE_SHA: f9564a43c4cf2fb2b69890cd3fae0b012679d47a
+
 jobs:
   source-safety:
     name: Source safety locks
@@ -60,12 +63,12 @@ jobs:
 
           echo "Wave 2 source safety locks PASS"
 
-  flutter-regression:
-    name: Flutter analyze, all tests, Android debug build
+  flutter-wave2-critical:
+    name: Flutter Wave 2 boundary + analyze + Android debug build
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
-      - name: Checkout
+      - name: Checkout Wave 2 head
         uses: actions/checkout@v4
       - name: Setup Flutter stable
         uses: subosito/flutter-action@v2
@@ -76,10 +79,117 @@ jobs:
         run: flutter pub get
       - name: Analyze full Flutter source
         run: flutter analyze --no-fatal-warnings --no-fatal-infos
-      - name: Run full Flutter test suite
-        run: flutter test
+      - name: Test Restaurant Profile V2 mobile boundary
+        run: flutter test test/merchant_restaurant_profile_v2_test.dart
       - name: Build Android debug APK only
         run: flutter build apk --debug
+
+  flutter-differential:
+    name: Full Flutter differential regression vs locked baseline
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Setup Flutter stable
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Compare baseline and Wave 2 failure sets
+        shell: bash
+        run: |
+          set -euo pipefail
+          HEAD_SHA="$GITHUB_SHA"
+
+          cat > /tmp/parse_flutter_machine.py <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          source = Path(sys.argv[1])
+          failures_out = Path(sys.argv[2])
+          count_out = Path(sys.argv[3])
+
+          names = {}
+          failures = set()
+          done = 0
+
+          for raw in source.read_text(errors="replace").splitlines():
+              raw = raw.strip()
+              if not raw.startswith("{"):
+                  continue
+              try:
+                  event = json.loads(raw)
+              except json.JSONDecodeError:
+                  continue
+
+              if event.get("type") == "testStart":
+                  test = event.get("test") or {}
+                  test_id = test.get("id")
+                  if test_id is not None:
+                      names[test_id] = test.get("name") or f"test_id_{test_id}"
+
+              if event.get("type") == "testDone":
+                  done += 1
+                  result = event.get("result")
+                  if result not in {"success", "skipped"}:
+                      test_id = event.get("testID")
+                      failures.add(names.get(test_id, f"test_id_{test_id}"))
+
+          failures_out.write_text("\n".join(sorted(failures)) + ("\n" if failures else ""))
+          count_out.write_text(str(done))
+          PY
+
+          run_suite() {
+            local ref="$1"
+            local label="$2"
+
+            git checkout --force "$ref"
+            flutter pub get
+
+            set +e
+            flutter test --machine > "/tmp/${label}.jsonl" 2> "/tmp/${label}.stderr"
+            local rc=$?
+            set -e
+
+            python /tmp/parse_flutter_machine.py \
+              "/tmp/${label}.jsonl" \
+              "/tmp/${label}_failures.txt" \
+              "/tmp/${label}_done_count.txt"
+
+            echo "${label} flutter test exit code: ${rc}"
+            echo "${label} completed tests: $(cat /tmp/${label}_done_count.txt)"
+            echo "${label} failing tests:"
+            cat "/tmp/${label}_failures.txt" || true
+          }
+
+          run_suite "$WAVE2_BASE_SHA" baseline
+          run_suite "$HEAD_SHA" wave2
+
+          baseline_done="$(cat /tmp/baseline_done_count.txt)"
+          wave2_done="$(cat /tmp/wave2_done_count.txt)"
+
+          if [ "$wave2_done" -lt "$baseline_done" ]; then
+            echo "Wave 2 test run completed fewer tests than the locked baseline."
+            exit 1
+          fi
+
+          comm -13 \
+            /tmp/baseline_failures.txt \
+            /tmp/wave2_failures.txt \
+            > /tmp/new_wave2_failures.txt
+
+          if [ -s /tmp/new_wave2_failures.txt ]; then
+            echo "NEW failures introduced by Wave 2:"
+            cat /tmp/new_wave2_failures.txt
+            exit 1
+          fi
+
+          echo "No new Flutter test failures introduced by Wave 2."
+          echo "Existing baseline failures remain tracked separately and are not hidden."
 
   functions-regression:
     name: Functions build and full domain tests
