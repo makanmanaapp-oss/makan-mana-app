@@ -290,12 +290,13 @@ RestaurantDetailViewModel restaurantDetailFromPublicProfile(
     placeTypeLabels: placeTypes,
     serviceLabels: service,
     ambienceLabels: ambience,
+    // Public publication DTO currently carries the safe reported dietary IDs,
+    // but not per-item evidence. Never promote those IDs to verified by
+    // borrowing halal evidence. Keep them explicitly reported.
     dietaryStates: profile.dietaryReported
         .map((tag) => DietarySuitability(
               tagId: tag,
-              evidence: _evidence(profile.halalEvidenceLevel == 'unknown'
-                  ? 'reported'
-                  : profile.halalEvidenceLevel),
+              evidence: EvidenceLevel.reported,
             ))
         .toList(growable: false),
     allergenStates: profile.allergenReported
