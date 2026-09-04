@@ -1,36 +1,20 @@
-import {randomUUID} from "node:crypto";
-
-import {defineSecret} from "firebase-functions/params";
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 
 import {
   RESTAURANT_PROFILE_SUBMISSION_TYPES,
   validateRestaurantProfileProposal,
 } from "../domain/merchant/restaurantProfileSubmission";
-
-const MERCHANT_BRIDGE_SECRET = defineSecret("MERCHANT_BRIDGE_SECRET");
-const MERCHANT_BRIDGE_URL =
-  "https://makanmana-control-center.vercel.app/api/internal/merchant";
-const ENFORCE_APP_CHECK = process.env.MERCHANT_ENFORCE_APP_CHECK === "true";
-
-type MerchantAction =
-  | "merchant.get_state"
-  | "merchant.register_account"
-  | "merchant.submit_claim"
-  | "merchant.submit_place";
+import {
+  MERCHANT_BRIDGE_SECRET,
+  MERCHANT_ENFORCE_APP_CHECK as ENFORCE_APP_CHECK,
+  callMerchantBridge,
+  merchantClientRequestId as clientRequestId,
+} from "../services/merchantBridge";
 
 type JsonObject = Record<string, unknown>;
 
 function object(value: unknown): JsonObject {
   return value && typeof value === "object" && !Array.isArray(value) ? value as JsonObject : {};
-}
-
-function clientRequestId(value: unknown): string {
-  if (typeof value === "string") {
-    const clean = value.trim();
-    if (clean && clean.length <= 120 && /^[A-Za-z0-9._:-]+$/.test(clean)) return clean;
-  }
-  return `merchant-${randomUUID()}`;
 }
 
 function requiredUuid(value: unknown, field: string): string {
@@ -56,15 +40,6 @@ function requireAuth(request: {auth?: {uid?: string} | null; app?: unknown}) {
   return uid;
 }
 
-function mapBridgeStatus(status: number, message: string): HttpsError {
-  if (status === 400) return new HttpsError("invalid-argument", message);
-  if (status === 401) return new HttpsError("permission-denied", "merchant_bridge_unauthorized");
-  if (status === 403) return new HttpsError("permission-denied", message);
-  if (status === 404) return new HttpsError("not-found", message);
-  if (status === 503) return new HttpsError("unavailable", "merchant_bridge_unavailable");
-  return new HttpsError("failed-precondition", message || "merchant_operation_failed");
-}
-
 function restaurantProfilePayload(data: JsonObject): JsonObject {
   const registryId = requiredUuid(data.registryId, "registry_id");
   const claimId = optionalUuid(data.claimId, "claim_id");
@@ -81,44 +56,6 @@ function restaurantProfilePayload(data: JsonObject): JsonObject {
     const message = error instanceof Error ? error.message : "restaurant_profile_proposal_invalid";
     throw new HttpsError("invalid-argument", message);
   }
-}
-
-async function callMerchantBridge(params: {
-  action: MerchantAction;
-  uid: string;
-  requestId: string;
-  payload: JsonObject;
-}): Promise<unknown> {
-  const secret = MERCHANT_BRIDGE_SECRET.value();
-  if (!secret) throw new HttpsError("unavailable", "merchant_bridge_not_configured");
-
-  const response = await fetch(MERCHANT_BRIDGE_URL, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${secret}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      action: params.action,
-      actorFirebaseUid: params.uid,
-      requestId: params.requestId,
-      payload: params.payload,
-    }),
-  });
-
-  let body: unknown = null;
-  try {
-    body = await response.json();
-  } catch {
-    body = null;
-  }
-
-  if (!response.ok) {
-    const message = object(body).error;
-    throw mapBridgeStatus(response.status, typeof message === "string" ? message : "merchant_operation_failed");
-  }
-
-  return body;
 }
 
 export const getMyMerchantState = onCall(

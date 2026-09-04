@@ -903,6 +903,36 @@ service cloud.firestore {
       allow create, update, delete: if false;
     }
 
+    // ---------- Wave 3B: Restaurant Content & Engagement ----------
+    // Restaurant POSTS reuse feed_posts (server-created, publicly readable,
+    // authorUid=null → not user-deletable; moderation reuses feed_posts).
+    //
+    // Restaurant FOLLOW: first-class, SEPARATE from user↔user `follows`. A user
+    // may read ONLY their own follow doc (state retrieval) — the follower list
+    // is NOT globally enumerable. All writes are server-mediated (followRestaurant
+    // / unfollowRestaurant); direct client writes denied.
+    match /restaurant_follows/{followId} {
+      allow read: if signedIn() && resource.data.followerUid == request.auth.uid;
+      allow write: if false;
+    }
+
+    // Restaurant public aggregate (server-authoritative follower COUNT +
+    // display-name snapshot). Public COUNT is readable by signed-in users; the
+    // count is server-write only and NOT coupled to public_profiles.
+    match /restaurant_public/{canonicalPlaceId} {
+      allow read: if signedIn();
+      allow write: if false;
+    }
+
+    // MENU COMMENTS: first-class, SEPARATE from feed_posts comments. Signed-in
+    // users read VISIBLE comments/replies only (removed/hidden are moderation
+    // state, not client-readable). All writes server-mediated (createMenuComment
+    // / replyToRestaurantMenuComment); direct client writes + spoofing denied.
+    match /menu_comments/{commentId} {
+      allow read: if signedIn() && resource.data.status == 'visible';
+      allow write: if false;
+    }
+
     // Tutup semua yang lain secara lalai.
     match /{document=**} {
       allow read, write: if false;

@@ -3,6 +3,12 @@ import {HttpsError, onCall} from "firebase-functions/v2/https";
 import {db, FieldValue} from "../config/firebase";
 import {logEvent} from "../services/eventService";
 import {actorDisplaySnapshot, notifySafely} from "../domain/notifications/notificationProducers";
+import {
+  buildMenuCommentReportContext,
+  isValidReportTarget,
+  type MenuCommentReportContext,
+} from "../domain/restaurantEngagement/reportTargets";
+import {normalizeCommentId} from "../domain/restaurantEngagement/identity";
 
 /**
  * Sistem sosial makan: follow / unfollow / mute / block / report.
@@ -196,19 +202,43 @@ export const reportContent = onCall(async (request) => {
     reason?: string;
   };
   const type = (targetType ?? "").trim();
-  if (!["post", "comment", "user", "group", "bill"].includes(type)) {
+  if (!isValidReportTarget(type)) {
     throw new HttpsError("invalid-argument", "Jenis laporan tidak sah.");
   }
   const trimmed = (reason ?? "").trim().slice(0, 300);
 
+  // Wave 3B — menu-comment reports carry moderation context derived from the
+  // SERVER-LOADED target document. targetId is required, the target must exist,
+  // and no restaurant/menu context supplied by the client is trusted. Behaviour
+  // for post/comment/user/group/bill targets is unchanged.
+  let menuComment: MenuCommentReportContext | null = null;
+  if (type === "menu_comment") {
+    const commentId = normalizeCommentId(targetId);
+    if (!commentId) {
+      throw new HttpsError("invalid-argument", "targetId diperlukan untuk laporan komen menu.");
+    }
+    const snap = await db.collection("menu_comments").doc(commentId).get();
+    menuComment = buildMenuCommentReportContext(commentId, snap.exists ? snap.data() : null);
+    if (!menuComment) {
+      throw new HttpsError("not-found", "Komen menu tidak dijumpai.");
+    }
+  }
+
   await db.collection("reports").add({
     reporterUid: uid,
     targetType: type,
-    targetId: (targetId ?? "").trim() || null,
-    targetUid: (targetUid ?? "").trim() || null,
+    targetId: menuComment ? menuComment.targetId : ((targetId ?? "").trim() || null),
+    targetUid: menuComment ? menuComment.authorUid : ((targetUid ?? "").trim() || null),
     reason: trimmed,
     status: "pending",
     createdAt: FieldValue.serverTimestamp(),
+    ...(menuComment ? {
+      canonicalPlaceId: menuComment.canonicalPlaceId,
+      menuItemId: menuComment.menuItemId,
+      authorType: menuComment.authorType,
+      restaurantId: menuComment.restaurantId,
+      parentCommentId: menuComment.parentCommentId,
+    } : {}),
   });
   await logEvent({
     userId: uid,

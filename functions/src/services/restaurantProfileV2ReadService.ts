@@ -3,42 +3,43 @@ import {
   projectPublicRestaurantProfileV2,
   PublicRestaurantProfileV2,
 } from "../domain/merchant/publicRestaurantProfile";
+import {
+  MAX_PLACE_ID_LENGTH,
+  resolveCanonicalPlaceIdWith,
+  type CanonicalResolutionDeps,
+} from "../domain/restaurantEngagement/canonicalResolution";
 
 const C_ALIAS = "place_migration_aliases";
 const C_HEAD = "place_publication_heads";
 const C_PUB = "place_publications";
-const MAX_ALIAS_HOPS = 8;
 
 function text(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-async function directHeadExists(placeId: string): Promise<boolean> {
-  const snapshot = await db.collection(C_HEAD).doc(placeId).get();
-  return snapshot.exists;
-}
+const resolutionDeps: CanonicalResolutionDeps = {
+  headExists: async (placeId) => (await db.collection(C_HEAD).doc(placeId).get()).exists,
+  readAlias: async (placeId) => {
+    const snapshot = await db.collection(C_ALIAS).doc(placeId).get();
+    return snapshot.exists ? (snapshot.data() ?? {}) : null;
+  },
+};
 
-async function resolveCanonicalPlaceId(placeId: string): Promise<string | null> {
-  if (await directHeadExists(placeId)) return placeId;
-
-  let current = placeId;
-  const seen = new Set<string>([current]);
-  let canonicalId: string | null = null;
-
-  for (let hop = 0; hop < MAX_ALIAS_HOPS; hop++) {
-    const aliasDoc = await db.collection(C_ALIAS).doc(current).get();
-    if (!aliasDoc.exists) break;
-    const data = aliasDoc.data() ?? {};
-    if (data.status === "blocked") return null;
-    const next = text(data.canonicalPlaceId);
-    if (!next || seen.has(next)) return null;
-    canonicalId = next;
-    seen.add(next);
-    current = next;
-    if (await directHeadExists(next)) return next;
-  }
-
-  return canonicalId;
+/**
+ * SERVER-ONLY canonical restaurant identity resolver.
+ *
+ * Resolves direct canonical ids and supported alias chains (retaining
+ * cycle/blocked protection) and — unlike readPublishedRestaurantProfileV2 —
+ * does NOT require an active publication. Server flows that must remain correct
+ * for an unpublished restaurant (unfollow) use this so they always target the
+ * identity a follow was stored under, never an alias-scoped id.
+ *
+ * This is never exported to Flutter/clients; only server callables import it.
+ */
+export async function resolveCanonicalRestaurantPlaceId(placeId: string): Promise<string | null> {
+  const clean = typeof placeId === "string" ? placeId.trim() : "";
+  if (!clean || clean.length > MAX_PLACE_ID_LENGTH) return null;
+  return resolveCanonicalPlaceIdWith(clean, resolutionDeps);
 }
 
 /**
@@ -52,11 +53,13 @@ export async function readPublishedRestaurantProfileV2(
   placeId: string,
 ): Promise<PublicRestaurantProfileV2 | null> {
   const clean = placeId.trim();
-  if (!clean || clean.length > 300) return null;
+  if (!clean || clean.length > MAX_PLACE_ID_LENGTH) return null;
 
-  const canonicalPlaceId = await resolveCanonicalPlaceId(clean);
+  const canonicalPlaceId = await resolveCanonicalRestaurantPlaceId(clean);
   if (!canonicalPlaceId) return null;
 
+  // UNCHANGED public contract: an ACTIVE, published publication is still
+  // mandatory here. Canonical resolution alone never yields a public profile.
   const head = await db.collection(C_HEAD).doc(canonicalPlaceId).get();
   if (!head.exists) return null;
   const activePublicationId = text(head.data()?.activePublicationId);

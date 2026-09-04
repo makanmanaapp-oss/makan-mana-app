@@ -3,6 +3,7 @@ import {HttpsError, onCall} from "firebase-functions/v2/https";
 import {db, FieldValue} from "../config/firebase";
 import {logEvent} from "../services/eventService";
 import {currentTimeSlot} from "../utils/timeSlot";
+import {AUTHOR_TYPE_USER, resolveOrdinaryPostType} from "../domain/feed/postTypes";
 
 interface CreateFeedPostInput {
   text?: string;
@@ -36,18 +37,6 @@ const VISIBILITIES = [
   "group_only",
   "private",
   "unlisted",
-];
-
-const POST_TYPES = [
-  "food_post",
-  "meal_review",
-  "suggestion_result",
-  "budget_insight",
-  "group_poll",
-  "group_result",
-  "meal_wallet_share",
-  "status",
-  "checkin",
 ];
 
 /**
@@ -117,9 +106,10 @@ export const createFeedPost = onCall(async (request) => {
   const groupId = (input.groupId ?? "").trim();
   const payload = input.payload ?? null;
 
-  const postType = POST_TYPES.includes(input.postType ?? "")
-    ? input.postType!
-    : "food_post";
+  // Fail-closed: an ordinary user can never select "restaurant_post" (or any
+  // other non-ordinary type) — it resolves to "food_post". Restaurant posts are
+  // produced ONLY by the server-authorized createRestaurantPost flow.
+  const postType = resolveOrdinaryPostType(input.postType);
   const isCheckin = postType === "checkin";
   const isShareCard =
     postType !== "food_post" && postType !== "status" && !isCheckin;
@@ -203,6 +193,9 @@ export const createFeedPost = onCall(async (request) => {
       "review" :
       isCheckin ? "checkin" : "status",
     postType,
+    // Wave 3B: NEW ordinary posts explicitly record the user author type.
+    // Legacy posts without this field are still read as "user".
+    authorType: AUTHOR_TYPE_USER,
     authorUid: uid,
     displayName,
     username,

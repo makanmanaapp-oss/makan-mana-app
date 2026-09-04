@@ -146,3 +146,10 @@ export {
 
 // Wave 2 — authenticated, read-only public projection of the active canonical publication.
 export {getRestaurantProfileV2} from "./callable/getRestaurantProfileV2";
+
+// Wave 3B — restaurant Content & Engagement (server-authorized; reuses feed_posts,
+// separate restaurant-follow + first-class menu comments). No final UI in 3B.
+export {createRestaurantPost} from "./callable/createRestaurantPost";
+export {followRestaurant, unfollowRestaurant} from "./callable/restaurantFollowControl";
+export {createMenuComment} from "./callable/menuCommentControl";
+export {replyToRestaurantMenuComment} from "./callable/restaurantReplyControl";
