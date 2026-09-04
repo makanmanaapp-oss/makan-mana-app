@@ -4,15 +4,18 @@ on:
   push:
     branches:
       - feature/restaurant-profile-v2
+      - feature/restaurant-profile-v2-menu-hours-fix
     paths:
       - "lib/**"
       - "test/merchant_restaurant_profile_v2_test.dart"
+      - "test/restaurant_profile_menu_hours_completeness_test.dart"
       - "pubspec.yaml"
       - ".github/workflows/wave2-restaurant-profile-flutter-ci.yml"
   pull_request:
     paths:
       - "lib/**"
       - "test/merchant_restaurant_profile_v2_test.dart"
+      - "test/restaurant_profile_menu_hours_completeness_test.dart"
       - "pubspec.yaml"
       - ".github/workflows/wave2-restaurant-profile-flutter-ci.yml"
 
@@ -36,4 +39,4 @@ jobs:
       - name: Analyze Flutter source
         run: flutter analyze --no-fatal-warnings --no-fatal-infos
       - name: Test Restaurant Profile V2 mobile boundary
-        run: flutter test test/merchant_restaurant_profile_v2_test.dart
+        run: flutter test test/merchant_restaurant_profile_v2_test.dart test/restaurant_profile_menu_hours_completeness_test.dart
