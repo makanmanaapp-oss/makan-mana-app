@@ -9,11 +9,6 @@ typedef RestaurantProfileSubmit = Future<void> Function({
   required Map<String, dynamic> data,
 });
 
-/// Review-gated Restaurant Profile V2 editor for places the merchant already
-/// has an active membership for.
-///
-/// It only creates proposals. There are deliberately no approve, apply or
-/// publish controls in this widget.
 class RestaurantProfileEditorCard extends StatefulWidget {
   const RestaurantProfileEditorCard({
     super.key,
@@ -29,6 +24,61 @@ class RestaurantProfileEditorCard extends StatefulWidget {
   @override
   State<RestaurantProfileEditorCard> createState() =>
       _RestaurantProfileEditorCardState();
+}
+
+class _DayHoursDraft {
+  _DayHoursDraft(this.key, this.label);
+
+  final String key;
+  final String label;
+  bool closed = false;
+  bool allDay = false;
+  final open1 = TextEditingController();
+  final close1 = TextEditingController();
+  final open2 = TextEditingController();
+  final close2 = TextEditingController();
+
+  bool get hasTimes =>
+      open1.text.trim().isNotEmpty ||
+      close1.text.trim().isNotEmpty ||
+      open2.text.trim().isNotEmpty ||
+      close2.text.trim().isNotEmpty;
+
+  void clear() {
+    closed = false;
+    allDay = false;
+    open1.clear();
+    close1.clear();
+    open2.clear();
+    close2.clear();
+  }
+
+  void dispose() {
+    open1.dispose();
+    close1.dispose();
+    open2.dispose();
+    close2.dispose();
+  }
+}
+
+class _MenuDraft {
+  _MenuDraft({required this.section});
+
+  String section;
+  bool available = true;
+  final name = TextEditingController();
+  final category = TextEditingController();
+  final description = TextEditingController();
+  final price = TextEditingController();
+  final imageUrl = TextEditingController();
+
+  void dispose() {
+    name.dispose();
+    category.dispose();
+    description.dispose();
+    price.dispose();
+    imageUrl.dispose();
+  }
 }
 
 class _RestaurantProfileEditorCardState
@@ -54,18 +104,22 @@ class _RestaurantProfileEditorCardState
   final _facebook = TextEditingController();
   final _tiktok = TextEditingController();
 
-  final _monday = TextEditingController();
-  final _tuesday = TextEditingController();
-  final _wednesday = TextEditingController();
-  final _thursday = TextEditingController();
-  final _friday = TextEditingController();
-  final _saturday = TextEditingController();
-  final _sunday = TextEditingController();
-
   final _cuisineTags = TextEditingController();
   final _foodTags = TextEditingController();
   final _signatureDishes = TextEditingController();
   final _priceRange = TextEditingController();
+
+  late final List<_DayHoursDraft> _days = [
+    _DayHoursDraft('monday', 'Isnin'),
+    _DayHoursDraft('tuesday', 'Selasa'),
+    _DayHoursDraft('wednesday', 'Rabu'),
+    _DayHoursDraft('thursday', 'Khamis'),
+    _DayHoursDraft('friday', 'Jumaat'),
+    _DayHoursDraft('saturday', 'Sabtu'),
+    _DayHoursDraft('sunday', 'Ahad'),
+  ];
+
+  final List<_MenuDraft> _menuDrafts = [];
 
   @override
   void initState() {
@@ -112,19 +166,18 @@ class _RestaurantProfileEditorCardState
       _instagram,
       _facebook,
       _tiktok,
-      _monday,
-      _tuesday,
-      _wednesday,
-      _thursday,
-      _friday,
-      _saturday,
-      _sunday,
       _cuisineTags,
       _foodTags,
       _signatureDishes,
       _priceRange,
     ]) {
       controller.dispose();
+    }
+    for (final day in _days) {
+      day.dispose();
+    }
+    for (final item in _menuDrafts) {
+      item.dispose();
     }
     super.dispose();
   }
@@ -142,6 +195,87 @@ class _RestaurantProfileEditorCardState
   ) {
     final value = controller.text.trim();
     if (value.isNotEmpty) data[key] = value;
+  }
+
+  bool _validClock(String value) =>
+      RegExp(r'^(?:[01]\d|2[0-3]):[0-5]\d$').hasMatch(value);
+
+  Map<String, dynamic>? _dayPayload(_DayHoursDraft day) {
+    if (day.closed) {
+      return const {'closed': true, 'all_day': false, 'sessions': []};
+    }
+    if (day.allDay) {
+      return const {'closed': false, 'all_day': true, 'sessions': []};
+    }
+    if (!day.hasTimes) return null;
+
+    final sessions = <Map<String, String>>[];
+    for (final pair in [
+      (day.open1.text.trim(), day.close1.text.trim()),
+      (day.open2.text.trim(), day.close2.text.trim()),
+    ]) {
+      final open = pair.$1;
+      final close = pair.$2;
+      if (open.isEmpty && close.isEmpty) continue;
+      if (!_validClock(open) || !_validClock(close)) {
+        throw ArgumentError('restaurant_profile_hours_invalid:${day.key}');
+      }
+      sessions.add({'open': open, 'close': close});
+    }
+    if (sessions.isEmpty) return null;
+    return {'closed': false, 'all_day': false, 'sessions': sessions};
+  }
+
+  List<Map<String, dynamic>> _menuPayload() {
+    final result = <Map<String, dynamic>>[];
+    for (var index = 0; index < _menuDrafts.length; index++) {
+      final draft = _menuDrafts[index];
+      final name = draft.name.text.trim();
+      final category = draft.category.text.trim();
+      final description = draft.description.text.trim();
+      final priceText = draft.price.text.trim();
+      final imageUrl = draft.imageUrl.text.trim();
+      if (name.isEmpty &&
+          category.isEmpty &&
+          description.isEmpty &&
+          priceText.isEmpty &&
+          imageUrl.isEmpty) {
+        continue;
+      }
+      if (name.isEmpty || name.length > 120) {
+        throw ArgumentError('restaurant_profile_menu_name_invalid');
+      }
+      if (draft.section != 'makanan' && draft.section != 'minuman') {
+        throw ArgumentError('restaurant_profile_menu_section_invalid');
+      }
+      double? price;
+      if (priceText.isNotEmpty) {
+        price = double.tryParse(priceText);
+        if (price == null || price < 0 || price > 100000) {
+          throw ArgumentError('restaurant_profile_menu_price_invalid');
+        }
+      }
+      if (imageUrl.isNotEmpty &&
+          !(imageUrl.startsWith('https://') || imageUrl.startsWith('http://'))) {
+        throw ArgumentError('restaurant_profile_menu_image_invalid');
+      }
+      result.add({
+        'id': 'merchant-${draft.section}-${index + 1}',
+        'section': draft.section,
+        'name': name,
+        if (category.isNotEmpty) 'category': category,
+        if (description.isNotEmpty) 'description': description,
+        if (price != null) 'price': price,
+        'currency': 'MYR',
+        'available': draft.available,
+        if (imageUrl.isNotEmpty) 'imageUrl': imageUrl,
+        'sortOrder': result.length * 10,
+      });
+    }
+    if (result.length > 200) {
+      throw ArgumentError('restaurant_profile_menu_too_many_items');
+    }
+    return result;
   }
 
   Map<String, dynamic> _proposalData() {
@@ -167,18 +301,10 @@ class _RestaurantProfileEditorCardState
         break;
       case RestaurantProfileProposal.hoursUpdate:
         data['business_status'] = _businessStatus;
-        final hours = <String, String>{};
-        for (final entry in <MapEntry<String, TextEditingController>>[
-          MapEntry('monday', _monday),
-          MapEntry('tuesday', _tuesday),
-          MapEntry('wednesday', _wednesday),
-          MapEntry('thursday', _thursday),
-          MapEntry('friday', _friday),
-          MapEntry('saturday', _saturday),
-          MapEntry('sunday', _sunday),
-        ]) {
-          final value = entry.value.text.trim();
-          if (value.isNotEmpty) hours[entry.key] = value;
+        final hours = <String, dynamic>{};
+        for (final day in _days) {
+          final value = _dayPayload(day);
+          if (value != null) hours[day.key] = value;
         }
         if (hours.isNotEmpty) data['opening_hours'] = hours;
         break;
@@ -186,9 +312,11 @@ class _RestaurantProfileEditorCardState
         final cuisines = _csv(_cuisineTags);
         final foods = _csv(_foodTags);
         final dishes = _csv(_signatureDishes);
+        final menu = _menuPayload();
         if (cuisines.isNotEmpty) data['cuisine_tags'] = cuisines;
         if (foods.isNotEmpty) data['food_tags'] = foods;
         if (dishes.isNotEmpty) data['signature_dishes'] = dishes;
+        if (menu.isNotEmpty) data['menu_items'] = menu;
         _addText(data, 'price_range', _priceRange);
         break;
     }
@@ -214,10 +342,14 @@ class _RestaurantProfileEditorCardState
       _clearCurrentSection();
     } on ArgumentError catch (error) {
       if (!mounted) return;
-      setState(() => _localError = error.message?.toString() ==
-              'restaurant_profile_data_empty'
+      final message = error.message?.toString() ?? '';
+      setState(() => _localError = message == 'restaurant_profile_data_empty'
           ? 'Isi sekurang-kurangnya satu perubahan.'
-          : 'Maklumat perubahan tidak sah.');
+          : message.startsWith('restaurant_profile_hours_invalid')
+              ? 'Lengkapkan waktu buka dan tutup dalam format 24 jam, contohnya 09:00 dan 14:00.'
+              : message.startsWith('restaurant_profile_menu_')
+                  ? 'Semak item menu. Nama wajib, harga mesti nombor sah dan URL gambar mesti bermula http/https.'
+                  : 'Maklumat perubahan tidak sah.');
     }
   }
 
@@ -241,15 +373,6 @@ class _RestaurantProfileEditorCardState
           _facebook,
           _tiktok,
         ],
-      RestaurantProfileProposal.hoursUpdate => <TextEditingController>[
-          _monday,
-          _tuesday,
-          _wednesday,
-          _thursday,
-          _friday,
-          _saturday,
-          _sunday,
-        ],
       RestaurantProfileProposal.menuUpdate => <TextEditingController>[
           _cuisineTags,
           _foodTags,
@@ -261,6 +384,19 @@ class _RestaurantProfileEditorCardState
     for (final controller in controllers) {
       controller.clear();
     }
+    if (_submissionType == RestaurantProfileProposal.hoursUpdate) {
+      for (final day in _days) {
+        day.clear();
+      }
+      _businessStatus = 'active';
+    }
+    if (_submissionType == RestaurantProfileProposal.menuUpdate) {
+      for (final item in _menuDrafts) {
+        item.dispose();
+      }
+      _menuDrafts.clear();
+    }
+    setState(() {});
   }
 
   @override
@@ -414,46 +550,233 @@ class _RestaurantProfileEditorCardState
           _field(_tiktok, 'TikTok'),
         ]);
       case RestaurantProfileProposal.hoursUpdate:
-        return Column(children: [
-          DropdownButtonFormField<String>(
-            initialValue: _businessStatus,
-            decoration: const InputDecoration(labelText: 'Status operasi'),
-            items: const [
-              DropdownMenuItem(value: 'active', child: Text('Beroperasi')),
-              DropdownMenuItem(
-                  value: 'temporarily_closed', child: Text('Tutup sementara')),
-              DropdownMenuItem(
-                  value: 'permanently_closed', child: Text('Tutup kekal')),
-            ],
-            onChanged: widget.submitting
-                ? null
-                : (value) => setState(() => _businessStatus = value ?? 'active'),
-          ),
-          const SizedBox(height: 12),
-          _field(_monday, 'Isnin', hint: '09:00-22:00 atau Tutup'),
-          _field(_tuesday, 'Selasa', hint: '09:00-22:00 atau Tutup'),
-          _field(_wednesday, 'Rabu', hint: '09:00-22:00 atau Tutup'),
-          _field(_thursday, 'Khamis', hint: '09:00-22:00 atau Tutup'),
-          _field(_friday, 'Jumaat', hint: '09:00-22:00 atau Tutup'),
-          _field(_saturday, 'Sabtu', hint: '09:00-22:00 atau Tutup'),
-          _field(_sunday, 'Ahad', hint: '09:00-22:00 atau Tutup'),
-        ]);
+        return _hoursFields();
       case RestaurantProfileProposal.menuUpdate:
-        return Column(children: [
-          _field(_cuisineTags, 'Jenis masakan', hint: 'Melayu, Thai, Western'),
-          _field(_foodTags, 'Tag makanan', hint: 'Sarapan, Nasi, Sup'),
-          _field(_signatureDishes, 'Menu signature',
-              hint: 'Nasi Lemak, Laksa, Mee Kolok'),
-          _field(_priceRange, 'Julat harga', hint: 'Contoh: RM5-RM20'),
-        ]);
+        return _menuFields();
       default:
         return const SizedBox.shrink();
     }
   }
 
+  Widget _hoursFields() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        DropdownButtonFormField<String>(
+          initialValue: _businessStatus,
+          decoration: const InputDecoration(labelText: 'Status operasi'),
+          items: const [
+            DropdownMenuItem(value: 'active', child: Text('Beroperasi')),
+            DropdownMenuItem(
+                value: 'temporarily_closed', child: Text('Tutup sementara')),
+            DropdownMenuItem(
+                value: 'permanently_closed', child: Text('Tutup kekal')),
+          ],
+          onChanged: widget.submitting
+              ? null
+              : (value) => setState(() => _businessStatus = value ?? 'active'),
+        ),
+        const SizedBox(height: 12),
+        const Text(
+          'Setiap hari menyokong maksimum dua sesi. Contoh: 09:00-14:00, rehat, 17:00-22:00.',
+        ),
+        const SizedBox(height: 10),
+        for (final day in _days) _dayHoursCard(day),
+      ],
+    );
+  }
+
+  Widget _dayHoursCard(_DayHoursDraft day) {
+    return Card(
+      key: ValueKey('merchant-hours-${day.key}'),
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(day.label, style: const TextStyle(fontWeight: FontWeight.w700)),
+            Wrap(
+              spacing: 12,
+              children: [
+                FilterChip(
+                  key: ValueKey('merchant-hours-${day.key}-closed'),
+                  label: const Text('Tutup'),
+                  selected: day.closed,
+                  onSelected: widget.submitting
+                      ? null
+                      : (value) => setState(() {
+                            day.closed = value;
+                            if (value) day.allDay = false;
+                          }),
+                ),
+                FilterChip(
+                  key: ValueKey('merchant-hours-${day.key}-24h'),
+                  label: const Text('24 jam'),
+                  selected: day.allDay,
+                  onSelected: widget.submitting
+                      ? null
+                      : (value) => setState(() {
+                            day.allDay = value;
+                            if (value) day.closed = false;
+                          }),
+                ),
+              ],
+            ),
+            if (!day.closed && !day.allDay) ...[
+              const SizedBox(height: 8),
+              Row(children: [
+                Expanded(child: _timeField(day.open1, '${day.label} buka sesi 1')),
+                const SizedBox(width: 8),
+                Expanded(child: _timeField(day.close1, '${day.label} tutup / rehat')),
+              ]),
+              Row(children: [
+                Expanded(child: _timeField(day.open2, '${day.label} buka semula')),
+                const SizedBox(width: 8),
+                Expanded(child: _timeField(day.close2, '${day.label} tutup akhir')),
+              ]),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _timeField(TextEditingController controller, String label) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: TextField(
+        controller: controller,
+        enabled: !widget.submitting,
+        keyboardType: TextInputType.datetime,
+        decoration: InputDecoration(labelText: label, hintText: '09:00'),
+      ),
+    );
+  }
+
+  Widget _menuFields() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _field(_cuisineTags, 'Jenis masakan', hint: 'Melayu, Thai, Western'),
+        _field(_foodTags, 'Tag makanan', hint: 'Sarapan, Nasi, Sup'),
+        _field(_signatureDishes, 'Menu signature',
+            hint: 'Nasi Lemak, Laksa, Mee Kolok'),
+        _field(_priceRange, 'Julat harga', hint: 'Contoh: budget / mid'),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                key: const Key('merchant-add-food-item'),
+                onPressed: widget.submitting
+                    ? null
+                    : () => _addMenuItem('makanan'),
+                icon: const Icon(Icons.restaurant_menu),
+                label: const Text('Tambah makanan'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                key: const Key('merchant-add-drink-item'),
+                onPressed: widget.submitting
+                    ? null
+                    : () => _addMenuItem('minuman'),
+                icon: const Icon(Icons.local_drink_outlined),
+                label: const Text('Tambah minuman'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        if (_menuDrafts.isEmpty)
+          const Text('Belum ada item menu ditambah.')
+        else
+          for (var index = 0; index < _menuDrafts.length; index++)
+            _menuItemCard(index, _menuDrafts[index]),
+      ],
+    );
+  }
+
+  void _addMenuItem(String section) {
+    if (_menuDrafts.length >= 200) {
+      setState(() => _localError = 'Maksimum 200 item menu untuk satu cadangan.');
+      return;
+    }
+    setState(() {
+      _menuDrafts.add(_MenuDraft(section: section));
+      _localError = null;
+    });
+  }
+
+  void _removeMenuItem(int index) {
+    final item = _menuDrafts.removeAt(index);
+    item.dispose();
+    setState(() {});
+  }
+
+  Widget _menuItemCard(int index, _MenuDraft draft) {
+    final label = draft.section == 'makanan' ? 'Makanan' : 'Minuman';
+    return Card(
+      key: ValueKey('merchant-menu-item-$index'),
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text('$label ${index + 1}',
+                      style: const TextStyle(fontWeight: FontWeight.w700)),
+                ),
+                IconButton(
+                  key: ValueKey('merchant-menu-remove-$index'),
+                  tooltip: 'Buang item',
+                  onPressed: widget.submitting ? null : () => _removeMenuItem(index),
+                  icon: const Icon(Icons.delete_outline),
+                ),
+              ],
+            ),
+            DropdownButtonFormField<String>(
+              initialValue: draft.section,
+              decoration: const InputDecoration(labelText: 'Bahagian'),
+              items: const [
+                DropdownMenuItem(value: 'makanan', child: Text('Makanan')),
+                DropdownMenuItem(value: 'minuman', child: Text('Minuman')),
+              ],
+              onChanged: widget.submitting
+                  ? null
+                  : (value) => setState(() => draft.section = value ?? 'makanan'),
+            ),
+            const SizedBox(height: 8),
+            _field(draft.name, 'Nama item', key: ValueKey('merchant-menu-name-$index')),
+            _field(draft.category, 'Kategori', hint: 'Contoh: Nasi / Kopi'),
+            _field(draft.description, 'Penerangan', maxLines: 2),
+            _field(draft.price, 'Harga (RM)',
+                hint: '12.90', keyboardType: const TextInputType.numberWithOptions(decimal: true)),
+            _field(draft.imageUrl, 'URL gambar (optional)',
+                hint: 'https://...', keyboardType: TextInputType.url),
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Available'),
+              value: draft.available,
+              onChanged: widget.submitting
+                  ? null
+                  : (value) => setState(() => draft.available = value),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _field(
     TextEditingController controller,
     String label, {
+    Key? key,
     String? hint,
     TextInputType? keyboardType,
     int maxLines = 1,
@@ -461,6 +784,7 @@ class _RestaurantProfileEditorCardState
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: TextField(
+        key: key,
         controller: controller,
         enabled: !widget.submitting,
         keyboardType: keyboardType,
@@ -498,6 +822,7 @@ class _RestaurantProfileEditorCardState
     );
   }
 
-  String _shortId(String value) =>
-      value.length <= 12 ? value : '${value.substring(0, 8)}…${value.substring(value.length - 4)}';
+  String _shortId(String value) => value.length <= 12
+      ? value
+      : '${value.substring(0, 8)}…${value.substring(value.length - 4)}';
 }
