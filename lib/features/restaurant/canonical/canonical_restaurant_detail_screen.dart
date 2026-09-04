@@ -116,7 +116,7 @@ class _CanonicalRestaurantDetailBodyState
           if (vm.hasMenu) _section(t.t('menuTitle'), _menu(t, mm)),
           if (vm.serviceLabels.isNotEmpty || vm.ambienceLabels.isNotEmpty)
             _section(t.t('servicesLabel'), _serviceAmbience()),
-          _section(t.t('halalInfo'), _halal()),
+          _section(t.t('halalInfo'), _halal(t, mm)),
           if (vm.dietaryStates.isNotEmpty)
             _section(t.t('dietaryInfo'), _dietary(t, mm)),
           _section(t.t('allergenInfo'), _allergen(t, mm)),
@@ -248,7 +248,9 @@ class _CanonicalRestaurantDetailBodyState
             ),
           ),
           const SizedBox(width: 8),
-          PlaceStatusChip(hours: vm.hours.model, business: vm.businessState),
+          Flexible(
+            child: PlaceStatusChip(hours: vm.hours.model, business: vm.businessState),
+          ),
         ],
       );
 
@@ -332,16 +334,17 @@ class _CanonicalRestaurantDetailBodyState
   Widget _hours(AppLocalizations t, MMColors mm) {
     final h = vm.hours;
     final children = <Widget>[
-      Row(children: [
-        PlaceStatusChip(hours: h.model, business: vm.businessState),
-        if (h.todayLabel != null) ...[
-          const SizedBox(width: 10),
-          Flexible(
-            child: Text('${t.t('todayHours')}: ${h.todayLabel}',
+      Wrap(
+        spacing: 10,
+        runSpacing: 6,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          PlaceStatusChip(hours: h.model, business: vm.businessState),
+          if (h.todayLabel != null)
+            Text('${t.t('todayHours')}: ${h.todayLabel}',
                 style: TextStyle(color: mm.onCard, fontSize: 13)),
-          ),
         ],
-      ]),
+      ),
     ];
     if (h.model.state == CardHoursState.hoursExpired) {
       children.add(Padding(
@@ -518,8 +521,37 @@ class _CanonicalRestaurantDetailBodyState
   Widget _serviceAmbience() =>
       PlaceTagChips(labels: [...vm.serviceLabels, ...vm.ambienceLabels], max: 8);
 
-  Widget _halal() =>
-      _card(PlaceVerificationBadges(halal: vm.halalState, badges: vm.verificationBadges));
+  Widget _halal(AppLocalizations t, MMColors mm) {
+    final (String label, IconData icon, Color color) = switch (vm.halalState) {
+      HalalDisplayState.certified =>
+        (t.t('halalCertified'), Icons.verified_rounded, MMColors.successGreen),
+      HalalDisplayState.merchantClaimed =>
+        (t.t('halalMerchantClaim'), Icons.storefront_outlined, mm.onCardMuted),
+      HalalDisplayState.communityReported =>
+        (t.t('halalCommunityReport'), Icons.groups_outlined, mm.onCardMuted),
+      HalalDisplayState.recheckRequired =>
+        (t.t('halalRecheck'), Icons.update_rounded, MMColors.accentYellow),
+      HalalDisplayState.possibleNonHalal =>
+        (t.t('warnPossibleNonHalal'), Icons.help_outline_rounded, MMColors.danger),
+      HalalDisplayState.unknown =>
+        (t.t('halalUnknown'), Icons.help_outline_rounded, mm.onCardFaint),
+      HalalDisplayState.none =>
+        (t.t('noInfoAvailable'), Icons.info_outline_rounded, mm.onCardFaint),
+    };
+    return _card(Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 17, color: color),
+        const SizedBox(width: 7),
+        Expanded(
+          child: Text(label,
+              softWrap: true,
+              style: TextStyle(
+                  color: color, fontSize: 12.5, fontWeight: FontWeight.w600)),
+        ),
+      ],
+    ));
+  }
 
   Widget _dietary(AppLocalizations t, MMColors mm) => _card(Wrap(
         spacing: 8,
