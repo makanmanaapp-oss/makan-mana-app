@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/restaurant-profile-v2
+      - feature/restaurant-profile-v2-menu-hours-fix
     paths:
       - "functions/**"
       - ".github/workflows/wave2-restaurant-profile-backend-ci.yml"
