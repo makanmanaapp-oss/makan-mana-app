@@ -48,8 +48,6 @@ class DetailImageItem {
   });
 
   final CardImageModel image;
-
-  /// Kunci l10n atribusi sumber (disimpan dalaman; tidak semestinya dipapar).
   final String? attributionKey;
   final bool isSample;
 }
@@ -69,7 +67,7 @@ class DetailGallery {
   static const DetailGallery empty = DetailGallery();
 }
 
-/// Suku hari operasi hari ini + jadual mingguan (jika ada).
+/// Waktu operasi hari ini + jadual mingguan (jika ada).
 @immutable
 class DetailHours {
   const DetailHours({
@@ -81,11 +79,7 @@ class DetailHours {
   });
 
   final CardHoursModel model;
-
-  /// Label waktu hari ini (cth. "9:00 AM - 10:00 PM"), null jika tidak diketahui.
   final String? todayLabel;
-
-  /// Jadual mingguan: setiap entri (labelKey hari, label waktu). Kosong = tiada.
   final List<DetailDayHours> weeklySchedule;
   final String? timezone;
   final String? lastVerifiedLabel;
@@ -109,8 +103,6 @@ class DietarySuitability {
   final String tagId;
   final EvidenceLevel evidence;
 
-  /// Hanya "sesuai" boleh dipromosi bila verified/reported; inferred kekal
-  /// berlabel "disimpulkan" (tidak dinaik taraf ke pengesahan).
   bool get isPromotable =>
       evidence == EvidenceLevel.verified || evidence == EvidenceLevel.reported;
 }
@@ -126,7 +118,6 @@ class AllergenEvidence {
   final AllergenPresence presence;
   final EvidenceLevel evidence;
 
-  /// "Selamat" (tiada alergen) HANYA bila absent + verified. Jika tidak → caution.
   bool get provesAbsent =>
       presence == AllergenPresence.absent && evidence == EvidenceLevel.verified;
   bool get isKnownPresent => presence == AllergenPresence.present;
@@ -138,6 +129,43 @@ class DishHighlight {
   final String name;
   final String? tagId;
   final String? noteKey;
+}
+
+@immutable
+class DetailMenuItem {
+  const DetailMenuItem({
+    required this.id,
+    required this.section,
+    required this.name,
+    this.category,
+    this.description,
+    this.price,
+    this.currency = 'MYR',
+    this.available = true,
+    this.imageUrl,
+    this.sortOrder = 0,
+  });
+
+  final String id;
+  final String section;
+  final String name;
+  final String? category;
+  final String? description;
+  final double? price;
+  final String currency;
+  final bool available;
+  final String? imageUrl;
+  final int sortOrder;
+
+  bool get isFood => section == 'makanan';
+  bool get isDrink => section == 'minuman';
+
+  String? get priceLabel {
+    final value = price;
+    if (value == null) return null;
+    final prefix = currency == 'MYR' ? 'RM' : currency;
+    return '$prefix ${value.toStringAsFixed(2)}';
+  }
 }
 
 @immutable
@@ -188,8 +216,6 @@ class ContactInfo {
   static const ContactInfo none = ContactInfo();
 }
 
-/// Ringkasan provenans SELAMAT-PENGGUNA. TIDAK mendedah UID aktor, audit
-/// peribadi, payload import mentah atau nota admin.
 @immutable
 class ProvenanceSummary {
   const ProvenanceSummary({
@@ -202,8 +228,6 @@ class ProvenanceSummary {
   final CardSourceMode sourceMode;
   final String? lastUpdatedLabel;
   final String? lastVerifiedLabel;
-
-  /// Kunci l10n tahap pengesahan yang selamat dipapar (cth. "approvedCache").
   final String? verificationLevelKey;
 
   static const ProvenanceSummary live =
@@ -225,7 +249,6 @@ class FreshnessSummary {
   static const FreshnessSummary unknown = FreshnessSummary();
 }
 
-/// Tindakan yang tersedia pada skrin butiran (dipelihara dari legasi).
 @immutable
 class DetailActionConfig {
   const DetailActionConfig({
@@ -250,7 +273,6 @@ class DetailActionConfig {
   final bool canAccept;
   final bool canReject;
 
-  /// Rekod sample: TIADA tindakan live (maps/call/website/log).
   static const DetailActionConfig sampleOnly = DetailActionConfig(
     canOpenMaps: false,
     canShare: true,
@@ -261,7 +283,6 @@ class DetailActionConfig {
   );
 }
 
-/// Model paparan Butiran Kedai kanonikal.
 @immutable
 class RestaurantDetailViewModel {
   const RestaurantDetailViewModel({
@@ -296,6 +317,7 @@ class RestaurantDetailViewModel {
     this.allergenStates = const [],
     this.halalState = HalalDisplayState.none,
     this.dishHighlights = const [],
+    this.menuItems = const [],
     this.menuSummary = MenuSummary.none,
     this.verificationBadges = const [],
     this.warnings = const [],
@@ -335,7 +357,6 @@ class RestaurantDetailViewModel {
   final List<String> portionTagIds;
   final List<String> speedTagIds;
 
-  // Label paparan (legasi tiada ID canonical — guna label).
   final List<String> cuisineLabels;
   final List<String> placeTypeLabels;
   final List<String> serviceLabels;
@@ -346,6 +367,7 @@ class RestaurantDetailViewModel {
   final HalalDisplayState halalState;
 
   final List<DishHighlight> dishHighlights;
+  final List<DetailMenuItem> menuItems;
   final MenuSummary menuSummary;
 
   final List<CardBadge> verificationBadges;
@@ -362,8 +384,8 @@ class RestaurantDetailViewModel {
   bool get isSample => sourceMode == CardSourceMode.sample;
   bool get hasRating => rating.hasRating;
   bool get hasReviewCount => reviewCount != null && reviewCount! > 0;
+  bool get hasMenu => menuItems.isNotEmpty;
 
-  /// Venue yang tutup kekal/tersembunyi/blocked TIDAK boleh nampak aktif normal.
   bool get isInactive =>
       isBlocked ||
       businessState == CardBusinessState.permanentlyClosed ||
