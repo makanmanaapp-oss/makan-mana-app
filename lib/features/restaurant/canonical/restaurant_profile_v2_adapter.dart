@@ -64,9 +64,8 @@ CardHoursState _hours(String value) {
       return CardHoursState.statusUnknown;
     case 'hours_known':
     case 'known':
-      // The public DTO intentionally does not claim open-now without a trusted
-      // timezone/current-time calculation. Known schedule remains honest but
-      // the status chip stays neutral.
+      // Known schedule is safe to show, but open-now is not claimed without a
+      // trusted timezone/current-time calculation.
       return CardHoursState.hoursUnknown;
     default:
       return CardHoursState.hoursUnknown;
@@ -192,6 +191,126 @@ String? _lastVerifiedLabel(dynamic value) {
   return null;
 }
 
+Map<String, dynamic> _object(dynamic value) {
+  if (value is! Map) return const {};
+  return value.map((key, item) => MapEntry(key.toString(), item));
+}
+
+String? _text(dynamic value) {
+  if (value is! String) return null;
+  final clean = value.trim();
+  return clean.isEmpty ? null : clean;
+}
+
+List<DetailMenuItem> _menuItems(PublicRestaurantProfileV2 profile) {
+  final out = <DetailMenuItem>[];
+  for (var index = 0; index < profile.menuItems.length && out.length < 200; index++) {
+    final item = profile.menuItems[index];
+    final section = _text(item['section']);
+    final name = _text(item['name']);
+    if ((section != 'makanan' && section != 'minuman') || name == null) continue;
+    final rawPrice = item['price'];
+    final price = rawPrice is num && rawPrice >= 0 ? rawPrice.toDouble() : null;
+    final rawSort = item['sortOrder'];
+    final sortOrder = rawSort is num ? rawSort.toInt() : index * 10;
+    final imageUrl = _text(item['imageUrl']);
+    out.add(DetailMenuItem(
+      id: _text(item['id']) ?? 'menu-$section-${index + 1}',
+      section: section!,
+      category: _text(item['category']),
+      name: name,
+      description: _text(item['description']),
+      price: price,
+      currency: _text(item['currency']) ?? 'MYR',
+      available: item['available'] != false,
+      imageUrl: imageUrl != null &&
+              (imageUrl.startsWith('https://') || imageUrl.startsWith('http://'))
+          ? imageUrl
+          : null,
+      sortOrder: sortOrder,
+    ));
+  }
+  out.sort((left, right) {
+    final sectionOrder = left.section.compareTo(right.section);
+    if (sectionOrder != 0) return sectionOrder;
+    final sort = left.sortOrder.compareTo(right.sortOrder);
+    return sort != 0 ? sort : left.name.compareTo(right.name);
+  });
+  return out;
+}
+
+const _dayKeys = <(String, String)>[
+  ('monday', 'dayMonday'),
+  ('tuesday', 'dayTuesday'),
+  ('wednesday', 'dayWednesday'),
+  ('thursday', 'dayThursday'),
+  ('friday', 'dayFriday'),
+  ('saturday', 'daySaturday'),
+  ('sunday', 'daySunday'),
+];
+
+String? _clock(dynamic value) {
+  final clean = _text(value);
+  if (clean == null ||
+      !RegExp(r'^(?:[01]\d|2[0-3]):[0-5]\d$').hasMatch(clean)) {
+    return null;
+  }
+  return clean;
+}
+
+List<DetailDayHours> _weeklyHours(PublicRestaurantProfileV2 profile) {
+  final hours = profile.openingHours;
+  if (hours.isEmpty) return const [];
+  final result = <DetailDayHours>[];
+
+  for (final (day, labelKey) in _dayKeys) {
+    final entry = _object(hours[day]);
+    if (entry.isEmpty) continue;
+    if (entry['closed'] == true) {
+      result.add(DetailDayHours(dayLabelKey: labelKey, hoursLabel: '__closed__'));
+      continue;
+    }
+    if (entry['all_day'] == true || entry['allDay'] == true) {
+      result.add(DetailDayHours(dayLabelKey: labelKey, hoursLabel: '__24h__'));
+      continue;
+    }
+    final rawSessions = entry['sessions'];
+    if (rawSessions is! List) continue;
+    final labels = <String>[];
+    for (final raw in rawSessions.take(2)) {
+      final session = _object(raw);
+      final open = _clock(session['open']);
+      final close = _clock(session['close']);
+      if (open != null && close != null) labels.add('$open – $close');
+    }
+    if (labels.isNotEmpty) {
+      // `||` is a presentation-neutral marker. The UI inserts the localized
+      // "Rehat / Break" label between two sessions.
+      result.add(DetailDayHours(
+        dayLabelKey: labelKey,
+        hoursLabel: labels.join('||'),
+      ));
+    }
+  }
+  return result;
+}
+
+MenuSummary _menuSummary(List<DetailMenuItem> items) {
+  if (items.isEmpty) return MenuSummary.none;
+  final prices = items
+      .where((item) => item.available && item.price != null)
+      .map((item) => item.price!)
+      .toList(growable: false);
+  final from = prices.isEmpty
+      ? null
+      : 'RM ${prices.reduce((left, right) => left < right ? left : right).toStringAsFixed(2)}';
+  return MenuSummary(
+    itemCount: items.length,
+    fromPriceLabel: from,
+    available: items.any((item) => item.available),
+  );
+}
+
 RestaurantDetailViewModel restaurantDetailFromPublicProfile(
   PublicRestaurantProfileV2 profile,
 ) {
@@ -249,6 +368,7 @@ RestaurantDetailViewModel restaurantDetailFromPublicProfile(
   final warnings = _warnings(profile);
   final freshness = _freshness(profile.freshnessState);
   final lastVerified = _lastVerifiedLabel(profile.lastVerifiedAt);
+  final menuItems = _menuItems(profile);
 
   return RestaurantDetailViewModel(
     placeId: profile.canonicalPlaceId,
@@ -261,6 +381,7 @@ RestaurantDetailViewModel restaurantDetailFromPublicProfile(
     businessState: _business(profile.businessState),
     hours: DetailHours(
       model: CardHoursModel(state: _hours(profile.hoursState)),
+      weeklySchedule: _weeklyHours(profile),
       lastVerifiedLabel: lastVerified,
     ),
     rating: rating,
@@ -290,9 +411,6 @@ RestaurantDetailViewModel restaurantDetailFromPublicProfile(
     placeTypeLabels: placeTypes,
     serviceLabels: service,
     ambienceLabels: ambience,
-    // Public publication DTO currently carries the safe reported dietary IDs,
-    // but not per-item evidence. Never promote those IDs to verified by
-    // borrowing halal evidence. Keep them explicitly reported.
     dietaryStates: profile.dietaryReported
         .map((tag) => DietarySuitability(
               tagId: tag,
@@ -310,9 +428,8 @@ RestaurantDetailViewModel restaurantDetailFromPublicProfile(
     dishHighlights: profile.signatureDishes
         .map((dish) => DishHighlight(name: dish))
         .toList(growable: false),
-    // Verification status is retained in the safe DTO/provenance metadata, but
-    // no raw backend enum is surfaced as a badge until a localized user-facing
-    // label is explicitly defined for that status.
+    menuItems: menuItems,
+    menuSummary: _menuSummary(menuItems),
     verificationBadges: const [],
     warnings: warnings,
     freshness: FreshnessSummary(
