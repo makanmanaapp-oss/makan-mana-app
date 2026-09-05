@@ -41,16 +41,35 @@ class CanonicalRestaurantDetailScreen extends StatelessWidget {
     super.key,
     required this.vm,
     this.callbacks = const RestaurantDetailCallbacks(),
+    this.engagement,
+    this.onOpenMenuItemComments,
   });
 
   final RestaurantDetailViewModel vm;
   final RestaurantDetailCallbacks callbacks;
 
+  /// WAVE 3D Gate 2 — optional engagement strip (restaurant follow).
+  ///
+  /// Injected by the live route ONLY once the canonical Restaurant Profile V2
+  /// publication has resolved, so this screen stays a pure presentational
+  /// widget with no Riverpod dependency and no knowledge of the canonical id.
+  /// Null (the default) renders nothing.
+  final Widget? engagement;
+
+  /// WAVE 3D Gate 2 — optional per-menu-item comment affordance. Null renders
+  /// nothing, so the menu is unchanged wherever engagement is not wired.
+  final void Function(DetailMenuItem item)? onOpenMenuItemComments;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text(vm.title)),
-      body: CanonicalRestaurantDetailBody(vm: vm, callbacks: callbacks),
+      body: CanonicalRestaurantDetailBody(
+        vm: vm,
+        callbacks: callbacks,
+        engagement: engagement,
+        onOpenMenuItemComments: onOpenMenuItemComments,
+      ),
     );
   }
 }
@@ -60,10 +79,18 @@ class CanonicalRestaurantDetailBody extends StatefulWidget {
     super.key,
     required this.vm,
     this.callbacks = const RestaurantDetailCallbacks(),
+    this.engagement,
+    this.onOpenMenuItemComments,
   });
 
   final RestaurantDetailViewModel vm;
   final RestaurantDetailCallbacks callbacks;
+
+  /// See [CanonicalRestaurantDetailScreen.engagement].
+  final Widget? engagement;
+
+  /// See [CanonicalRestaurantDetailScreen.onOpenMenuItemComments].
+  final void Function(DetailMenuItem item)? onOpenMenuItemComments;
 
   @override
   State<CanonicalRestaurantDetailBody> createState() =>
@@ -103,6 +130,13 @@ class _CanonicalRestaurantDetailBodyState
           _hero(t, mm),
           const SizedBox(height: 14),
           _identity(t, mm),
+          if (widget.engagement != null) ...[
+            const SizedBox(height: 10),
+            KeyedSubtree(
+              key: const Key('restaurant-engagement-strip'),
+              child: widget.engagement!,
+            ),
+          ],
           _businessBanner(t, mm),
           const SizedBox(height: 12),
           _quickFacts(),
@@ -513,6 +547,22 @@ class _CanonicalRestaurantDetailBodyState
           if (item.priceLabel != null)
             Text(item.priceLabel!,
                 style: TextStyle(color: mm.onCard, fontWeight: FontWeight.w700)),
+          // WAVE 3D Gate 2 — menu comments for THIS exact menu item. The
+          // canonical restaurant identity is supplied by the live route, so
+          // this widget never has to know or guess it.
+          if (widget.onOpenMenuItemComments != null) ...[
+            const SizedBox(width: 4),
+            IconButton(
+              key: ValueKey('restaurant-menu-comments-\${item.id}'),
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              tooltip: t.t('menuCommentOpen'),
+              icon: Icon(Icons.mode_comment_outlined,
+                  size: 18, color: mm.iconMuted),
+              onPressed: () => widget.onOpenMenuItemComments!(item),
+            ),
+          ],
         ],
       ),
     );

@@ -80,17 +80,24 @@ void main() {
 
     test('BALASAN: tiada laluan cipta balasan berasingan hari ini', () {
       // Trigger menyokong parentCommentId secara defensif, tetapi tiada
-      // penulis (Flutter atau backend) yang mencipta komen post dengan
+      // penulis (Flutter atau backend) yang mencipta komen POST dengan
       // medan itu. Jika satu ditambah kelak, ia MESTI guna laluan create
       // yang sama (yang sudah distem aktif) atau ujian ini gagal.
+      //
+      // SKOP: komen POST sahaja — fail yang menyentuh subkoleksi
+      // feed_posts/{postId}/comments. Domain menu_comments (Wave 3C) juga
+      // menggunakan parentCommentId secara sah untuk balasan rasmi kedai;
+      // ia BUKAN komen post dan tidak termasuk dalam kontrak ini.
       final dir = Directory('lib');
       var writers = 0;
       for (final f in dir.listSync(recursive: true).whereType<File>()) {
         if (!f.path.endsWith('.dart')) continue;
         final s = f.readAsStringSync();
+        if (!s.contains("collection('comments')")) continue;
         if (s.contains("'parentCommentId'")) writers++;
       }
-      expect(writers, 0, reason: 'tiada penulis parentCommentId dalam lib/');
+      expect(writers, 0,
+          reason: 'tiada penulis parentCommentId pada komen post dalam lib/');
     });
   });
 

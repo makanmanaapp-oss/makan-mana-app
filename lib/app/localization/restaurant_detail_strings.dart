@@ -4,6 +4,20 @@
 library;
 
 const Map<String, String> kRestaurantDetailStringsMs = {
+  // WAVE 3D Gate 2 — restaurant engagement (follow, menu comments,
+  // official restaurant identity).
+  'restaurantFollow': 'Ikut',
+  'restaurantFollowing': 'Diikuti',
+  'restaurantFollowers': 'pengikut',
+  'restaurantEngagementTitle': 'Komuniti kedai',
+  'menuCommentsTitle': 'Komen menu',
+  'menuCommentsEmpty': 'Belum ada komen. Jadi yang pertama.',
+  'menuCommentAdd': 'Tulis komen anda',
+  'menuCommentSend': 'Hantar komen',
+  'menuCommentFailed': 'Komen gagal dihantar. Cuba lagi.',
+  'menuCommentOpen': 'Komen',
+  'officialReplyBadge': 'Rasmi',
+  'restaurantOfficialBadge': 'Kedai rasmi',
   'restaurantDetails': 'Butiran kedai',
   'movedLabel': 'Telah berpindah',
   'movedWarning': 'Kedai ini mungkin telah berpindah lokasi',
@@ -63,6 +77,20 @@ const Map<String, String> kRestaurantDetailStringsMs = {
 };
 
 const Map<String, String> kRestaurantDetailStringsEn = {
+  // WAVE 3D Gate 2 — restaurant engagement (follow, menu comments,
+  // official restaurant identity).
+  'restaurantFollow': 'Follow',
+  'restaurantFollowing': 'Following',
+  'restaurantFollowers': 'followers',
+  'restaurantEngagementTitle': 'Restaurant community',
+  'menuCommentsTitle': 'Menu comments',
+  'menuCommentsEmpty': 'No comments yet. Be the first.',
+  'menuCommentAdd': 'Write your comment',
+  'menuCommentSend': 'Send comment',
+  'menuCommentFailed': 'Comment could not be sent. Try again.',
+  'menuCommentOpen': 'Comments',
+  'officialReplyBadge': 'Official',
+  'restaurantOfficialBadge': 'Official restaurant',
   'restaurantDetails': 'Restaurant details',
   'movedLabel': 'Moved',
   'movedWarning': 'This venue may have moved location',
@@ -122,6 +150,20 @@ const Map<String, String> kRestaurantDetailStringsEn = {
 };
 
 const Map<String, String> kRestaurantDetailStringsZh = {
+  // WAVE 3D Gate 2 — restaurant engagement (follow, menu comments,
+  // official restaurant identity).
+  'restaurantFollow': '关注',
+  'restaurantFollowing': '已关注',
+  'restaurantFollowers': '位关注者',
+  'restaurantEngagementTitle': '餐厅社群',
+  'menuCommentsTitle': '菜单评论',
+  'menuCommentsEmpty': '还没有评论。来做第一个吧。',
+  'menuCommentAdd': '写下你的评论',
+  'menuCommentSend': '发送评论',
+  'menuCommentFailed': '评论发送失败。请再试一次。',
+  'menuCommentOpen': '评论',
+  'officialReplyBadge': '官方',
+  'restaurantOfficialBadge': '官方餐厅',
   'restaurantDetails': '餐厅详情',
   'movedLabel': '已迁移',
   'movedWarning': '该店可能已迁址',
@@ -181,6 +223,20 @@ const Map<String, String> kRestaurantDetailStringsZh = {
 };
 
 const Map<String, String> kRestaurantDetailStringsTa = {
+  // WAVE 3D Gate 2 — restaurant engagement (follow, menu comments,
+  // official restaurant identity).
+  'restaurantFollow': 'பின்தொடர்',
+  'restaurantFollowing': 'பின்தொடர்கிறீர்கள்',
+  'restaurantFollowers': 'பின்தொடர்பவர்கள்',
+  'restaurantEngagementTitle': 'உணவகச் சமூகம்',
+  'menuCommentsTitle': 'மெனு கருத்துகள்',
+  'menuCommentsEmpty': 'இதுவரை கருத்துகள் இல்லை. முதலில் நீங்கள் எழுதுங்கள்.',
+  'menuCommentAdd': 'உங்கள் கருத்தை எழுதுங்கள்',
+  'menuCommentSend': 'கருத்தை அனுப்பு',
+  'menuCommentFailed': 'கருத்தை அனுப்ப முடியவில்லை. மீண்டும் முயற்சிக்கவும்.',
+  'menuCommentOpen': 'கருத்துகள்',
+  'officialReplyBadge': 'அதிகாரப்பூர்வ',
+  'restaurantOfficialBadge': 'அதிகாரப்பூர்வ உணவகம்',
   'restaurantDetails': 'உணவக விவரங்கள்',
   'movedLabel': 'இடம் மாறியது',
   'movedWarning': 'இந்த இடம் மாறியிருக்கலாம்',

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/services/merchant_service.dart';
 import '../home/home_palette.dart';
+import 'restaurant_engagement_card.dart';
 import 'restaurant_profile_editor_card.dart';
 
 final merchantServiceProvider = Provider<MerchantService>((ref) {
@@ -317,6 +318,10 @@ class _MerchantCenterScreenState extends ConsumerState<MerchantCenterScreen> {
                       submitting: _submitting,
                       onSubmit: _submitProfileUpdate,
                     ),
+                    const SizedBox(height: 18),
+                    // WAVE 3D Gate 2 — publish restaurant posts and official
+                    // menu-comment replies AS THE RESTAURANT.
+                    RestaurantEngagementCard(state: _state!),
                     const SizedBox(height: 18),
                     _historyCard(palette, _state!),
                   ],

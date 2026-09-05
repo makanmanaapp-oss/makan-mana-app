@@ -31,6 +31,8 @@ import '../place_corrections/correction_providers.dart';
 import '../place_corrections/correction_snapshot.dart';
 import '../place_corrections/report_entry_sheet.dart';
 import 'canonical/restaurant_detail_flags.dart';
+import 'engagement/menu_comment_sheet.dart';
+import 'engagement/restaurant_follow_button.dart';
 
 class RestaurantDetailScreen extends ConsumerStatefulWidget {
   const RestaurantDetailScreen({super.key, required this.placeId});
@@ -49,11 +51,20 @@ class _RestaurantDetailScreenState
   Future<RestaurantDetailViewModel?>? _canonicalProfileFuture;
   String? _canonicalProfilePlaceId;
 
+  /// WAVE 3D Gate 2 — the RESOLVED canonical restaurant identity for the
+  /// profile currently displayed, or null when no canonical publication was
+  /// resolved. Engagement (follow / menu comments) is mounted ONLY when this is
+  /// non-null, so an alias or provider place id can never be used as the
+  /// restaurant identity: `getRestaurantProfileV2` resolves alias -> canonical
+  /// server-side and we keep what it actually returned.
+  String? _resolvedCanonicalPlaceId;
+
   Future<RestaurantDetailViewModel?> _loadCanonicalProfile(
       String requestedPlaceId) async {
     final profile = await RestaurantProfileV2Service()
         .getPublishedProfile(requestedPlaceId);
     if (profile == null) return null;
+    _resolvedCanonicalPlaceId = profile.canonicalPlaceId;
     return restaurantDetailFromPublicProfile(profile);
   }
 
@@ -61,6 +72,7 @@ class _RestaurantDetailScreenState
     if (_canonicalProfileFuture == null ||
         _canonicalProfilePlaceId != placeId) {
       _canonicalProfilePlaceId = placeId;
+      _resolvedCanonicalPlaceId = null;
       _canonicalProfileFuture = _loadCanonicalProfile(placeId);
     }
     return _canonicalProfileFuture!;
@@ -232,9 +244,34 @@ class _RestaurantDetailScreenState
             return RestaurantDetailNotFound(onBack: () => context.pop());
           }
 
+          // Engagement is anchored to the CANONICAL restaurant identity and is
+          // only available once the canonical publication resolved.
+          final canonicalId =
+              publishedVm != null ? _resolvedCanonicalPlaceId : null;
+
           return diag(
             CanonicalRestaurantDetailScreen(
               vm: vm,
+              engagement: canonicalId == null || canonicalId.isEmpty
+                  ? null
+                  : RestaurantFollowButton(
+                      canonicalPlaceId: canonicalId,
+                      onError: (message) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(message)),
+                        );
+                      },
+                    ),
+              onOpenMenuItemComments:
+                  canonicalId == null || canonicalId.isEmpty
+                      ? null
+                      : (item) => showMenuCommentSheet(
+                            context,
+                            canonicalPlaceId: canonicalId,
+                            menuItemId: item.id,
+                            menuItemName: item.name,
+                          ),
               callbacks: RestaurantDetailCallbacks(
                 onBack: () => context.pop(),
                 onOpenMaps: place == null

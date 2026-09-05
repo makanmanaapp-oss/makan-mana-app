@@ -157,7 +157,30 @@ class _PostCardState extends ConsumerState<PostCard> {
     }
   }
 
+  /// WAVE 3D Gate 2 — a restaurant post is authored by the RESTAURANT.
+  ///
+  /// Identity lock: authorType "restaurant" + canonicalPlaceId/restaurantId.
+  /// A restaurant post carries authorUid = null by construction, so it can
+  /// never be resolved through a user profile.
+  bool get _isRestaurantAuthor => data['authorType'] == 'restaurant';
+
+  /// The canonical restaurant identity of a restaurant post, if present.
+  String? get _restaurantCanonicalId {
+    for (final key in const ['canonicalPlaceId', 'restaurantId']) {
+      final value = data[key];
+      if (value is String && value.trim().isNotEmpty) return value.trim();
+    }
+    return null;
+  }
+
   void _openProfile() {
+    // Restaurant author -> the EXISTING canonical Restaurant Detail. Never a
+    // user profile, and never the acting merchant (which is not in the doc).
+    if (_isRestaurantAuthor) {
+      final canonicalId = _restaurantCanonicalId;
+      if (canonicalId != null) context.push('/restaurant/$canonicalId');
+      return;
+    }
     final authorUid = data['authorUid'] as String?;
     if (authorUid != null && authorUid.isNotEmpty) {
       context.push('/u/$authorUid');
@@ -586,10 +609,13 @@ class _PostCardState extends ConsumerState<PostCard> {
     final uid = ref.watch(authRepositoryProvider).currentUser?.uid ?? '';
     // ISSUE 004: identiti pengarang LIVE - profil semasa diutamakan,
     // snapshot post lama sebagai fallback (tiada penulisan semula massa).
+    // A restaurant post resolves its author from the post's own public
+    // restaurant identity. Passing an empty uid keeps resolveAuthorIdentity
+    // from doing ANY user-profile lookup for restaurant content.
     final author = resolveAuthorIdentity(
       ref,
       l,
-      uid: data['authorUid'] as String? ?? '',
+      uid: _isRestaurantAuthor ? '' : (data['authorUid'] as String? ?? ''),
       snapshotName: data['displayName'] as String?,
       snapshotPhotoUrl: data['photoUrl'] as String?,
       snapshotPreset: data['avatarPreset'] as String?,
@@ -640,6 +666,16 @@ class _PostCardState extends ConsumerState<PostCard> {
                 children: [
                   Row(
                     children: [
+                      if (_isRestaurantAuthor) ...[
+                        // Official restaurant identity, in the app's existing
+                        // chip/badge design language.
+                        Padding(
+                          key: const Key('post-restaurant-badge'),
+                          padding: const EdgeInsets.only(right: 5),
+                          child: Icon(Icons.verified_rounded,
+                              size: 15, color: AppColors.primaryRed),
+                        ),
+                      ],
                       Flexible(
                         child: GestureDetector(
                           onTap: _openProfile,

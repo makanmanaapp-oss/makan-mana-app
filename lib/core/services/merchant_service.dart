@@ -50,6 +50,12 @@ class MerchantService {
         claims: _list(state['claims']),
         submissions: _list(state['submissions']),
         memberships: _list(state['memberships']),
+        // WAVE 3D Gate 2 corrective — read-only engagement projection carrying
+        // the CANONICAL restaurant identity. Never derived from registry_id.
+        engagementRestaurants: _list(state['engagementRestaurants'])
+            .map(MerchantEngagementRestaurant.fromMap)
+            .whereType<MerchantEngagementRestaurant>()
+            .toList(growable: false),
       );
     } on FirebaseFunctionsException catch (error) {
       throw _error(error);
@@ -188,18 +194,65 @@ class MerchantService {
   }
 }
 
+/// WAVE 3D Gate 2 corrective — one restaurant the merchant may act AS.
+///
+/// IDENTITY LOCK: [registryId] is a MASTER REGISTRY ROW id and [canonicalPlaceId]
+/// is the PUBLIC restaurant identity. They are different values and must stay
+/// distinct. Only [canonicalPlaceId] may ever be used for engagement; the
+/// Control Center resolves it from `place_registry_master.canonical_place_id`
+/// and omits any membership whose canonical mapping is missing or ambiguous.
+class MerchantEngagementRestaurant {
+  const MerchantEngagementRestaurant({
+    required this.registryId,
+    required this.canonicalPlaceId,
+    required this.displayName,
+    required this.role,
+  });
+
+  /// Returns null when the payload carries no usable canonical identity, so a
+  /// malformed row can never become an engagement capability.
+  static MerchantEngagementRestaurant? fromMap(Map<String, dynamic> map) {
+    String text(String key) => (map[key] is String ? map[key] as String : '').trim();
+    final canonicalPlaceId = text('canonicalPlaceId');
+    if (canonicalPlaceId.isEmpty) return null;
+    return MerchantEngagementRestaurant(
+      registryId: text('registryId'),
+      canonicalPlaceId: canonicalPlaceId,
+      displayName: text('displayName'),
+      role: text('role'),
+    );
+  }
+
+  final String registryId;
+  final String canonicalPlaceId;
+  final String displayName;
+
+  /// Server-provided, DISPLAY ONLY. The callable re-authorizes every request.
+  final String role;
+
+  /// Human label — never the registry UUID.
+  String get label => displayName.isNotEmpty ? displayName : canonicalPlaceId;
+}
+
 class MerchantState {
   const MerchantState({
     required this.account,
     required this.claims,
     required this.submissions,
     required this.memberships,
+    this.engagementRestaurants = const [],
   });
 
   final Map<String, dynamic>? account;
   final List<Map<String, dynamic>> claims;
   final List<Map<String, dynamic>> submissions;
+
+  /// RAW membership rows — unchanged contract for Merchant Center history.
+  /// `registry_id` here is NOT a canonicalPlaceId.
   final List<Map<String, dynamic>> memberships;
+
+  /// Restaurants this merchant may act AS, with an explicit canonical identity.
+  final List<MerchantEngagementRestaurant> engagementRestaurants;
 
   bool get hasAccount => account != null;
   String get accountStatus =>

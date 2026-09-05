@@ -1,6 +1,42 @@
 {
   "indexes": [
     {
+      "collectionGroup": "menu_comments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "canonicalPlaceId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "menuItemId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "createdAt",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "restaurant_follows",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "followerUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "canonicalPlaceId",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "comments",
       "queryScope": "COLLECTION",
       "fields": [
