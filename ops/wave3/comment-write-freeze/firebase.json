@@ -1,0 +1,11 @@
+{
+  "//": "WAVE 3D GATE 3B - TEMPORARY, LOCAL-ONLY emulator config for the post-comment write freeze artifact. It exists ONLY so the freeze ruleset can be loaded into the Firestore emulator WITHOUT touching the repository root firebase.json or the authoritative root firestore.rules. It is NOT a deploy target: it declares no hosting, no functions, no storage, and no project alias.",
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "emulators": {
+    "firestore": { "port": 8181 },
+    "ui": { "enabled": false },
+    "singleProjectMode": true
+  }
+}
