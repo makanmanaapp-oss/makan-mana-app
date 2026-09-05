@@ -8,6 +8,7 @@
  */
 import {AUTHOR_TYPE_RESTAURANT, RESTAURANT_POST_TEXT_MAX, displayNameSnapshot} from "./identity";
 import {RESTAURANT_POST_TYPE} from "../feed/postTypes";
+import {NEW_POST_STATUS, PostStatus} from "../feed/postLifecycle";
 
 const STORAGE_URL_PREFIX = "https://firebasestorage.googleapis.com/";
 const MAX_IMAGES = 6;
@@ -46,6 +47,8 @@ export interface RestaurantPostDocument {
   type: "status";
   postType: typeof RESTAURANT_POST_TYPE;
   authorType: typeof AUTHOR_TYPE_RESTAURANT;
+  /** Wave 3C read boundary — a new restaurant post is born active. */
+  status: PostStatus;
   authorUid: null;
   restaurantId: string;
   canonicalPlaceId: string;
@@ -81,6 +84,7 @@ export function buildRestaurantPostDocument(params: {
     type: "status",
     postType: RESTAURANT_POST_TYPE,
     authorType: AUTHOR_TYPE_RESTAURANT,
+    status: NEW_POST_STATUS,
     authorUid: null,
     restaurantId: params.canonicalPlaceId,
     canonicalPlaceId: params.canonicalPlaceId,

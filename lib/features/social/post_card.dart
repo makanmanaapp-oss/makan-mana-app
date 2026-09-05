@@ -536,9 +536,8 @@ class _PostCardState extends ConsumerState<PostCard> {
             ],
           ),
           EmbeddedOriginalCard(
+            // WAVE 3C: tiada snapshot — kandungan asal dibaca LIVE sahaja.
             originalPostId: data['repostOfPostId'] as String,
-            snapshot: (data['originalSnapshot'] as Map?)
-                ?.cast<String, dynamic>(),
           ),
         ],
       ),
@@ -806,9 +805,8 @@ class _PostCardState extends ConsumerState<PostCard> {
                   if (data['postType'] == 'quote_repost' &&
                       data['quotedPostId'] is String)
                     EmbeddedOriginalCard(
+                      // WAVE 3C: tiada snapshot — asal dibaca LIVE sahaja.
                       originalPostId: data['quotedPostId'] as String,
-                      snapshot: (data['originalSnapshot'] as Map?)
-                          ?.cast<String, dynamic>(),
                     ),
                   // SP6: ringkasan Tong-Tong Bil terpaut (post grup
                   // sahaja — kiraan selamat, tiada nama penghutang).

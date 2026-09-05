@@ -4,6 +4,7 @@ import {db, FieldValue} from "../config/firebase";
 import {pushToUser} from "../services/pushService";
 import {recomputePlaceRating} from "../services/reviewService";
 import {currentTimeSlot} from "../utils/timeSlot";
+import {newPostLifecycleFields} from "../domain/feed/postLifecycle";
 
 /**
  * Bila admin meluluskan ulasan delivery (pending -> approved di Console):
@@ -25,6 +26,8 @@ export const onReviewApproved = onDocumentUpdated(
       if (after.shareToFeed === true) {
         await db.collection("feed_posts").add({
           type: "review",
+          // Wave 3C read boundary: approval publishes a NEW post, born active.
+          ...newPostLifecycleFields(),
           authorUid: after.authorUid,
           displayName: after.displayName,
           text: after.text ?? null,

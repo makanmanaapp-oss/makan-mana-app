@@ -203,20 +203,26 @@ Future<void> _doPlainRepost(
 
 /// Kad post asal terbenam (untuk quote repost & repost biasa).
 ///
-/// Sumber kebenaran = bacaan LIVE post asal (rules Firestore kekal
-/// berkuat kuasa): dipadam / private / tak boleh dibaca → kad
-/// "Post tidak tersedia" — snapshot TIDAK dipapar lagi selepas itu.
-/// [snapshot] hanya untuk paparan awal semasa strim dimuat.
+/// WAVE 3C — SATU-SATUNYA sumber kandungan asal ialah bacaan LIVE post asal
+/// (rules Firestore kekal berkuat kuasa). Kad ini SENGAJA tidak menerima
+/// sebarang snapshot kandungan:
+///
+///  - memuat  → rangka/skeleton (TIADA kandungan dipapar)
+///  - hidup   → kandungan asal SEMASA
+///  - disorok/dipadam/ditolak/tiada → "Post tidak tersedia"
+///
+/// Ini menutup kebocoran: dokumen repost lama mungkin masih menyimpan
+/// `originalSnapshot` (sehingga scrubber legasi dijalankan), tetapi tiada
+/// laluan kod yang boleh memaparkannya — jadi tiada "kelipan" kandungan basi
+/// sebelum semakan live selesai, dan tiada fallback selepas ia gagal.
 class EmbeddedOriginalCard extends ConsumerWidget {
   const EmbeddedOriginalCard({
     super.key,
     required this.originalPostId,
-    this.snapshot,
     this.interactive = true,
   });
 
   final String originalPostId;
-  final Map<String, dynamic>? snapshot;
 
   /// false dalam pratonton composer (tiada navigasi).
   final bool interactive;
@@ -230,7 +236,7 @@ class EmbeddedOriginalCard extends ConsumerWidget {
     if (liveAsync.hasError) {
       unavailable = true; // permission-denied / rangkaian
     } else if (liveAsync.isLoading) {
-      data = snapshot; // paparan awal sahaja
+      data = null; // skeleton sahaja — TIDAK PERNAH kandungan basi
     } else {
       final live = liveAsync.valueOrNull;
       if (live == null) {
@@ -272,7 +278,7 @@ class EmbeddedOriginalCard extends ConsumerWidget {
     }
 
     final d = data;
-    // ISSUE 004: identiti pengarang post asal - live dulu, snapshot fallback.
+    // ISSUE 004: identiti pengarang post asal — semuanya daripada dokumen LIVE.
     final embedAuthor = resolveAuthorIdentity(
       ref,
       AppLocalizations.of(context),

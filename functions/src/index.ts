@@ -153,3 +153,17 @@ export {createRestaurantPost} from "./callable/createRestaurantPost";
 export {followRestaurant, unfollowRestaurant} from "./callable/restaurantFollowControl";
 export {createMenuComment} from "./callable/menuCommentControl";
 export {replyToRestaurantMenuComment} from "./callable/restaurantReplyControl";
+
+// Wave 3C — narrow read-only engagement mirror (Firebase -> Control Center) and
+// the Firebase-authoritative menu-comment moderation receiver. NOT DEPLOYED.
+// Primary freshness path: event-driven Firestore triggers (restaurant posts +
+// menu comments). The manual/scheduled reconcilers below are drift repair only.
+export {
+  onRestaurantPostMirrorWrite,
+  onMenuCommentMirrorWrite,
+} from "./triggers/onEngagementMirrorWrite";
+export {
+  syncSocialEngagementToControlCenter,
+  syncSocialEngagementToControlCenterEvery5Hours,
+} from "./controlCenter/socialEngagementMirrorSync";
+export {controlCenterSocialModerationBridge} from "./controlCenter/socialModerationBridge";

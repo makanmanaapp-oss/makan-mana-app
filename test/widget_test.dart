@@ -426,8 +426,11 @@ void main() {
     const member = ViewerContext(uid: 'B', memberGroupIds: {'g1'});
     const follower = ViewerContext(uid: 'B', followingAuthorIds: {'A'});
 
-    Map<String, dynamic> post(String vis, {String? group, String? status,
-        String? type}) => {
+    // WAVE 3C: setiap siaran BARU dilahirkan status:'active', jadi lalai
+    // fixture ialah 'active'. Lulus status:null secara eksplisit untuk menguji
+    // dokumen LEGASI yang tiada medan status langsung.
+    Map<String, dynamic> post(String vis, {String? group,
+        Object? status = 'active', String? type}) => {
           'authorUid': 'A',
           'visibility': vis,
           if (group != null) 'groupId': group,
@@ -461,6 +464,25 @@ void main() {
     expect(canReadPost(post('public', status: 'deleted'), owner), isTrue);
     expect(canReadPost(post('public', type: 'auto'), stranger), isFalse);
     expect(canReadPost(post('public', type: 'auto'), owner), isTrue);
+
+    // WAVE 3C — sempadan kitaran hayat: bukan-pemilik perlu TEPAT 'active'.
+    expect(canReadPost(post('public', status: 'hidden'), stranger), isFalse,
+        reason: 'siaran disorok moderator TIDAK boleh dibaca orang lain');
+    expect(canReadPost(post('public', status: 'hidden'), owner), isTrue,
+        reason: 'pengarang kekal nampak siaran sendiri yang disorok');
+    // status TIADA (dokumen legasi) = gagal-tertutup untuk bukan-pemilik.
+    expect(canReadPost(post('public', status: null), stranger), isFalse,
+        reason: 'tiada status → ditolak (backfill menormalkan sebelum deploy)');
+    expect(canReadPost(post('public', status: null), owner), isTrue);
+    // status tidak dikenali = gagal-tertutup.
+    expect(canReadPost(post('public', status: 'quarantined'), stranger), isFalse);
+    expect(canReadPost(post('unlisted', status: 'hidden'), stranger), isFalse);
+    expect(canReadPost(post('unlisted', status: 'deleted'), stranger), isFalse);
+    // ahli grup pun tidak boleh baca siaran group_only yang disorok.
+    expect(canReadPost(post('group_only', group: 'g1', status: 'hidden'), member),
+        isFalse);
+    expect(canReadPost(post('group_only', group: 'g1'), member), isTrue,
+        reason: 'group_only aktif kekal boleh dibaca ahli');
 
     // penonton tanpa uid: tidak boleh baca apa-apa.
     expect(canReadPost(post('public'), const ViewerContext(uid: '')), isFalse);

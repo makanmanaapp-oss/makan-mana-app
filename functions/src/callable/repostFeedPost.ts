@@ -4,6 +4,7 @@ import {db, FieldValue} from "../config/firebase";
 import {logEvent} from "../services/eventService";
 import {currentTimeSlot} from "../utils/timeSlot";
 import {actorDisplaySnapshot, notifySafely} from "../domain/notifications/notificationProducers";
+import {newPostLifecycleFields} from "../domain/feed/postLifecycle";
 
 /**
  * Social Prompt 8: Repost + Quote Repost.
@@ -49,36 +50,32 @@ function allowedResultVisibilities(
   }
 }
 
-/** Snapshot kompak post asal untuk paparan pantas kad embed.
- * Client tetap sahkan LIVE (post asal dipadam/private -> kad
- * "tidak tersedia"); snapshot hanya untuk paparan awal. */
-function buildOriginalSnapshot(
-  data: FirebaseFirestore.DocumentData,
-): Record<string, unknown> {
-  const text = typeof data.text === "string" ? data.text : "";
-  const urls = Array.isArray(data.imageUrls) ?
-    data.imageUrls.filter((u: unknown) => typeof u === "string") :
-    [];
-  const firstImage =
-    (urls[0] as string | undefined) ??
-    (typeof data.imageUrl === "string" ? data.imageUrl : null);
-  return {
-    authorUid: data.authorUid ?? null,
-    displayName: data.displayName ?? null,
-    username: data.username ?? null,
-    photoUrl: data.photoUrl ?? null,
-    emoji: data.emoji ?? null,
-    text: text.slice(0, 200),
-    imageUrl: firstImage,
-    mediaCount: urls.length > 0 ? urls.length : firstImage ? 1 : 0,
-    placeName: data.placeName ?? null,
-    postType: data.postType ?? null,
-    type: data.type ?? null,
-    menuName: data.menuName ?? null,
-    totalSpend: data.totalSpend ?? null,
-    userRating: data.userRating ?? null,
-  };
-}
+/**
+ * WAVE 3C FINAL SECURITY CLOSURE — `originalSnapshot` REMOVED.
+ *
+ * A repost used to embed a compact COPY of the original post (text, first
+ * image, place/menu/spend/rating, author presentation). That copy lived inside
+ * the repost document, which is itself `status: "active"` and public, and
+ * firestore.rules only ever evaluates a document's OWN lifecycle — it never
+ * dereferences `repostOfPostId` / `quotedPostId`. So once the original was
+ * moderator-hidden, moderator-removed or self-deleted, a raw read of the repost
+ * still returned the original's content. The UI hid it; the data did not.
+ *
+ * The fix is architectural, not a moderation cascade: a repost now stores ONLY
+ * the reposter's own content plus stable LINKAGE, and the original is resolved
+ * LIVE from `repostOfPostId` / `quotedPostId`, where the read boundary applies.
+ *
+ * Fields deliberately retained (linkage/metadata, NOT reproduced content):
+ *   repostOfPostId / quotedPostId — the linkage the client must follow to read
+ *       the authoritative original. Ids only; they reveal no content.
+ *   originalAuthorId — the original author's UID. Server-side linkage used for
+ *       block/notification decisions. An opaque id, not user-generated content.
+ *   originalVisibilitySnapshot — the original's visibility ENUM at repost time
+ *       ("public"/"unlisted"/...). A closed vocabulary written by the server to
+ *       bound what this repost was allowed to become; it reproduces nothing the
+ *       author wrote.
+ * Everything else the embed card needs now comes from the live original.
+ */
 
 export const repostFeedPost = onCall(async (request) => {
   const uid = request.auth?.uid;
@@ -202,6 +199,8 @@ export const repostFeedPost = onCall(async (request) => {
     avatarPreset,
     type: postType,
     postType,
+    // Wave 3C read boundary: a repost is a NEW publication and is born active.
+    ...newPostLifecycleFields(),
     authorUid: uid,
     displayName,
     username,
@@ -210,12 +209,12 @@ export const repostFeedPost = onCall(async (request) => {
     imageUrl: null,
     groupId,
     visibility,
-    // Pautan + snapshot post asal (client sahkan live sebelum papar).
+    // LINKAGE ONLY — no copy of the original's content. The client resolves
+    // the original live so the read boundary (firestore.rules) applies to it.
     repostOfPostId: isQuote ? null : originalPostId,
     quotedPostId: isQuote ? originalPostId : null,
     originalAuthorId: origAuthor || null,
     originalVisibilitySnapshot: origVisibility,
-    originalSnapshot: buildOriginalSnapshot(orig),
     emoji: (userSnap.data()?.emoji as string | undefined) ?? "😋",
     likeCount: 0,
     likedBy: [],

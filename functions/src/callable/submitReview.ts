@@ -7,6 +7,7 @@ import {
   recomputePlaceRating,
 } from "../services/reviewService";
 import {currentTimeSlot} from "../utils/timeSlot";
+import {newPostLifecycleFields} from "../domain/feed/postLifecycle";
 
 type ReviewSource = "meal" | "checkin" | "delivery";
 
@@ -186,6 +187,9 @@ export const submitReview = onCall(async (request) => {
     if (shareToFeed) {
       await db.collection("feed_posts").add({
         type: "review",
+        // Wave 3C read boundary: born active (rules deny non-author reads of
+        // any other lifecycle state, absent included).
+        ...newPostLifecycleFields(),
         authorUid: uid,
         displayName,
         photoUrl,

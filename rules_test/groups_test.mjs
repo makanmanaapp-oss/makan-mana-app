@@ -51,8 +51,10 @@ await env.withSecurityRulesDisabled(async (ctx) => {
     name: 'Deleted', privacy: 'public', ownerUid: 'alice', status: 'deleted', memberCount: 1,
   });
   // Siaran grup peribadi (group_only)
+  // WAVE 3C: siaran hidup membawa status:'active' (canReadPostData menolak
+  // bacaan bukan-pemilik untuk apa-apa status lain, termasuk yang TIADA).
   await setDoc(doc(db, 'feed_posts', 'privPost'), {
-    authorUid: 'alice', visibility: 'group_only', groupId: 'gPriv', text: 'rahsia',
+    authorUid: 'alice', visibility: 'group_only', groupId: 'gPriv', status: 'active', text: 'rahsia',
   });
   // Jemputan: bob dijemput ke gPriv oleh alice
   await setDoc(doc(db, 'group_invites', 'inv1'), {

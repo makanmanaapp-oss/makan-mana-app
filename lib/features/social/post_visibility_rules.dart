@@ -6,6 +6,11 @@
 /// akan tolak (UX bersih) dan dokumentasikan dasar keterlihatan.
 library;
 
+/// WAVE 3C: satu-satunya status kitaran hayat yang boleh dibaca bukan-pemilik.
+/// Setiap siaran BARU dilahirkan dengan nilai ini (lihat `newPostLifecycleFields`
+/// di functions/src/domain/feed/postLifecycle.ts).
+const postStatusActive = 'active';
+
 /// Konteks penonton semasa (untuk keputusan keterlihatan).
 class ViewerContext {
   const ViewerContext({
@@ -27,7 +32,10 @@ class ViewerContext {
 ///
 /// Selari `canReadPostData` di rules:
 /// - pemilik: sentiasa.
-/// - deleted/hidden: pemilik sahaja.
+/// - WAVE 3C: bukan-pemilik perlu status TEPAT 'active'. deleted/hidden/
+///   tidak dikenali/TIADA semuanya ditolak (gagal-tertutup, sama seperti
+///   `postLifecycleActive` di firestore.rules). Dokumen legasi tanpa status
+///   dinormalkan oleh backfill sebelum rules ketat di-deploy.
 /// - legacy type=='auto': pemilik sahaja (privasi lama).
 /// - private: pemilik sahaja.
 /// - group_only: ahli grup.
@@ -40,9 +48,9 @@ bool canReadPost(Map<String, dynamic> post, ViewerContext viewer) {
   final isOwner = author == viewer.uid;
   if (isOwner) return true;
 
-  // Bukan pemilik: dinding untuk kandungan tersembunyi/lama.
-  final status = post['status'] as String?;
-  if (status == 'deleted' || status == 'hidden') return false;
+  // Bukan pemilik: dinding kitaran hayat (cermin `postLifecycleActive`).
+  // TEPAT 'active' sahaja — bukan "bukan deleted/hidden".
+  if (post['status'] != postStatusActive) return false;
   if (post['type'] == 'auto') return false;
 
   switch (post['visibility'] as String? ?? 'public') {

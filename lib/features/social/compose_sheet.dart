@@ -827,8 +827,8 @@ class _ComposePageState extends ConsumerState<ComposePage> {
         _captionField(l, l.t('addCaptionHint'), minLines: 2, maxLines: 5),
         _label(l.t('originalPostLabel')),
         EmbeddedOriginalCard(
+          // WAVE 3C: pratonton pun membaca asal LIVE (tiada kandungan basi).
           originalPostId: widget.quoteOfPostId!,
-          snapshot: widget.quoteSource,
           interactive: false,
         ),
         const SizedBox(height: 14),

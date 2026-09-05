@@ -17,6 +17,20 @@ bool _legacyAutoHidden(Map<String, dynamic> data, String myUid) =>
     data['type'] == 'auto' &&
     (myUid.isEmpty || data['authorUid'] != myUid);
 
+/// WAVE 3C — sempadan bacaan kitaran hayat siaran.
+///
+/// `canReadPostData` dalam firestore.rules kini menolak SEBARANG bacaan
+/// bukan-pengarang melainkan status TEPAT 'active' (hidden/deleted/tidak
+/// dikenali/tiada = ditolak). Query senarai Firestore GAGAL SEPENUHNYA jika
+/// ia boleh memulangkan dokumen yang rules tolak — jadi setiap query senarai
+/// BUKAN-PEMILIK di bawah WAJIB membawa kekangan ini. Ini bukan sekadar
+/// penapisan UI: tanpa ia, feed akan permission-denied selepas rules Fasa 7.
+///
+/// Query PEMILIK-SAHAJA (myPostsProvider, profil sendiri) sengaja TIDAK
+/// dikekang — pemilik berhak melihat sejarahnya sendiri (rules benarkan), dan
+/// penapis client sedia ada yang menyembunyikan 'deleted' kekal.
+const kPostStatusActive = 'active';
+
 /// Feed awam (bukan grup), 50 siaran terkini.
 /// SP9.2B: query HANYA visibility=='public' — followers_only kini
 /// owner-only di rules (query luas akan gagal jika pulangkan doc yang
@@ -28,6 +42,8 @@ final publicFeedProvider =
   return FirebaseFirestore.instance
       .collection('feed_posts')
       .where('visibility', isEqualTo: 'public')
+      // WAVE 3C: kekangan kitaran hayat WAJIB (lihat kPostStatusActive).
+      .where('status', isEqualTo: kPostStatusActive)
       .orderBy('createdAt', descending: true)
       .limit(60)
       .snapshots()
@@ -56,6 +72,8 @@ final followingFeedProvider =
       .collection('feed_posts')
       .where('authorUid', whereIn: slice)
       .where('visibility', isEqualTo: 'public')
+      // WAVE 3C: kekangan kitaran hayat WAJIB (lihat kPostStatusActive).
+      .where('status', isEqualTo: kPostStatusActive)
       .orderBy('createdAt', descending: true)
       .limit(60)
       .snapshots()
@@ -79,6 +97,8 @@ final trendingFeedProvider =
   return FirebaseFirestore.instance
       .collection('feed_posts')
       .where('visibility', isEqualTo: 'public')
+      // WAVE 3C: kekangan kitaran hayat WAJIB (lihat kPostStatusActive).
+      .where('status', isEqualTo: kPostStatusActive)
       .orderBy('likeCount', descending: true)
       .limit(50)
       .snapshots()
@@ -126,9 +146,15 @@ final userPublicPostsProvider = StreamProvider.autoDispose
   // SP9.2B: profil ORANG LAIN → HANYA public (followers_only kini
   // owner-only; private/group_only tak pernah bocor). Profil SENDIRI →
   // semua post sendiri bukan-grup (rules benarkan pemilik).
+  // WAVE 3C: profil ORANG LAIN = bacaan bukan-pemilik → kekangan kitaran
+  // hayat WAJIB. Profil SENDIRI kekal TANPA kekangan: rules benarkan pemilik
+  // membaca sejarahnya sendiri (termasuk hidden), dan menapisnya di sini akan
+  // menyembunyikan siaran pemilik daripada pemiliknya.
   final query = isOwnProfile
       ? base.where('groupId', isNull: true)
-      : base.where('visibility', isEqualTo: 'public');
+      : base
+          .where('visibility', isEqualTo: 'public')
+          .where('status', isEqualTo: kPostStatusActive);
   return query
       .orderBy('createdAt', descending: true)
       .limit(60)
@@ -221,6 +247,10 @@ final groupFeedProvider = StreamProvider.autoDispose
   return FirebaseFirestore.instance
       .collection('feed_posts')
       .where('groupId', isEqualTo: groupId)
+      // WAVE 3C: feed grup memulangkan siaran ahli LAIN → kekangan kitaran
+      // hayat WAJIB. Ia juga membetulkan kelemahan sedia ada: feed grup tidak
+      // pernah menapis siaran yang dipadam/disorok langsung.
+      .where('status', isEqualTo: kPostStatusActive)
       .orderBy('createdAt', descending: true)
       .limit(50)
       .snapshots()

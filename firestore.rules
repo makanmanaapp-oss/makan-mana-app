@@ -21,20 +21,37 @@ service cloud.firestore {
       );
     }
 
+    // WAVE 3C — KITARAN HAYAT siaran (status). Bukan-pengarang HANYA boleh
+    // baca siaran yang statusnya TEPAT 'active'.
+    //
+    // GAGAL-TERTUTUP: 'hidden' (disorok moderator), 'deleted' (dipadam
+    // pengguna ATAU dibuang moderator), status tidak dikenali, DAN status
+    // TIADA semuanya DITOLAK untuk bukan-pengarang. Tiada lalai 'active' di
+    // sini — dokumen legasi tanpa medan status dinormalkan dahulu oleh
+    // skrip backfill (Fasa 4 runbook) SEBELUM rules ini di-deploy (Fasa 7).
+    // Sengaja TIDAK guna get('status','active'): lalai itulah yang dahulu
+    // menjadikan siaran disorok-moderator mustahil dibezakan daripada siaran
+    // legasi, jadi sempadan bacaan tidak dapat dikuatkuasa langsung.
+    function postLifecycleActive(p) {
+      return p.get('status', '') == 'active';
+    }
+
     // SP9 + SP9.2B: kebolehbacaan siaran feed berdasarkan keterlihatan.
-    // - pemilik: sentiasa.
+    // - pemilik: sentiasa (termasuk hidden/deleted sendiri — sejarah pemilik).
     // - group_only: HANYA ahli grup.
     // - public/unlisted: mana-mana pengguna log masuk.
     // - private: pemilik sahaja.
     // - followers_only: pemilik SAHAJA (SP9.2B: followers_only dimatikan
     //   untuk public beta — jadi dilayan owner-only, setara private.
     //   Audience-map penuh ditangguh selepas beta).
+    // WAVE 3C: setiap cabang BUKAN-PEMILIK kini juga perlu status 'active'.
     function canReadPostData(p) {
       let vis = p.get('visibility', 'public');
       return p.get('authorUid', '') == request.auth.uid
-        || (vis == 'group_only'
-            ? isGroupMember(p.get('groupId', '__none__'))
-            : (vis == 'public' || vis == 'unlisted'));
+        || (postLifecycleActive(p)
+            && (vis == 'group_only'
+                ? isGroupMember(p.get('groupId', '__none__'))
+                : (vis == 'public' || vis == 'unlisted')));
     }
 
     // PAY-01 + SP9.2A: medan istimewa TIDAK boleh ditulis/diubah dari

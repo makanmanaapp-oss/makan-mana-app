@@ -4,6 +4,7 @@ import {db, FieldValue} from "../config/firebase";
 import {logEvent} from "../services/eventService";
 import {currentTimeSlot} from "../utils/timeSlot";
 import {AUTHOR_TYPE_USER, resolveOrdinaryPostType} from "../domain/feed/postTypes";
+import {newPostLifecycleFields} from "../domain/feed/postLifecycle";
 
 interface CreateFeedPostInput {
   text?: string;
@@ -196,6 +197,10 @@ export const createFeedPost = onCall(async (request) => {
     // Wave 3B: NEW ordinary posts explicitly record the user author type.
     // Legacy posts without this field are still read as "user".
     authorType: AUTHOR_TYPE_USER,
+    // Wave 3C read boundary: every NEW post is born explicitly active. Rules
+    // deny non-author reads unless status == "active", so an absent status is
+    // no longer a readable state.
+    ...newPostLifecycleFields(),
     authorUid: uid,
     displayName,
     username,

@@ -22,13 +22,17 @@ const env = await initializeTestEnvironment({
 // ---- data asas (tanpa rules) ----
 await env.withSecurityRulesDisabled(async (ctx) => {
   const db = ctx.firestore();
+  // WAVE 3C: setiap siaran HIDUP kini dilahirkan status:'active' (lihat
+  // functions/src/domain/feed/postLifecycle.ts). canReadPostData menolak
+  // bacaan bukan-pemilik melainkan status TEPAT 'active', jadi fixture yang
+  // meniru siaran hidup MESTI membawa medan itu.
   const posts = {
-    pub1: { authorUid: 'alice', visibility: 'public', text: 'awam' },
-    priv1: { authorUid: 'alice', visibility: 'private', text: 'privat' },
-    grp1: { authorUid: 'alice', visibility: 'group_only', groupId: 'g1', text: 'grup' },
-    fol1: { authorUid: 'alice', visibility: 'followers_only', text: 'pengikut' },
+    pub1: { authorUid: 'alice', visibility: 'public', status: 'active', text: 'awam' },
+    priv1: { authorUid: 'alice', visibility: 'private', status: 'active', text: 'privat' },
+    grp1: { authorUid: 'alice', visibility: 'group_only', groupId: 'g1', status: 'active', text: 'grup' },
+    fol1: { authorUid: 'alice', visibility: 'followers_only', status: 'active', text: 'pengikut' },
     hid1: { authorUid: 'alice', visibility: 'public', status: 'hidden', text: 'sorok' },
-    flip1: { authorUid: 'alice', visibility: 'public', text: 'akan-privat' },
+    flip1: { authorUid: 'alice', visibility: 'public', status: 'active', text: 'akan-privat' },
   };
   for (const [id, p] of Object.entries(posts)) {
     await setDoc(doc(db, 'feed_posts', id), p);
