@@ -77,6 +77,11 @@ class _CommentSheetState extends ConsumerState<_CommentSheet> {
         'displayName': name,
         'photoUrl': myDoc?['photoUrl'],
         'text': text,
+        // WAVE 3D: setiap komen BARU dilahirkan aktif. Rules turut
+        // menguatkuasakan status == 'active' pada create, jadi klien lama
+        // atau berniat jahat tidak boleh mencipta komen terus-'deleted',
+        // berstatus tidak dikenali, atau tanpa status.
+        'status': kCommentStatusActive,
         'postId': widget.postId,
         'parentVisibility': parentVis,
         'createdAt': FieldValue.serverTimestamp(),

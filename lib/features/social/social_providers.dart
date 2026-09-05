@@ -31,6 +31,18 @@ bool _legacyAutoHidden(Map<String, dynamic> data, String myUid) =>
 /// penapis client sedia ada yang menyembunyikan 'deleted' kekal.
 const kPostStatusActive = 'active';
 
+/// WAVE 3D — sempadan kitaran hayat KOMEN post.
+///
+/// Rules menolak bacaan bukan-pengarang melainkan status komen TEPAT
+/// 'active' (deleted / tidak dikenali / TIADA = ditolak). Query senarai
+/// Firestore GAGAL SEPENUHNYA jika ia boleh memulangkan dokumen yang rules
+/// tolak — jadi satu komen yang dipadam-sendiri dahulu mematikan SELURUH
+/// thread untuk semua orang kecuali pengarang post. Kekangan di bawah itulah
+/// yang menutup blocker tersebut.
+///
+/// Ini BUKAN menu_comments (domain Wave 3C berasingan).
+const kCommentStatusActive = 'active';
+
 /// Feed awam (bukan grup), 50 siaran terkini.
 /// SP9.2B: query HANYA visibility=='public' — followers_only kini
 /// owner-only di rules (query luas akan gagal jika pulangkan doc yang
@@ -297,6 +309,8 @@ final commentsProvider = StreamProvider.autoDispose
       .collection('feed_posts')
       .doc(postId)
       .collection('comments')
+      // WAVE 3D: kekangan kitaran hayat WAJIB (lihat kCommentStatusActive).
+      .where('status', isEqualTo: kCommentStatusActive)
       .orderBy('createdAt', descending: false)
       .limit(100)
       .snapshots()

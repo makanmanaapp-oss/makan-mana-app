@@ -36,6 +36,17 @@ service cloud.firestore {
       return p.get('status', '') == 'active';
     }
 
+    // WAVE 3D — KITARAN HAYAT komen post (feed_posts/{postId}/comments).
+    // Bukan-pengarang HANYA boleh baca komen yang statusnya TEPAT 'active'.
+    // GAGAL-TERTUTUP: 'deleted' (padam-sendiri pengguna), status tidak
+    // dikenali, DAN status TIADA semuanya DITOLAK. Sengaja TIDAK guna
+    // get('status','active'): komen legasi dinormalkan dahulu oleh skrip
+    // backfill (Fasa C5) SEBELUM rules ini di-deploy (Fasa C8).
+    // NOTA: ini BUKAN menu_comments — itu domain Wave 3C yang berasingan.
+    function commentLifecycleActive(c) {
+      return c.get('status', '') == 'active';
+    }
+
     // SP9 + SP9.2B: kebolehbacaan siaran feed berdasarkan keterlihatan.
     // - pemilik: sentiasa (termasuk hidden/deleted sendiri — sejarah pemilik).
     // - group_only: HANYA ahli grup.
@@ -458,7 +469,7 @@ service cloud.firestore {
         // deleted, dan induk hidden/deleted menutup akses komen.
         allow read: if signedIn()
           && (resource.data.get('authorUid', '') == request.auth.uid
-              || (resource.data.get('status', '') != 'deleted'
+              || (commentLifecycleActive(resource.data)
                   && exists(/databases/$(database)/documents/feed_posts/$(postId))
                   && get(/databases/$(database)/documents/feed_posts/$(postId))
                       .data.get('status', 'active') != 'deleted'
@@ -468,6 +479,10 @@ service cloud.firestore {
                       get(/databases/$(database)/documents/feed_posts/$(postId)).data)));
         allow create: if signedIn()
           && request.resource.data.authorUid == request.auth.uid
+          // WAVE 3D: kitaran hayat DIKUATKUASA di rules. Klien (termasuk
+          // klien lama/berniat jahat) TIDAK boleh mencipta komen yang terus
+          // 'deleted', berstatus tidak dikenali, atau TANPA status.
+          && request.resource.data.status == 'active'
           // ISSUE 005: medan denormalisasi PILIHAN mesti BENAR jika hadir
           // (postId = induk sebenar; parentVisibility = visibility induk
           // sebenar). Klien lama tanpa medan ini kekal diterima.
@@ -865,7 +880,7 @@ service cloud.firestore {
       // Snapshot basi TIDAK PERNAH memberi akses kandungan.
       allow get: if signedIn()
         && (resource.data.get('authorUid', '') == request.auth.uid
-            || (resource.data.get('status', '') != 'deleted'
+            || (commentLifecycleActive(resource.data)
                 && canReadCurrentParent(path)));
       // LIST: komen SENDIRI sahaja (boleh dibuktikan oleh penapis
       // authorUid). Senarai balasan pengguna LAIN menggunakan indeks
