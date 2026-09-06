@@ -11,7 +11,7 @@
         tools:node="remove" />
 
     <application
-        android:label="MakanMana"
+        android:label="${appLabel}"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 

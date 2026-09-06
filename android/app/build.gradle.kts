@@ -58,6 +58,23 @@ android {
             }
         }
     }
+
+    // QA-DEV1: dimensi flavor "env" untuk QA hidup bersebelahan pengeluaran.
+    //   prod -> com.makanmana.apps     (label "MakanMana")     - TIDAK berubah.
+    //   qa   -> com.makanmana.apps.qa  (label "MakanMana QA")  - pakej berasingan.
+    // Pengeluaran mesti dibina dengan --flavor prod selepas ini.
+    flavorDimensions += "env"
+    productFlavors {
+        create("prod") {
+            dimension = "env"
+            manifestPlaceholders["appLabel"] = "MakanMana"
+        }
+        create("qa") {
+            dimension = "env"
+            applicationIdSuffix = ".qa"
+            manifestPlaceholders["appLabel"] = "MakanMana QA"
+        }
+    }
 }
 
 kotlin {
