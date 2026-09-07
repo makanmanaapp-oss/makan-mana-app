@@ -1,6 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../models/place_summary.dart';
+
 import '../core/constants/app_constants.dart';
 import '../core/entitlement/entitlement.dart';
 import '../core/events/event_types.dart';
@@ -41,6 +43,7 @@ import '../features/profile/profile_screen.dart';
 import '../features/restaurant/restaurant_detail_screen.dart';
 import '../features/reviews/rating_page.dart';
 import '../features/settings/settings_screen.dart';
+import '../features/notifications/notification_settings_screen.dart';
 import '../features/shell/app_shell.dart';
 import '../features/groups/group_bills_screen.dart';
 import '../features/groups/group_hub_screen.dart';
@@ -84,9 +87,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: RoutePaths.onboarding,
         builder: (context, state) => const OnboardingScreen(),
       ),
-      StatefulShellRoute.indexedStack(
+      StatefulShellRoute(
         builder: (context, state, navigationShell) =>
             AppShell(navigationShell: navigationShell),
+        navigatorContainerBuilder: buildMainNavigationContainer,
         branches: [
           StatefulShellBranch(routes: [
             GoRoute(
@@ -122,6 +126,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: RoutePaths.restaurant,
         builder: (context, state) => RestaurantDetailScreen(
           placeId: state.pathParameters['placeId'] ?? '',
+          initialPlace:
+              state.extra is PlaceSummary ? state.extra as PlaceSummary : null,
         ),
       ),
       GoRoute(
@@ -141,6 +147,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: RoutePaths.settings,
         builder: (context, state) => const SettingsScreen(),
+      ),
+      GoRoute(
+        path: RoutePaths.notificationSettings,
+        builder: (context, state) => const NotificationSettingsScreen(),
       ),
       GoRoute(
         path: RoutePaths.merchantCenter,
