@@ -1,0 +1,4 @@
+# Rules artifacts are hash-verified against a live Firebase ruleset before
+# deployment. A CRLF conversion on checkout would change every byte and break
+# that gate, so these files are never line-ending normalised.
+*.rules -text
