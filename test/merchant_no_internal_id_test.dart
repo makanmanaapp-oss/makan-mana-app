@@ -103,6 +103,31 @@ void main() {
       }
     });
 
+    test('3d. tiada pengecam sampai ke Text() di mana-mana skrin peniaga', () {
+      // Empat kebocoran ditemui satu demi satu pada peranti (ID akaun, id item
+      // menu, registry_id dalam sejarah, registry_id dipangkas dalam editor).
+      // Pengawal ini menutup KELASnya, bukan satu contoh: tiada ungkapan
+      // berasaskan pengecam boleh menjadi teks yang dibaca pengguna.
+      final idExpressions = RegExp(
+          r"(_shortId\(|\['registry_id'\]|\['account_id'\]|\['id'\]"
+          r"|\.canonicalPlaceId|\.registryId|membership\['registry_id'\])");
+      for (final path in const [center, engagement, editor]) {
+        final src = _read(path);
+        for (final line in src.split('\n')) {
+          final t = line.trim();
+          if (t.startsWith('//') || t.startsWith('///')) continue;
+          if (!t.contains('Text(') && !t.contains('_statusRow(')) continue;
+          expect(idExpressions.hasMatch(t), isFalse,
+              reason: '$path merender pengecam dalaman: $t');
+        }
+      }
+    });
+
+    test('3e. pemangkas id telah dibuang sepenuhnya', () {
+      // Memangkas UUID tidak menjadikannya maklumat pengguna.
+      expect(_read(editor).contains('_shortId'), isFalse);
+    });
+
     test('4. item menu tanpa nama mendapat label jujur, bukan id', () {
       final src = _read(engagement);
       expect(src.contains('name.isNotEmpty ? name : id'), isFalse,

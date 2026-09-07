@@ -438,7 +438,10 @@ class _RestaurantProfileEditorCardState
                   final role = membership['role']?.toString() ?? 'editor';
                   return DropdownMenuItem(
                     value: id,
-                    child: Text('${_shortId(id)} · $role'),
+                    // PRIVASI: label ialah NAMA kedai. Sebelum ini ia UUID
+                    // registry yang dipangkas — memangkas pengecam dalaman
+                    // tidak menjadikannya maklumat pengguna.
+                    child: Text('${_placeName(id)} · $role'),
                   );
                 }).toList(growable: false),
                 onChanged: widget.submitting
@@ -822,7 +825,16 @@ class _RestaurantProfileEditorCardState
     );
   }
 
-  String _shortId(String value) => value.length <= 12
-      ? value
-      : '${value.substring(0, 8)}…${value.substring(value.length - 4)}';
+  /// Nama kedai untuk satu registry_id, diselesaikan melalui unjuran
+  /// engagement yang sudah dibenarkan. Kedai tanpa unjuran mendapat label
+  /// generik — tidak pernah kuncinya, dipangkas atau tidak.
+  String _placeName(String registryId) {
+    for (final restaurant in widget.state.engagementRestaurants) {
+      if (restaurant.registryId == registryId &&
+          restaurant.displayName.isNotEmpty) {
+        return restaurant.displayName;
+      }
+    }
+    return 'Kedai diluluskan';
+  }
 }
