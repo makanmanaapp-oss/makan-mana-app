@@ -1,0 +1,4 @@
+{
+  "//": "WAVE 3 GATE 3G - DEPLOY SOURCE for comment-write-freeze-current-live. Declares ONLY firestore.rules: no indexes, no hosting, no functions, no storage, no emulators, no project alias. Deploy with: firebase deploy --only firestore:rules --config firebase.deploy.json --project makanmana-c59f3",
+  "firestore": { "rules": "firestore.rules" }
+}

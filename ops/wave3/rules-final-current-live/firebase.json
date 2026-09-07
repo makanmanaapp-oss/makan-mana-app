@@ -1,0 +1,9 @@
+{
+  "//": "WAVE 3 GATE 3G - LOCAL-ONLY EMULATOR config for the rules-final-current-live artifact. NOT a deploy target: no project alias, no hosting, no functions, no storage, no indexes.",
+  "firestore": { "rules": "firestore.rules" },
+  "emulators": {
+    "firestore": { "port": 8186 },
+    "ui": { "enabled": false },
+    "singleProjectMode": false
+  }
+}

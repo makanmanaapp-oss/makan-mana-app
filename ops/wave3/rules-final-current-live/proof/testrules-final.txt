@@ -1,0 +1,8 @@
+# npm run test:rules -- ruleset under test: THIS FINAL ARTIFACT
+ℹ tests 220
+ℹ pass 220
+ℹ fail 0
+
+# failing: none
+
+# for contrast, the same suite against CURRENT LIVE (G6): 203/220

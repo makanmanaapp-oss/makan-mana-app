@@ -1,0 +1,9 @@
+# users/{uid}/notifications READ-ONLY shape scan, production, 2026-09-07
+scanned 719   hasStatus 719   missingStatus 0
+status distribution: {"unread": 702, "read": 17}
+truncated: no
+
+# Firebase Rules :test API, evaluated against LIVE ruleset f77c0ada:
+SHIPPED client marks read (isRead+readAt only)   -> DENIED
+A client that ALSO sets status:read              -> ALLOWED
+Forged status value                              -> DENIED

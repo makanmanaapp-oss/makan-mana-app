@@ -1,0 +1,29 @@
+# npm run test:rules -- ruleset under test: THIS FREEZE
+ℹ tests 220
+ℹ pass 206
+ℹ fail 14
+
+# failing (all by design - see README section 5.2):
+✖ 10. private / group_only / followers_only privacy is unchanged
+✖ 12. comments under a DELETED parent stay inaccessible to a non-author
+✖ 15. a public-feed query WITHOUT the lifecycle constraint is DENIED
+✖ 15. an UNCONSTRAINED thread query is DENIED once a non-active comment exists
+✖ 3. UNKNOWN comment status — non-author CANNOT direct-read
+✖ 3. hidden + public — non-owner CANNOT read the document directly
+✖ 4. MISSING comment status — non-author CANNOT direct-read under final rules
+✖ 4. deleted + public — non-owner CANNOT read the document directly
+✖ 5. hidden + unlisted — non-owner denied
+✖ 6. deleted + unlisted — non-owner denied
+✖ 7. comment under a DELETED parent — non-author denied
+✖ 7. unknown status + public — non-owner denied (fail closed)
+✖ 9. client CREATE with status active — ALLOWED when all constraints hold
+✖ legacy mobile may mark read without changing status
+
+# delta vs CURRENT LIVE (G6):
+## NEW failures introduced:
+✖ 9. client CREATE with status active — ALLOWED when all constraints hold
+## failures removed:
+✖ 10. client CREATE with MISSING status — DENIED
+✖ 11. client CREATE with status deleted — DENIED
+✖ 11. comments under a HIDDEN parent stay inaccessible to a non-author
+✖ 12. client CREATE with UNKNOWN status — DENIED

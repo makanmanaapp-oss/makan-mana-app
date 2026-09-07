@@ -1,0 +1,12 @@
+✔ F1. a create that CURRENT LIVE accepts is denied by the freeze (2346.0803ms)
+✔ F2. no status value, and no actor, gets past the freeze (157.5063ms)
+✔ F3. existing comments remain readable EXACTLY as under current live (460.5674ms)
+✔ F4. comment UPDATE and DELETE are unchanged (231.8001ms)
+✔ F5. post read/create/delete and visibility are unchanged (351.3807ms)
+✔ F6. G6 engagement reads still work under the freeze (482.9572ms)
+✔ F7. suspension, accountStatus and pollVotes are unchanged (372.8827ms)
+✔ F8. server-only stores and the default-deny catch-all are unchanged (676.8719ms)
+✔ F9. the freeze carries NO Wave 3 lifecycle construct (7.6848ms)
+ℹ tests 9
+ℹ pass 9
+ℹ fail 0

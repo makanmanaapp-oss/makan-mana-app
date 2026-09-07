@@ -1,0 +1,14 @@
+✔ A1. non-author reads ONLY status == 'active'; author always sees own (2722.4295ms)
+✔ A2. FAIL-CLOSED is the deploy precondition: live ALLOWS what final DENIES (137.6584ms)
+✔ A3. group_only and private visibility still apply on top of lifecycle (123.3979ms)
+✔ B1. non-author reads ONLY comments with status == 'active' (312.2982ms)
+✔ B2. CREATE must declare status 'active', and suspension still applies (200.1034ms)
+✔ B3. a comment under a hidden/deleted parent stays inaccessible (82.9834ms)
+✔ C1. the G6 engagement rules are inherited and behave identically (612.2436ms)
+✔ D1. N1 repairs mark-read for the SHIPPED client, which live DENIES (88.8825ms)
+✔ D2. N1 does NOT weaken the notification boundary (132.7066ms)
+✔ E1. suspension, accountStatus and pollVotes are unchanged (429.3806ms)
+✔ E2. server-only stores and the default-deny catch-all are unchanged (822.388ms)
+ℹ tests 11
+ℹ pass 11
+ℹ fail 0
