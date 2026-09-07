@@ -23,6 +23,9 @@ dependencies:
   flutter_riverpod: ^2.6.1
   go_router: any
   geolocator: any
+  # Reverse geocoding untuk hero tempatan mengikut negeri Malaysia
+  # (lib/core/location/malaysia_state_resolver.dart).
+  geocoding: any
   intl: any
   cached_network_image: any
   lottie: any
