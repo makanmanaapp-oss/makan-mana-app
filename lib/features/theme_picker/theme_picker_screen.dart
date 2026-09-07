@@ -87,6 +87,7 @@ class _ThemePickerScreenState extends ConsumerState<ThemePickerScreen> {
                 }
                 await prefs.setSpinTheme(t.$1);
                 ref.read(spinThemeProvider.notifier).state = t.$1;
+                if (!mounted) return;
                 setState(() {});
               },
               child: Container(

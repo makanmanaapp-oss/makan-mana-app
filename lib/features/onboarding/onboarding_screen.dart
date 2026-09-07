@@ -429,6 +429,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       ),
     );
     if (keepNew == true) {
+      if (!mounted) return;
       setState(() {
         _diets.removeAll(conflicts);
         _diets.add(candidate);
@@ -502,6 +503,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         );
         if (ok != true) return;
       }
+      if (!mounted) return;
       setState(() {
         _allergyMap
           ..clear()
@@ -520,6 +522,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       allowRemove: existing != null,
     );
     if (res == null) return; // batal
+    if (!mounted) return;
     setState(() {
       if (res.remove) {
         _allergyMap.remove(id);
@@ -562,6 +565,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       customs: _customCuisines,
     );
     if (res == null) return;
+    if (!mounted) return;
     setState(() {
       _favCuisines
         ..clear()

@@ -268,12 +268,13 @@ void main() {
   //
   // Sejarah pertumbuhan (ringkas): 919 asal -> 1504 (Sport Mood, kad kedai,
   // laporan Phase 1.11) -> 1580 (Algo2 2.2A-2.16A, Notification Center,
-  // hero Home) -> 1685 (Wave 3: Restaurant Detail kanonikal + tab
+  // hero Home) -> 1686 (Wave 3: Restaurant Detail kanonikal + tab
   // Profil/Ulasan/Menu, Follow restoran, komen menu, keadaan
-  // tidak-tersedia pengikut, dan blok engagement berkaitan).
+  // tidak-tersedia pengikut, dan blok engagement berkaitan; +1 purchaseUnavailable, mesej ralat
+  // pembelian yang jujur menggantikan dua mesej 'akan datang' warisan).
   test('l10n: ledger kunci + parity + parameter sepadan', () {
     final msKeys = AppLocalizations.keysForTesting(const Locale('ms'));
-    expect(msKeys, hasLength(1685),
+    expect(msKeys, hasLength(1686),
         reason: 'kiraan kunci berubah — kemas kini ledger DENGAN SENGAJA '
             'selepas mengesahkan parity keempat-empat bahasa masih lulus');
     final placeholder = RegExp(r'\{[^}]+\}');

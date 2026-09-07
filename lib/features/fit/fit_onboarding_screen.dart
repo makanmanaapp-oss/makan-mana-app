@@ -239,7 +239,7 @@ class _FitOnboardingScreenState extends ConsumerState<FitOnboardingScreen> {
                   onTap: () async {
                     final picked =
                         await context.push<String>('/fit/sport-moods');
-                    if (picked != null) setState(() => _mood = picked);
+                    if (picked != null && mounted) setState(() => _mood = picked);
                   },
                 ),
               ),

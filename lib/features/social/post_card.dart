@@ -76,6 +76,7 @@ class _PostCardState extends ConsumerState<PostCard> {
     try {
       await ref.read(socialServiceProvider).toggleLike(widget.post.id);
     } catch (_) {
+      if (!mounted) return;
       setState(() {
         _likedOverride = currentlyLiked;
         _likeDelta += currentlyLiked ? 1 : -1;

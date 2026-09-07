@@ -134,6 +134,7 @@ class AppLocalizations {
       'sampleNote': 'Contoh cadangan, bukan data live',
       'offlineSample': 'Mod offline — cadangan contoh',
       'paymentNotActive': 'Pembayaran sebenar belum diaktifkan.',
+      'purchaseUnavailable': 'Tidak dapat memulakan pembelian sekarang. Sila cuba lagi.',
       // Social Prompt 2: profil makanan awam
       'dmComingSoon': 'DM akan datang — belum aktif.',
       'tabPosts': 'Post',
@@ -520,7 +521,7 @@ class AppLocalizations {
       'shareAction': 'Kongsi',
       'sharedOk': 'Dikongsi!',
       'shareToGroup': 'Kongsi ke grup',
-      'shareCardSuggestion': 'Cadangan AI',
+      'shareCardSuggestion': 'Cadangan MakanMana',
       'shareCardBudget': 'Insight Bajet',
       'shareCardGroupResult': 'Keputusan Grup',
       'shareCardPoll': 'Undian',
@@ -865,7 +866,7 @@ class AppLocalizations {
       'proBenefitCalorieScan': 'Scan kalori dari gambar',
       'proBenefitWeeklyReport': 'Weekly food report',
       'proBenefitMealPlan': 'Meal plan mingguan',
-      'proBenefitFoodCoach': 'AI Food Coach',
+      'proBenefitFoodCoach': 'MakanMana Food Coach',
       'proBenefitFitCoach': 'Fit Coach / Sport Mood',
       'proBenefitFoodMemory': 'Food Memory advanced',
       // Prompt 11: Meal Plan + AI Food Coach
@@ -898,7 +899,7 @@ class AppLocalizations {
               'perubatan.',
       'mpPreviewTitle': 'Preview Meal Plan',
       'mpPreviewLocked':
-          'Unlock Pro untuk full meal plan 3 hari, AI reasons dan weekly '
+          'Unlock Pro untuk full meal plan 3 hari, sebab MakanMana dan weekly '
               'food coach.',
       'mpReasonLikedCuisine': 'Masakan yang anda suka',
       'mpReasonHealthy': 'Pilihan lebih ringan',
@@ -920,7 +921,7 @@ class AppLocalizations {
           'MakanMana perlukan beberapa Accept/Reject dan meal log dulu untuk '
               'coach yang lebih tepat.',
       'cvReading': 'MakanMana sedang mempelajari corak makan anda…',
-      'cvError': 'AI Food Coach tak dapat dibuka sekarang.',
+      'cvError': 'MakanMana Food Coach tak dapat dibuka sekarang.',
       'cvPreviewTip':
           'Tip starter: mula dengan meal seimbang — protein, karbohidrat, sayur.',
       'cvPreviewLocked':
@@ -1071,7 +1072,7 @@ class AppLocalizations {
           'Kami mengambil kira lokasi, bajet, mood, citarasa, sejarah makan dan penilaian anda — semakin kerap digunakan, semakin tepat.',
       'faq2Q': 'Apa beza Free, Plus dan Pro?',
       'faq2A':
-          'Free: 3 spin/hari & ciri asas. Plus: spin tanpa had, semua mood & tema, kegemaran. Pro: semua + Laporan Mingguan, AI Coach, Diet Goal, Meal Plan, Calorie Scan, Group Decision.',
+          'Free: 3 spin/hari & ciri asas. Plus: spin tanpa had, semua mood & tema, kegemaran. Pro: semua + Laporan Mingguan, MakanMana Coach, Diet Goal, Meal Plan, Calorie Scan, Group Decision.',
       'faq3Q': 'Macam mana nak bagi rating kedai?',
       'faq3A':
           'Dari Sejarah (selepas makan via app), atau Check-in 5 minit di kedai, atau pilih "Order delivery?" (disemak admin).',
@@ -1082,8 +1083,8 @@ class AppLocalizations {
       'faq5A':
           'Melalui Google Play > Langganan. Pelan kekal aktif sehingga tarikh pembaharuan.',
       'scanIntro':
-          'Ambil gambar makanan anda — AI akan menganalisis kalorinya.',
-      'scanning': 'AI sedang menganalisis makanan anda...',
+          'Ambil gambar makanan anda — MakanMana akan menganalisis kalorinya.',
+      'scanning': 'MakanMana sedang menganalisis makanan anda...',
       'scanEstCalories': 'Anggaran kalori',
       'scanEstNutrition': 'Anggaran pemakanan',
       'scanNotEstimated': 'Tidak dianggar',
@@ -1123,12 +1124,12 @@ class AppLocalizations {
       'noComments': 'Belum ada komen. Mulakan perbualan!',
       'proHubTitle': 'Pro Tools',
       'proHubTeaser':
-          'Semua alat AI Food Coach di sini. Naik taraf Pro untuk buka penuh!',
+          'Semua alat MakanMana Food Coach di sini. Naik taraf Pro untuk buka penuh!',
       'lockedPro': 'Ciri Pro — naik taraf untuk buka.',
       'soonBadge': 'AKAN DATANG',
       'proReportTitle': 'Laporan Mingguan',
       'proReportDesc': 'Analisis 7 hari: makan, belanja, kesihatan, corak.',
-      'proCoachTitle': 'AI Food Coach',
+      'proCoachTitle': 'MakanMana Food Coach',
       'proCoachDesc': 'Tip peribadi daripada corak makan sebenar anda.',
       'proGoalTitle': 'Diet Goal',
       'proGoalDesc': 'Matlamat anda membentuk setiap cadangan.',
@@ -1414,6 +1415,7 @@ class AppLocalizations {
       'sampleNote': 'Example suggestion, not live data',
       'offlineSample': 'Offline mode — sample suggestion',
       'paymentNotActive': 'Real payments are not enabled yet.',
+      'purchaseUnavailable': 'Couldn’t start the purchase right now. Please try again.',
       // Social Prompt 2: public food profile
       'dmComingSoon': 'DM coming soon — not active yet.',
       'tabPosts': 'Posts',
@@ -1792,7 +1794,7 @@ class AppLocalizations {
       'shareAction': 'Share',
       'sharedOk': 'Shared!',
       'shareToGroup': 'Share to group',
-      'shareCardSuggestion': 'AI Suggestion',
+      'shareCardSuggestion': 'MakanMana Suggestion',
       'shareCardBudget': 'Budget Insight',
       'shareCardGroupResult': 'Group Result',
       'shareCardPoll': 'Poll',
@@ -2131,7 +2133,7 @@ class AppLocalizations {
       'proBenefitCalorieScan': 'Calorie scan from photo',
       'proBenefitWeeklyReport': 'Weekly food report',
       'proBenefitMealPlan': 'Weekly meal plan',
-      'proBenefitFoodCoach': 'AI Food Coach',
+      'proBenefitFoodCoach': 'MakanMana Food Coach',
       'proBenefitFitCoach': 'Fit Coach / Sport Mood',
       'proBenefitFoodMemory': 'Advanced Food Memory',
       // Prompt 11: Meal Plan + AI Food Coach
@@ -2165,7 +2167,7 @@ class AppLocalizations {
               'nutrition advice.',
       'mpPreviewTitle': 'Meal Plan preview',
       'mpPreviewLocked':
-          'Unlock Pro for the full 3-day meal plan, AI reasons and weekly '
+          'Unlock Pro for the full 3-day meal plan, MakanMana reasons and weekly '
               'food coach.',
       'mpReasonLikedCuisine': 'A cuisine you like',
       'mpReasonHealthy': 'Lighter option',
@@ -2186,7 +2188,7 @@ class AppLocalizations {
           'MakanMana needs a few Accept/Reject and meal logs first for a '
               'sharper coach.',
       'cvReading': 'MakanMana is reading your eating pattern…',
-      'cvError': 'Couldn’t open AI Food Coach right now.',
+      'cvError': 'Couldn’t open MakanMana Food Coach right now.',
       'cvPreviewTip':
           'Starter tip: begin with a balanced meal — protein, carbs, veg.',
       'cvPreviewLocked':
@@ -2332,7 +2334,7 @@ class AppLocalizations {
           'We consider location, budget, mood, taste, meal history and your ratings — the more you use it, the smarter it gets.',
       'faq2Q': 'What is the difference between Free, Plus and Pro?',
       'faq2A':
-          'Free: 3 spins/day & basics. Plus: unlimited spins, all moods & themes, favorites. Pro: everything + Weekly Report, AI Coach, Diet Goal, Meal Plan, Calorie Scan, Group Decision.',
+          'Free: 3 spins/day & basics. Plus: unlimited spins, all moods & themes, favorites. Pro: everything + Weekly Report, MakanMana Coach, Diet Goal, Meal Plan, Calorie Scan, Group Decision.',
       'faq3Q': 'How do I rate a restaurant?',
       'faq3A':
           'From History (after eating via the app), or Check-in for 5 minutes at the restaurant, or "Ordered delivery?" (admin reviewed).',
@@ -2342,8 +2344,8 @@ class AppLocalizations {
       'faq5Q': 'How do I cancel my subscription?',
       'faq5A':
           'Via Google Play > Subscriptions. Your plan stays active until the renewal date.',
-      'scanIntro': 'Snap your food — AI will analyse the calories.',
-      'scanning': 'AI is analysing your food...',
+      'scanIntro': 'Snap your food — MakanMana will analyse the calories.',
+      'scanning': 'MakanMana is analysing your food...',
       'scanEstCalories': 'Estimated calories',
       'scanEstNutrition': 'Estimated nutrition',
       'scanNotEstimated': 'Not estimated',
@@ -2383,12 +2385,12 @@ class AppLocalizations {
       'noComments': 'No comments yet. Start the conversation!',
       'proHubTitle': 'Pro Tools',
       'proHubTeaser':
-          'All AI Food Coach tools live here. Upgrade to Pro to unlock!',
+          'All MakanMana Food Coach tools live here. Upgrade to Pro to unlock!',
       'lockedPro': 'Pro feature — upgrade to unlock.',
       'soonBadge': 'COMING SOON',
       'proReportTitle': 'Weekly Report',
       'proReportDesc': '7-day analysis: meals, spend, health, patterns.',
-      'proCoachTitle': 'AI Food Coach',
+      'proCoachTitle': 'MakanMana Food Coach',
       'proCoachDesc': 'Personal tips from your real eating patterns.',
       'proGoalTitle': 'Diet Goal',
       'proGoalDesc': 'Your goal reshapes every suggestion.',
@@ -2668,6 +2670,7 @@ class AppLocalizations {
       'sampleNote': '示例推荐，非实时数据',
       'offlineSample': '离线模式 — 示例推荐',
       'paymentNotActive': '真实付款尚未开放。',
+      'purchaseUnavailable': '目前无法开始购买，请稍后再试。',
       // Social Prompt 2
       'dmComingSoon': '私信即将推出——尚未开放。',
       'tabPosts': '帖子',
@@ -3026,7 +3029,7 @@ class AppLocalizations {
       'shareAction': '分享',
       'sharedOk': '已分享！',
       'shareToGroup': '分享到群组',
-      'shareCardSuggestion': 'AI 推荐',
+      'shareCardSuggestion': 'MakanMana 推荐',
       'shareCardBudget': '预算洞察',
       'shareCardGroupResult': '群组结果',
       'shareCardPoll': '投票',
@@ -3355,7 +3358,7 @@ class AppLocalizations {
       'proBenefitCalorieScan': '拍照扫描卡路里',
       'proBenefitWeeklyReport': '每周饮食报告',
       'proBenefitMealPlan': '每周膳食计划',
-      'proBenefitFoodCoach': 'AI 美食教练',
+      'proBenefitFoodCoach': 'MakanMana 美食教练',
       'proBenefitFitCoach': '健身教练 / 运动心情',
       'proBenefitFoodMemory': '进阶美食记忆',
       // Prompt 11: Meal Plan + AI Food Coach
@@ -3384,7 +3387,7 @@ class AppLocalizations {
       'mpStarterNote': '仅根据你的资料生成的入门计划。',
       'mpDisclaimer': '根据你的口味与预算的一般建议——非医疗营养建议。',
       'mpPreviewTitle': '膳食计划预览',
-      'mpPreviewLocked': '解锁 Pro 查看完整 3 天膳食计划、AI 理由和每周饮食教练。',
+      'mpPreviewLocked': '解锁 Pro 查看完整 3 天膳食计划、MakanMana 理由和每周饮食教练。',
       'mpReasonLikedCuisine': '你喜欢的菜系',
       'mpReasonHealthy': '更清淡的选择',
       'mpReasonProfile': '根据你的资料',
@@ -3401,7 +3404,7 @@ class AppLocalizations {
       'cvDisclaimer': '这些是一般建议，非医疗意见。',
       'cvLowData': 'MakanMana 需要先几次接受/拒绝和用餐记录，教练才能更准。',
       'cvReading': 'MakanMana 正在读取你的饮食习惯…',
-      'cvError': '目前无法打开 AI 美食教练。',
+      'cvError': '目前无法打开 MakanMana 美食教练。',
       'cvPreviewTip': '入门建议：从均衡的一餐开始——蛋白质、碳水、蔬菜。',
       'cvPreviewLocked': '解锁 Pro 读取你的饮食习惯、美食记忆建议和每周饮食教练。',
       // Prompt 12: Fit Coach + Sport Mood
@@ -3529,15 +3532,15 @@ class AppLocalizations {
       'faq1A': '我们综合位置、预算、心情、口味、用餐历史和评分 — 越用越准。',
       'faq2Q': 'Free、Plus 和 Pro 有什么区别？',
       'faq2A':
-          'Free：每天3次转盘和基础功能。Plus：无限转盘、所有心情和主题、收藏。Pro：全部+每周报告、AI教练、饮食目标、用餐计划、卡路里扫描、群组决定。',
+          'Free：每天3次转盘和基础功能。Plus：无限转盘、所有心情和主题、收藏。Pro：全部+每周报告、MakanMana教练、饮食目标、用餐计划、卡路里扫描、群组决定。',
       'faq3Q': '如何给餐厅评分？',
       'faq3A': '从历史记录（通过app用餐后）、或在餐厅签到5分钟、或选择"点了外卖？"（管理员审核）。',
       'faq4Q': '我的数据安全吗？',
       'faq4A': '安全。个人数据只有你自己的账户可以访问。动态只显示你选择的名字和头像。',
       'faq5Q': '如何取消订阅？',
       'faq5A': '通过 Google Play > 订阅。套餐将保持有效直到续订日期。',
-      'scanIntro': '拍下你的食物 — AI 将分析卡路里。',
-      'scanning': 'AI 正在分析你的食物...',
+      'scanIntro': '拍下你的食物 — MakanMana 将分析卡路里。',
+      'scanning': 'MakanMana 正在分析你的食物...',
       // zh: machine-translated, pending native review.
       'scanEstCalories': '估计卡路里',
       'scanEstNutrition': '估计营养',
@@ -3574,12 +3577,12 @@ class AppLocalizations {
       'commentHint': '写评论...',
       'noComments': '还没有评论，来开启对话！',
       'proHubTitle': 'Pro 工具',
-      'proHubTeaser': '所有AI美食教练工具都在这里。升级Pro解锁全部！',
+      'proHubTeaser': '所有MakanMana美食教练工具都在这里。升级Pro解锁全部！',
       'lockedPro': 'Pro 功能 — 升级解锁。',
       'soonBadge': '即将推出',
       'proReportTitle': '每周报告',
       'proReportDesc': '7天分析：用餐、花费、健康、习惯。',
-      'proCoachTitle': 'AI 美食教练',
+      'proCoachTitle': 'MakanMana 美食教练',
       'proCoachDesc': '基于你真实饮食习惯的个性化建议。',
       'proGoalTitle': '饮食目标',
       'proGoalDesc': '你的目标会改变每个推荐。',
@@ -3851,6 +3854,7 @@ class AppLocalizations {
       'sampleNote': 'உதாரண பரிந்துரை, நேரடி தரவு அல்ல',
       'offlineSample': 'ஆஃப்லைன் முறை — மாதிரி பரிந்துரை',
       'paymentNotActive': 'உண்மையான கட்டணம் இன்னும் இயக்கப்படவில்லை.',
+      'purchaseUnavailable': 'இப்போது கொள்முதலைத் தொடங்க முடியவில்லை. மீண்டும் முயற்சிக்கவும்.',
       // Social Prompt 2
       'dmComingSoon': 'DM விரைவில் — இன்னும் இயக்கப்படவில்லை.',
       'tabPosts': 'இடுகைகள்',
@@ -4239,7 +4243,7 @@ class AppLocalizations {
       'shareAction': 'பகிர்',
       'sharedOk': 'பகிரப்பட்டது!',
       'shareToGroup': 'குழுவிற்கு பகிர்',
-      'shareCardSuggestion': 'AI பரிந்துரை',
+      'shareCardSuggestion': 'MakanMana பரிந்துரை',
       'shareCardBudget': 'பட்ஜெட் நுண்ணறிவு',
       'shareCardGroupResult': 'குழு முடிவு',
       'shareCardPoll': 'வாக்கெடுப்பு',
@@ -4582,7 +4586,7 @@ class AppLocalizations {
       'proBenefitCalorieScan': 'படத்திலிருந்து கலோரி ஸ்கேன்',
       'proBenefitWeeklyReport': 'வாராந்திர உணவு அறிக்கை',
       'proBenefitMealPlan': 'வாராந்திர உணவுத் திட்டம்',
-      'proBenefitFoodCoach': 'AI Food Coach',
+      'proBenefitFoodCoach': 'MakanMana Food Coach',
       'proBenefitFitCoach': 'Fit Coach / Sport Mood',
       'proBenefitFoodMemory': 'மேம்பட்ட உணவு நினைவகம்',
       // Prompt 11: Meal Plan + AI Food Coach
@@ -4617,7 +4621,7 @@ class AppLocalizations {
               'ஊட்டச்சத்து அறிவுரை அல்ல.',
       'mpPreviewTitle': 'உணவுத் திட்ட முன்னோட்டம்',
       'mpPreviewLocked':
-          'முழு 3-நாள் உணவுத் திட்டம், AI காரணங்கள் மற்றும் வாராந்திர கோச்சிற்கு '
+          'முழு 3-நாள் உணவுத் திட்டம், MakanMana காரணங்கள் மற்றும் வாராந்திர கோச்சிற்கு '
               'Pro திறக்கவும்.',
       'mpReasonLikedCuisine': 'நீங்கள் விரும்பும் உணவு வகை',
       'mpReasonHealthy': 'இலகுவான தேர்வு',
@@ -4641,7 +4645,7 @@ class AppLocalizations {
           'கூர்மையான கோச்சிற்கு MakanMana-க்கு சில Accept/Reject மற்றும் உணவுப் '
               'பதிவுகள் தேவை.',
       'cvReading': 'MakanMana உங்கள் உணவுப் பழக்கத்தைப் படிக்கிறது…',
-      'cvError': 'இப்போது AI Food Coach-ஐ திறக்க முடியவில்லை.',
+      'cvError': 'இப்போது MakanMana Food Coach-ஐ திறக்க முடியவில்லை.',
       'cvPreviewTip':
           'தொடக்க உதவிக்குறிப்பு: சமநிலை உணவுடன் தொடங்குங்கள் — புரதம், கார்போஹைட்ரேட், காய்கறி.',
       'cvPreviewLocked':
@@ -4790,7 +4794,7 @@ class AppLocalizations {
           'இடம், பட்ஜெட், மனநிலை, சுவை, உணவு வரலாறு மற்றும் மதிப்பீடுகளை கருத்தில் கொள்கிறோம்.',
       'faq2Q': 'Free, Plus, Pro வேறுபாடு என்ன?',
       'faq2A':
-          'Free: நாளுக்கு 3 சுழற்சி. Plus: வரம்பற்ற சுழற்சி, எல்லா மனநிலை & தீம், பிடித்தவை. Pro: அனைத்தும் + வார அறிக்கை, AI பயிற்சியாளர், உணவு இலக்கு, உணவு திட்டம், கலோரி ஸ்கேன், குழு முடிவு.',
+          'Free: நாளுக்கு 3 சுழற்சி. Plus: வரம்பற்ற சுழற்சி, எல்லா மனநிலை & தீம், பிடித்தவை. Pro: அனைத்தும் + வார அறிக்கை, MakanMana பயிற்சியாளர், உணவு இலக்கு, உணவு திட்டம், கலோரி ஸ்கேன், குழு முடிவு.',
       'faq3Q': 'கடையை எப்படி மதிப்பிடுவது?',
       'faq3A':
           'வரலாற்றிலிருந்து, அல்லது கடையில் 5 நிமிட செக்-இன், அல்லது டெலிவரி விருப்பம் (நிர்வாக சரிபார்ப்பு).',
@@ -4798,8 +4802,8 @@ class AppLocalizations {
       'faq4A': 'ஆம். தனிப்பட்ட தரவு உங்கள் கணக்கால் மட்டுமே அணுக முடியும்.',
       'faq5Q': 'சந்தாவை எப்படி ரத்து செய்வது?',
       'faq5A': 'Google Play > Subscriptions வழியாக.',
-      'scanIntro': 'உணவை படமெடுங்கள் — AI கலோரிகளை பகுப்பாய்வு செய்யும்.',
-      'scanning': 'AI உங்கள் உணவை பகுப்பாய்வு செய்கிறது...',
+      'scanIntro': 'உணவை படமெடுங்கள் — MakanMana கலோரிகளை பகுப்பாய்வு செய்யும்.',
+      'scanning': 'MakanMana உங்கள் உணவை பகுப்பாய்வு செய்கிறது...',
       // ta: machine-translated, pending native review.
       'scanEstCalories': 'மதிப்பிடப்பட்ட கலோரிகள்',
       'scanEstNutrition': 'மதிப்பிடப்பட்ட ஊட்டச்சத்து',
@@ -4840,12 +4844,12 @@ class AppLocalizations {
       'noComments': 'இன்னும் கருத்துகள் இல்லை. தொடங்குங்கள்!',
       'proHubTitle': 'Pro கருவிகள்',
       'proHubTeaser':
-          'எல்லா AI உணவு பயிற்சி கருவிகளும் இங்கே. Pro-க்கு மேம்படுத்துங்கள்!',
+          'எல்லா MakanMana உணவு பயிற்சி கருவிகளும் இங்கே. Pro-க்கு மேம்படுத்துங்கள்!',
       'lockedPro': 'Pro அம்சம் — திறக்க மேம்படுத்தவும்.',
       'soonBadge': 'விரைவில்',
       'proReportTitle': 'வார அறிக்கை',
       'proReportDesc': '7 நாள் பகுப்பாய்வு: உணவு, செலவு, ஆரோக்கியம்.',
-      'proCoachTitle': 'AI உணவு பயிற்சியாளர்',
+      'proCoachTitle': 'MakanMana உணவு பயிற்சியாளர்',
       'proCoachDesc': 'உங்கள் உண்மையான உணவு பழக்கத்திலிருந்து குறிப்புகள்.',
       'proGoalTitle': 'உணவு இலக்கு',
       'proGoalDesc': 'உங்கள் இலக்கு ஒவ்வொரு பரிந்துரையையும் மாற்றும்.',

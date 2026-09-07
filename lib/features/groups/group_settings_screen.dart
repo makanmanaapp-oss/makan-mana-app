@@ -383,6 +383,7 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
         imageQuality: 85,
       );
       if (picked == null) return;
+      if (!mounted) return;
       setState(() => _uploadingPhoto = true);
       await service.uploadGroupImageV2(widget.groupId, File(picked.path));
       ref.invalidate(groupImageUrlProvider(widget.groupId));

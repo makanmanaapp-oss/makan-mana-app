@@ -330,12 +330,14 @@ class _CuisinePickerScreenState extends State<_CuisinePickerScreen> {
         ),
       );
       if (move != true) return;
+      if (!mounted) return;
       setState(() {
         _setFor(existing).remove(id);
         _setFor(_mode).add(id);
       });
       return;
     }
+    if (!mounted) return;
     setState(() => _setFor(_mode).add(id));
   }
 
@@ -347,6 +349,7 @@ class _CuisinePickerScreenState extends State<_CuisinePickerScreen> {
     final norm = normalizeCustomEntry(raw ?? '');
     if (norm == null) return;
     final id = customLocalId(norm);
+    if (!mounted) return;
     setState(() {
       // Dedup pada senarai custom + tambah ke mod aktif.
       if (!widget.customs.any((c) => c['id'] == id)) {

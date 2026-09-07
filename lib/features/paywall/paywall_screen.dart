@@ -94,16 +94,25 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         return;
       }
 
-      // Tiada gateway sebenar lagi: JANGAN ubah plan, JANGAN pura-pura jaya.
+      // Pembelian tidak bermula. JANGAN ubah plan, JANGAN pura-pura jaya.
+      // Untuk pelan BERBAYAR ini bermakna Play tidak dapat dihubungi — bukan
+      // bahawa pembayaran belum wujud, jadi mesejnya mesti boleh dicuba semula.
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l.t('paymentNotActive'))),
+          SnackBar(
+            content: Text(
+              l.t(plan == 'free' ? 'paymentNotActive' : 'purchaseUnavailable'),
+            ),
+          ),
         );
       }
     } catch (e) {
+      // Kegagalan sebenar (rangkaian/Play/pengesahan) — beritahu pengguna
+      // dengan jujur supaya mereka boleh cuba semula, bukan memberitahu
+      // mereka ciri itu belum wujud.
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(l.t('subscriptionComingSoon'))),
+          SnackBar(content: Text(l.t('purchaseUnavailable'))),
         );
       }
     }
