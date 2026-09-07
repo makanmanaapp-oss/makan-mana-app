@@ -2,13 +2,19 @@ import {onDocumentWritten} from "firebase-functions/v2/firestore";
 import {onSchedule} from "firebase-functions/v2/scheduler";
 
 import {db} from "../config/firebase";
-import {CMS_COLLECTION} from "../domain/cms/cmsTypes";
+import {CMS_COLLECTION, CMS_COLLECTIONS_COLLECTION} from "../domain/cms/cmsTypes";
 import {
   CMS_MIRROR_ENTITY_TYPE,
   cmsMirrorEventId,
   toCmsMirrorRecord,
   type CmsMirrorRecord,
 } from "../domain/cms/cmsDocument";
+import {
+  COLLECTION_MIRROR_ENTITY_TYPE,
+  collectionMirrorEventId,
+  toCollectionMirrorRecord,
+  type CollectionMirrorRecord,
+} from "../domain/cms/collectionDocument";
 import {CONTROL_CENTER_SYNC_SECRET, pushMirrorBatch} from "./mirrorEventPush";
 
 /**
@@ -106,5 +112,93 @@ export const reconcileCmsMirrorDaily = onSchedule(
     if (records.length === 0) return;
 
     await push(records, secret, `cms-reconcile:${latestStamp}:${records.length}`);
+  },
+);
+
+// ── CURATED DISCOVERY COLLECTIONS ──────────────────────────────────────────
+
+/**
+ * The same two paths for collections. A collection and a banner are different
+ * datasets on the same transport, so they get their own entity type and their
+ * own event ids while sharing the secret, the endpoint and the receipt
+ * contract.
+ */
+export const mirrorCmsCollectionOnWrite = onDocumentWritten(
+  {
+    document: `${CMS_COLLECTIONS_COLLECTION}/{collectionId}`,
+    secrets: [CONTROL_CENTER_SYNC_SECRET],
+    maxInstances: 5,
+  },
+  async (event) => {
+    const secret = CONTROL_CENTER_SYNC_SECRET.value();
+    if (!secret) return;
+
+    const after = event.data?.after;
+    if (!after?.exists) return;
+
+    const collectionId = event.params.collectionId;
+    const data = after.data() ?? null;
+    const record = toCollectionMirrorRecord(collectionId, data, Date.now());
+    if (!record) return;
+
+    const eventId = collectionMirrorEventId(
+      collectionId,
+      typeof data?.updatedAtMs === "number" ? data.updatedAtMs : null,
+    );
+    if (!eventId) return;
+
+    try {
+      await pushMirrorBatch({
+        entityType: COLLECTION_MIRROR_ENTITY_TYPE,
+        records: [record],
+        secret,
+        eventId,
+      });
+    } catch (error) {
+      console.error("cms collection mirror push failed", {
+        collectionId: collectionId.slice(0, 120),
+        message: error instanceof Error ? error.message.slice(0, 300) : "unknown",
+      });
+    }
+  },
+);
+
+export const reconcileCmsCollectionMirrorDaily = onSchedule(
+  {
+    schedule: "47 4 * * *",
+    timeZone: "Asia/Kuala_Lumpur",
+    secrets: [CONTROL_CENTER_SYNC_SECRET],
+    timeoutSeconds: 540,
+    memory: "512MiB",
+    maxInstances: 1,
+  },
+  async () => {
+    const secret = CONTROL_CENTER_SYNC_SECRET.value();
+    if (!secret) throw new Error("CONTROL_CENTER_SYNC_SECRET is unavailable.");
+
+    const snap = await db.collection(CMS_COLLECTIONS_COLLECTION)
+      .orderBy("updatedAtMs", "desc")
+      .limit(RECONCILE_LIMIT)
+      .get();
+
+    const nowMs = Date.now();
+    const records: CollectionMirrorRecord[] = [];
+    let latestStamp = 0;
+    for (const doc of snap.docs) {
+      const data = doc.data();
+      const record = toCollectionMirrorRecord(doc.id, data, nowMs);
+      if (!record) continue;
+      records.push(record);
+      const stamp = typeof data.updatedAtMs === "number" ? data.updatedAtMs : 0;
+      if (stamp > latestStamp) latestStamp = stamp;
+    }
+    if (records.length === 0) return;
+
+    await pushMirrorBatch({
+      entityType: COLLECTION_MIRROR_ENTITY_TYPE,
+      records,
+      secret,
+      eventId: `cms-collection-reconcile:${latestStamp}:${records.length}`,
+    });
   },
 );

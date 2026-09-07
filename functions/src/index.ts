@@ -159,9 +159,12 @@ export {replyToRestaurantMenuComment} from "./callable/restaurantReplyControl";
 // the existing Wave 3C/4 transports. NOT DEPLOYED.
 export {getCmsContent} from "./callable/getCmsContent";
 export {controlCenterCmsAdminBridge} from "./controlCenter/cmsAdminBridge";
+export {controlCenterCmsMediaUpload} from "./controlCenter/cmsMediaBridge";
 export {
   mirrorCmsContentOnWrite,
   reconcileCmsMirrorDaily,
+  mirrorCmsCollectionOnWrite,
+  reconcileCmsCollectionMirrorDaily,
 } from "./controlCenter/cmsMirrorSync";
 
 // Wave 4 — the ONE trusted Control Center -> Firebase commercial bridge, and

@@ -4,6 +4,7 @@ import type {MenuCommentMirrorRecord, SocialPostMirrorRecord} from "../domain/re
 import type {MirrorEntityType} from "../domain/restaurantEngagement/mirrorEvents";
 import type {PromotionMirrorRecord} from "../domain/promotions/promotionMirrorPayload";
 import type {CmsMirrorRecord} from "../domain/cms/cmsDocument";
+import type {CollectionMirrorRecord} from "../domain/cms/collectionDocument";
 
 /**
  * Wave 3C corrective — the ONE shared Firebase → Control Center mirror transport.
@@ -23,7 +24,8 @@ export type MirrorRecord =
   | SocialPostMirrorRecord
   | MenuCommentMirrorRecord
   | PromotionMirrorRecord
-  | CmsMirrorRecord;
+  | CmsMirrorRecord
+  | CollectionMirrorRecord;
 
 /**
  * POST one idempotent mirror batch. `eventId` is the idempotency key enforced by
@@ -32,7 +34,7 @@ export type MirrorRecord =
  * server-side rather than silently overwriting an unrelated event.
  */
 export async function pushMirrorBatch(params: {
-  entityType: MirrorEntityType | "restaurant_promotion" | "cms_content";
+  entityType: MirrorEntityType | "restaurant_promotion" | "cms_content" | "cms_collection";
   records: MirrorRecord[];
   secret: string;
   eventId: string;
