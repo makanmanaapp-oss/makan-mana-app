@@ -17,6 +17,8 @@ import '../../core/events/event_types.dart';
 import '../../core/mood/availability_label.dart';
 import '../../core/mood/mood_formula.dart';
 import '../../core/providers.dart';
+import '../cms/cms_content.dart';
+import '../cms/cms_slot.dart';
 import '../../core/providers/makanmana_user_context_provider.dart';
 import '../../core/widgets/mm_icons.dart';
 import '../../core/widgets/place_image.dart';
@@ -807,6 +809,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
                 const SizedBox(height: 20),
 
+                // WAVE 5 — CMS slot. Renders NOTHING when there is no eligible
+                // banner, so Home is byte-for-byte its approved layout.
+                const CmsSlot(placement: CmsPlacement.homeTop),
+
                 // Mood chips
                 Text(
                   l.t('moodTitle'),
@@ -998,6 +1004,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       orElse: () => const SizedBox.shrink(),
                     ),
                 const SizedBox(height: 24),
+
+                // WAVE 5 — second CMS slot. Same contract: nothing to show
+                // means nothing rendered.
+                const CmsSlot(placement: CmsPlacement.homeMid),
 
                 // Berdekatan + penunjuk mood semasa (Prompt 5).
                 // QA akhir: tajuk Expanded + chip Flexible — Row tegar melimpah

@@ -6,6 +6,8 @@ import '../../../app/localization/app_localizations.dart';
 import '../../../app/theme.dart';
 import '../../place_cards/place_card_primitives.dart';
 import '../../place_corrections/place_correction_flags.dart';
+import '../../cms/cms_content.dart';
+import '../../cms/cms_slot.dart';
 import '../../promotions/promotion.dart';
 import '../../promotions/promotion_section.dart';
 import 'restaurant_detail_view_model.dart';
@@ -67,6 +69,7 @@ class CanonicalRestaurantDetailScreen extends StatelessWidget {
     this.onOpenMenuItemComments,
     this.communityReviews,
     this.promotions = const [],
+    this.cmsCanonicalPlaceId,
   });
 
   final RestaurantDetailViewModel vm;
@@ -93,6 +96,11 @@ class CanonicalRestaurantDetailScreen extends StatelessWidget {
   /// restaurant without an offer keeps exactly the page it has today.
   final List<Promotion> promotions;
 
+  /// WAVE 5 — the RESOLVED canonical identity, used only to scope the CMS slot.
+  /// Null (the default) renders no CMS at all, so nothing changes where it is
+  /// not wired.
+  final String? cmsCanonicalPlaceId;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -104,6 +112,7 @@ class CanonicalRestaurantDetailScreen extends StatelessWidget {
         onOpenMenuItemComments: onOpenMenuItemComments,
         communityReviews: communityReviews,
         promotions: promotions,
+        cmsCanonicalPlaceId: cmsCanonicalPlaceId,
       ),
     );
   }
@@ -118,6 +127,7 @@ class CanonicalRestaurantDetailBody extends StatefulWidget {
     this.onOpenMenuItemComments,
     this.communityReviews,
     this.promotions = const [],
+    this.cmsCanonicalPlaceId,
   });
 
   final RestaurantDetailViewModel vm;
@@ -134,6 +144,9 @@ class CanonicalRestaurantDetailBody extends StatefulWidget {
 
   /// See [CanonicalRestaurantDetailScreen.promotions].
   final List<Promotion> promotions;
+
+  /// See [CanonicalRestaurantDetailScreen.cmsCanonicalPlaceId].
+  final String? cmsCanonicalPlaceId;
 
   @override
   State<CanonicalRestaurantDetailBody> createState() =>
@@ -256,6 +269,13 @@ class _CanonicalRestaurantDetailBodyState
             // are the most perishable thing on the page. Renders nothing when
             // there is no offer.
             PromotionSection(promotions: widget.promotions),
+            // WAVE 5 — editorial CMS sits BELOW the merchant's own offer: the
+            // restaurant's promotion is the more relevant thing on its page.
+            // Scoped to this restaurant, so an unrelated banner cannot appear.
+            CmsSlot(
+              placement: CmsPlacement.restaurantDetail,
+              canonicalPlaceId: widget.cmsCanonicalPlaceId,
+            ),
             // Restaurant INFORMATION only — community reviews live in their
             // own tab so the two are never visually conflated.
             if (_hasSummary)

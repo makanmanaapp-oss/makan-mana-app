@@ -286,6 +286,9 @@ class _RestaurantDetailScreenState
               promotions: snapshot.connectionState == ConnectionState.done
                   ? _promotions
                   : const [],
+              // WAVE 5 — the same PROVEN canonical identity that gates Follow.
+              // Unproven identity means no CMS, exactly as it means no Follow.
+              cmsCanonicalPlaceId: canonicalId,
               engagement: canonicalId == null || canonicalId.isEmpty
                   ? null
                   : RestaurantFollowButton(

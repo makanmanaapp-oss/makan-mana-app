@@ -7,6 +7,8 @@ import '../../app/localization/app_localizations.dart';
 import '../../app/theme.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/providers.dart';
+import '../cms/cms_content.dart';
+import '../cms/cms_slot.dart';
 import '../../core/location/location_display.dart';
 import '../../core/providers/makanmana_user_context_provider.dart';
 import '../../core/widgets/place_image.dart';
@@ -129,6 +131,17 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                     borderSide: BorderSide(color: palette.primary, width: 1.4),
                   ),
                 ),
+              ),
+            ),
+            // WAVE 5 — curated/editorial CMS slot. Marked as sponsored so
+            // editorial content is never mistaken for an organic result. The
+            // restaurant list below is UNCHANGED: ranking, search and the
+            // recommendation algorithm are not touched.
+            const Padding(
+              padding: EdgeInsets.fromLTRB(20, 4, 20, 0),
+              child: CmsSlot(
+                placement: CmsPlacement.exploreTop,
+                sponsored: true,
               ),
             ),
             // 5. Cip kategori merah-aktif (semantik penapis _cuisineFilter KEKAL).
