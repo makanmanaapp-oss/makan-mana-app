@@ -109,7 +109,10 @@ void main() {
   });
 
   group('backend security guards (source)', () {
-    final core = File('functions/src/domain/groupInviteLink/inviteLinkV2.ts').readAsStringSync();
+    // Line endings dinormalkan: fail repo CRLF, padanan guna \n
+    final core = File('functions/src/domain/groupInviteLink/inviteLinkV2.ts')
+        .readAsStringSync()
+        .replaceAll('\r\n', '\n');
     final ctl = File('functions/src/callable/groupInviteLinkControl.ts').readAsStringSync();
     test('token stored as hash, never plaintext (Part 11)', () {
       expect(core.contains('hashToken(token)'), isTrue);
@@ -212,7 +215,10 @@ void main() {
   group('4.6A — backfill + rate-limit + link mgmt guards', () {
     final backfillCtl =
         File('functions/src/callable/peopleSearchBackfillControl.ts').readAsStringSync();
-    final core = File('functions/src/domain/groupInviteLink/inviteLinkV2.ts').readAsStringSync();
+    // Line endings dinormalkan: fail repo CRLF, padanan guna \n
+    final core = File('functions/src/domain/groupInviteLink/inviteLinkV2.ts')
+        .readAsStringSync()
+        .replaceAll('\r\n', '\n');
     final sheet =
         File('lib/features/groups/invite_members_sheet.dart').readAsStringSync();
 

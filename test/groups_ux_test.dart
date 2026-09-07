@@ -13,7 +13,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:makan_mana/app/localization/app_localizations.dart';
 
 void main() {
-  final feed = File('lib/features/social/feed_screen.dart').readAsStringSync();
+  // Line endings dinormalkan (padanan guna \n)
+  final feed = File('lib/features/social/feed_screen.dart')
+      .readAsStringSync()
+      .replaceAll('\r\n', '\n');
   final hub =
       File('lib/features/groups/group_hub_screen.dart').readAsStringSync();
   final providers =

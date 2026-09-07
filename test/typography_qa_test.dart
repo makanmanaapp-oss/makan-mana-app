@@ -258,31 +258,24 @@ void main() {
     }
   });
 
-  // 919 kunci asal + 334 kunci Sport Mood/blok senaman + 5 kunci UI statik
-  // + 6 kunci UI am ISSUE 001.3 (notis legal, kongsi, keutamaan lanjut)
-  // + 124 kunci kad kedai/detail + 88 kunci laporan/pembetulan Phase 1.11.
-  test('l10n: semua 1504 kunci dan parameter sepadan', () {
+  // LEDGER KUNCI l10n — governance, bukan sekadar nombor ajaib.
+  //
+  // Kiraan tepat dikunci supaya kunci baharu tidak boleh masuk secara senyap
+  // tanpa seseorang mengemas kini ledger ini dengan sengaja. Apabila ia gagal,
+  // itu BUKAN semestinya pepijat: tambah kunci merentas KEEMPAT-EMPAT bahasa,
+  // sahkan parity masih lulus, kemudian naikkan nombor di bawah dan catat
+  // sebabnya.
+  //
+  // Sejarah pertumbuhan (ringkas): 919 asal -> 1504 (Sport Mood, kad kedai,
+  // laporan Phase 1.11) -> 1580 (Algo2 2.2A-2.16A, Notification Center,
+  // hero Home) -> 1685 (Wave 3: Restaurant Detail kanonikal + tab
+  // Profil/Ulasan/Menu, Follow restoran, komen menu, keadaan
+  // tidak-tersedia pengikut, dan blok engagement berkaitan).
+  test('l10n: ledger kunci + parity + parameter sepadan', () {
     final msKeys = AppLocalizations.keysForTesting(const Locale('ms'));
-    // Phase 2.2A: +2 kunci (loadMore, endOfResults) merentas 4 bahasa.
-    // Location hotfix: +1 kunci (near) merentas 4 bahasa.
-    // Phase 2.3: +9 kunci (5 sebab + 4 isyarat negatif) merentas 4 bahasa.
-    // Phase 2.3A: +1 kunci (nutritionNotVerified) merentas 4 bahasa.
-    // Phase 2.3C: +2 kunci (reasonSupperBounded, openStatusUnknown) merentas 4 bahasa.
-    // Phase 2.4: +3 kunci (fmReset, fmResetConfirm, fmResetDone) merentas 4 bahasa.
-    // Phase 2.8A: +3 kunci (locDefaultArea, locFallbackNotice, chooseArea)
-    //   merentas 4 bahasa — pendedahan jujur lokasi lalai (fallback KL).
-    // Phase 2.15A: +18 kunci Calorie Scan (kalori/makro anggaran, pendedahan
-    //   estimasi + disclaimer alahan/halal/perubatan, aliran sunting, validasi)
-    //   merentas 4 bahasa.
-    // Phase 2.16A: +13 kunci (7 validasi profil Fit + 6 keadaan laporan
-    //   mingguan jujur) merentas 4 bahasa.
-    // Front Page Redesign 1: +9 kunci Notification Center (notificationsTitle,
-    //   markAllRead, notifToday, notifEarlier, noNotifications, allCaughtUp,
-    //   notifLoadError, newNotification, seeAll) merentas 4 bahasa.
-    // Front Page Redesign 1A: +2 kunci hero Home (homeHeroLead, homeHeroAccent)
-    //   merentas 4 bahasa.
-    // Refinement Home: +2 kunci (threadsLabel, fitExclusive) merentas 4 bahasa.
-    expect(msKeys, hasLength(1580));
+    expect(msKeys, hasLength(1685),
+        reason: 'kiraan kunci berubah — kemas kini ledger DENGAN SENGAJA '
+            'selepas mengesahkan parity keempat-empat bahasa masih lulus');
     final placeholder = RegExp(r'\{[^}]+\}');
     final msValues = AppLocalizations.valuesForTesting(const Locale('ms'));
     for (final language in ['en', 'zh', 'ta']) {
@@ -385,6 +378,17 @@ void main() {
   });
 
   // ISSUE 001.3: tiada nilai memulangkan nama kuncinya sendiri.
+  test('l10n: tiada nilai kosong dalam mana-mana bahasa', () {
+    // Kunci yang wujud tetapi kosong lebih buruk daripada kunci yang hilang:
+    // parity lulus, tetapi pengguna nampak ruang kosong.
+    for (final language in ['ms', 'en', 'zh', 'ta']) {
+      final values = AppLocalizations.valuesForTesting(Locale(language));
+      final empty =
+          values.entries.where((e) => e.value.trim().isEmpty).map((e) => e.key);
+      expect(empty, isEmpty, reason: 'nilai kosong dalam $language: $empty');
+    }
+  });
+
   test('l10n: tiada nilai sama dengan nama kunci', () {
     for (final code in ['ms', 'en', 'zh', 'ta']) {
       final values = AppLocalizations.valuesForTesting(Locale(code));

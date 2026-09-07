@@ -61,11 +61,19 @@ void main() {
     });
     test('acknowledge only after verify attempt (completePurchase gated)', () {
       expect(purchase.contains('pendingCompletePurchase'), isTrue);
-      expect(purchase.contains('completePurchase(p)'), isTrue);
+      // Pembolehubah dinamakan semula `p` -> `purchase`. Yang penting ialah
+      // GATING sebenar, bukan nama: completePurchase hanya dipanggil apabila
+      // SDK masih menunggu DAN backend telah mengesahkan.
+      expect(purchase.contains('completePurchase(purchase)'), isTrue);
+      expect(
+          purchase.contains(
+              'if (purchase.pendingCompletePurchase && localCompletionAllowed)'),
+          isTrue,
+          reason: 'acknowledge mesti digating pada verify server');
       expect(purchase.contains('localCompletionAllowed'), isTrue,
           reason: 'SDK queue hanya lengkap selepas backend menyatakan selamat.');
       expect(purchase.contains('GooglePlayPurchaseParam'), isTrue);
-      expect(purchase.contains('applicationUserName: _obfuscatedAccountId(uid)'),
+      expect(purchase.contains('applicationUserName: opaqueAccountId'),
           isTrue);
     });
     test('exposes a results stream for honest UX', () {
@@ -84,7 +92,7 @@ void main() {
     });
     test('restore calls restorePurchases', () {
       expect(purchase.contains('restorePurchases('), isTrue);
-      expect(purchase.contains('applicationUserName: _obfuscatedAccountId(uid)'),
+      expect(purchase.contains('applicationUserName: opaqueAccountId'),
           isTrue);
     });
   });

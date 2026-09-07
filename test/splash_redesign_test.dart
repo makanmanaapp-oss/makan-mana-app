@@ -17,8 +17,10 @@ import 'package:makan_mana/features/splash/splash_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
-  final src =
-      File('lib/features/splash/splash_screen.dart').readAsStringSync();
+  // Line endings dinormalkan: fail repo CRLF, padanan guna \n
+  final src = File('lib/features/splash/splash_screen.dart')
+      .readAsStringSync()
+      .replaceAll('\r\n', '\n');
 
   group('Splash 2B — Option B full red', () {
     test('background uses splash red #DD1F22 (Option B)', () {

@@ -17,6 +17,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:makan_mana/app/localization/app_localizations.dart';
 import 'package:makan_mana/app/theme.dart';
 import 'package:makan_mana/core/providers.dart';
+import 'package:makan_mana/features/paywall/coupon_status.dart';
 import 'package:makan_mana/features/profile/profile_screen.dart';
 import 'package:makan_mana/features/social/social_providers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -26,12 +27,18 @@ const _freeDoc = <String, dynamic>{
   'username': 'nadiarahman',
 };
 
+// Tarikh tamat trial mesti RELATIF kepada masa larian. Fixture tetap
+// (DateTime(2026, 8, 26)) menjadikan ujian ini luput secara senyap: selepas
+// tarikh itu berlalu `couponTrialInfo` melaporkan trial TAMAT, jadi skrin
+// berhenti memaparkan badge "Pro Trial" dan ujian gagal atas sebab kalendar,
+// bukan atas sebab regresi produk.
+final _trialExpiry = DateTime.now().add(const Duration(days: 30));
 final _trialDoc = <String, dynamic>{
   'displayName': 'Nadia Rahman',
   'username': 'nadiarahman',
   'plan': 'pro',
   'planSource': 'coupon',
-  'couponExpiresAt': DateTime(2026, 8, 26),
+  'couponExpiresAt': _trialExpiry,
 };
 
 Widget _harness({
@@ -158,8 +165,9 @@ void main() {
           plan: 'pro'),
     );
     expect(find.text('Pro Trial'), findsOneWidget);
-    // Tarikh tamat SEBENAR dari data (bukan hardcode rujukan).
-    expect(find.textContaining('26 Ogos 2026'), findsOneWidget);
+    // Tarikh tamat SEBENAR dari data (bukan hardcode rujukan) — dikira
+    // dengan pemformat produk supaya ujian dan UI tidak boleh menyimpang.
+    expect(find.textContaining(formatTrialDate(_trialExpiry)), findsOneWidget);
     // Masih pada trial (bukan Pro berbayar) → CTA naik taraf kekal.
     expect(find.text('Upgrade now'), findsOneWidget);
   });
