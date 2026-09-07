@@ -1,5 +1,6 @@
 import 'package:cloud_functions/cloud_functions.dart';
 
+import '../../features/promotions/promotion.dart';
 import '../constants/app_constants.dart';
 
 class RestaurantProfileV2Service {
@@ -51,6 +52,10 @@ class RestaurantProfileV2Service {
       return RestaurantProfileLookupResult(
         canonicalPlaceId: canonicalPlaceId ?? profile?.canonicalPlaceId,
         profile: profile,
+        // WAVE 4 — the server already filtered by its own clock and by the
+        // viewer's plan, so every entry here is showable as-is. The client
+        // deliberately does not re-derive visibility from local time.
+        promotions: Promotion.listFromMap(root['promotions']),
       );
     } on FirebaseFunctionsException {
       return const RestaurantProfileLookupResult();
@@ -70,7 +75,11 @@ class RestaurantProfileV2Service {
 /// `profile == null` means "no published content", NOT "identity unknown".
 /// Overloading one null for both is exactly what hid the Follow button.
 class RestaurantProfileLookupResult {
-  const RestaurantProfileLookupResult({this.canonicalPlaceId, this.profile});
+  const RestaurantProfileLookupResult({
+    this.canonicalPlaceId,
+    this.profile,
+    this.promotions = const [],
+  });
 
   /// Server-proven canonical restaurant identity, or null when it could not be
   /// proven. Never the raw requested/provider place id.
@@ -78,6 +87,9 @@ class RestaurantProfileLookupResult {
 
   /// The ACTIVE published profile, or null when the restaurant has none.
   final PublicRestaurantProfileV2? profile;
+
+  /// WAVE 4 — active, time-valid, eligible offers. Already safe to render.
+  final List<Promotion> promotions;
 
   bool get hasCanonicalIdentity =>
       canonicalPlaceId != null && canonicalPlaceId!.trim().isNotEmpty;

@@ -6,6 +6,8 @@ import '../../../app/localization/app_localizations.dart';
 import '../../../app/theme.dart';
 import '../../place_cards/place_card_primitives.dart';
 import '../../place_corrections/place_correction_flags.dart';
+import '../../promotions/promotion.dart';
+import '../../promotions/promotion_section.dart';
 import 'restaurant_detail_view_model.dart';
 
 class RestaurantDetailCallbacks {
@@ -64,6 +66,7 @@ class CanonicalRestaurantDetailScreen extends StatelessWidget {
     this.engagement,
     this.onOpenMenuItemComments,
     this.communityReviews,
+    this.promotions = const [],
   });
 
   final RestaurantDetailViewModel vm;
@@ -85,6 +88,11 @@ class CanonicalRestaurantDetailScreen extends StatelessWidget {
   /// This screen stays presentational and never queries reviews itself.
   final CommunityReviewsData? communityReviews;
 
+  /// WAVE 4 — active public offers, already filtered server-side by the server
+  /// clock and by the viewer's plan. Empty (the default) renders nothing, so a
+  /// restaurant without an offer keeps exactly the page it has today.
+  final List<Promotion> promotions;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -95,6 +103,7 @@ class CanonicalRestaurantDetailScreen extends StatelessWidget {
         engagement: engagement,
         onOpenMenuItemComments: onOpenMenuItemComments,
         communityReviews: communityReviews,
+        promotions: promotions,
       ),
     );
   }
@@ -108,6 +117,7 @@ class CanonicalRestaurantDetailBody extends StatefulWidget {
     this.engagement,
     this.onOpenMenuItemComments,
     this.communityReviews,
+    this.promotions = const [],
   });
 
   final RestaurantDetailViewModel vm;
@@ -121,6 +131,9 @@ class CanonicalRestaurantDetailBody extends StatefulWidget {
 
   /// See [CanonicalRestaurantDetailScreen.communityReviews].
   final CommunityReviewsData? communityReviews;
+
+  /// See [CanonicalRestaurantDetailScreen.promotions].
+  final List<Promotion> promotions;
 
   @override
   State<CanonicalRestaurantDetailBody> createState() =>
@@ -239,6 +252,10 @@ class _CanonicalRestaurantDetailBodyState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // WAVE 4 — live offers sit above the static summary because they
+            // are the most perishable thing on the page. Renders nothing when
+            // there is no offer.
+            PromotionSection(promotions: widget.promotions),
             // Restaurant INFORMATION only — community reviews live in their
             // own tab so the two are never visually conflated.
             if (_hasSummary)

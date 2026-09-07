@@ -5,6 +5,7 @@ import 'correction_strings.dart';
 import 'app_check_error_strings.dart';
 import 'correction_error_strings.dart';
 import 'restaurant_detail_strings.dart';
+import 'promotion_strings.dart';
 import 'sport_strings_en.dart';
 import 'sport_strings_ms.dart';
 import 'sport_strings_ta.dart';
@@ -139,6 +140,8 @@ class AppLocalizations {
       ...kPlaceCardStringsMs,
       ...kCorrectionStringsMs,
       ...kRestaurantDetailStringsMs,
+      // WAVE 4 — Commercial Tools.
+      ...kPromotionStringsMs,
       ...kCorrectionErrorStringsMs,
       ...kAppCheckErrorStringsMs,
       'advancedPrefsTitle': 'Keutamaan lanjut',
@@ -1544,6 +1547,8 @@ class AppLocalizations {
       ...kPlaceCardStringsEn,
       ...kCorrectionStringsEn,
       ...kRestaurantDetailStringsEn,
+      // WAVE 4 — Commercial Tools.
+      ...kPromotionStringsEn,
       ...kCorrectionErrorStringsEn,
       ...kAppCheckErrorStringsEn,
       'advancedPrefsTitle': 'Advanced preferences',
@@ -2914,6 +2919,8 @@ class AppLocalizations {
       ...kPlaceCardStringsZh,
       ...kCorrectionStringsZh,
       ...kRestaurantDetailStringsZh,
+      // WAVE 4 — Commercial Tools.
+      ...kPromotionStringsZh,
       ...kCorrectionErrorStringsZh,
       ...kAppCheckErrorStringsZh,
       'advancedPrefsTitle': '高级偏好',
@@ -4211,6 +4218,8 @@ class AppLocalizations {
       ...kPlaceCardStringsTa,
       ...kCorrectionStringsTa,
       ...kRestaurantDetailStringsTa,
+      // WAVE 4 — Commercial Tools.
+      ...kPromotionStringsTa,
       ...kCorrectionErrorStringsTa,
       ...kAppCheckErrorStringsTa,
       'advancedPrefsTitle': 'மேம்பட்ட விருப்பங்கள்',

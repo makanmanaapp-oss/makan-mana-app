@@ -30,6 +30,7 @@ import 'canonical/restaurant_profile_v2_adapter.dart';
 import '../place_corrections/correction_providers.dart';
 import '../place_corrections/correction_snapshot.dart';
 import '../place_corrections/report_entry_sheet.dart';
+import '../promotions/promotion.dart';
 import 'canonical/restaurant_detail_flags.dart';
 import 'engagement/menu_comment_sheet.dart';
 import 'engagement/restaurant_follow_button.dart';
@@ -66,6 +67,11 @@ class _RestaurantDetailScreenState
   /// server-side and we keep what it actually returned.
   String? _resolvedCanonicalPlaceId;
 
+  /// WAVE 4 — active public offers returned alongside the profile. The
+  /// server already applied the window and the viewer's eligibility, so
+  /// this is rendered as-is and never re-filtered on the device clock.
+  List<Promotion> _promotions = const [];
+
   /// GATE 3F — resolve IDENTITY and CONTENT independently.
   ///
   /// The canonical id is recorded whenever the SERVER proves it, even when the
@@ -77,6 +83,7 @@ class _RestaurantDetailScreenState
     final lookup = await RestaurantProfileV2Service().lookup(requestedPlaceId);
     _resolvedCanonicalPlaceId =
         lookup.hasCanonicalIdentity ? lookup.canonicalPlaceId : null;
+    _promotions = lookup.promotions;
     final profile = lookup.profile;
     if (profile == null) return null;
     return restaurantDetailFromPublicProfile(profile);
@@ -87,6 +94,7 @@ class _RestaurantDetailScreenState
         _canonicalProfilePlaceId != placeId) {
       _canonicalProfilePlaceId = placeId;
       _resolvedCanonicalPlaceId = null;
+      _promotions = const [];
       _canonicalProfileFuture = _loadCanonicalProfile(placeId);
     }
     return _canonicalProfileFuture!;
@@ -273,6 +281,11 @@ class _RestaurantDetailScreenState
           return diag(
             CanonicalRestaurantDetailScreen(
               vm: vm,
+              // WAVE 4 — only once the lookup finished, so a half-loaded page
+              // never flashes an offer it has not actually confirmed.
+              promotions: snapshot.connectionState == ConnectionState.done
+                  ? _promotions
+                  : const [],
               engagement: canonicalId == null || canonicalId.isEmpty
                   ? null
                   : RestaurantFollowButton(
