@@ -32,15 +32,21 @@ void main() {
       // Notifikasi berkaitan grup TANPA groupId dahulunya jatuh ke /group,
       // iaitu PlaceholderScreen. Ia mesti mendarat di inbox tab Groups —
       // sandaran sama yang sudah terbukti untuk group_invite.
-      for (final f in [
-        'lib/core/notifications/notification_destination.dart',
-        'lib/features/notifications/notification_screen.dart',
-      ]) {
-        final body = code(read(f));
-        expect(body.contains('RoutePaths.group'), isFalse,
-            reason: '$f masih jatuh ke laluan placeholder');
-        expect(body, contains("'/social?tab=groups'"));
-      }
+      //
+      // Selepas rekonsiliasi UI, skrin Activity tidak lagi menyimpan peta
+      // laluannya sendiri: ia mendelegasi kepada resolver kongsi. Jadi
+      // sandaran itu diuji DI MANA ia hidup, dan skrin diuji kerana ia
+      // TIDAK boleh memintas resolver.
+      final resolver = code(read('lib/core/notifications/notification_destination.dart'));
+      expect(resolver.contains('RoutePaths.group'), isFalse,
+          reason: 'resolver masih jatuh ke laluan placeholder');
+      expect(resolver, contains("'/social?tab=groups'"));
+
+      final screen = code(read('lib/features/notifications/notification_screen.dart'));
+      expect(screen.contains('RoutePaths.group'), isFalse,
+          reason: 'skrin masih jatuh ke laluan placeholder');
+      expect(screen, contains('NotificationDestinationResolver.resolve('),
+          reason: 'skrin mesti guna resolver kongsi, bukan peta sendiri');
     });
 
     test('3. deep link /group lama mendarat di tempat berguna', () {
@@ -74,9 +80,28 @@ void main() {
 
     test('6. Food Coach dijenamakan MakanMana', () {
       final en = AppLocalizations.valuesForTesting(const Locale('en'));
-      expect(en['proCoachTitle'], 'MakanMana Food Coach');
-      expect(en['proBenefitFoodCoach'], 'MakanMana Food Coach');
-      expect(en['shareCardSuggestion'], 'MakanMana Suggestion');
+      // Salinan diluluskan memendekkan "MakanMana Food Coach" -> "MakanMana
+      // Coach" dan "Suggestion" -> "Recommendation". Gerbang ini menjaga
+      // NIATnya: permukaan pengguna berjenama MakanMana dan tidak pernah
+      // mendedahkan "AI". Nilai tepat kekal dikunci supaya salinan tidak
+      // menyimpang tanpa disedari.
+      expect(en['proCoachTitle'], 'MakanMana Coach');
+      expect(en['proBenefitFoodCoach'], 'MakanMana Coach');
+      expect(en['shareCardSuggestion'], 'MakanMana Recommendation');
+      for (final key in const [
+        'proCoachTitle',
+        'proBenefitFoodCoach',
+        'shareCardSuggestion',
+      ]) {
+        for (final code in const ['ms', 'en', 'zh', 'ta']) {
+          final value = AppLocalizations.valuesForTesting(Locale(code))[key]!;
+          // Susunan perkataan berbeza mengikut bahasa ('Cadangan
+          // MakanMana'), jadi yang dikuatkuasakan ialah kehadiran jenama,
+          // bukan awalan. Kebocoran "AI" sudah dilindungi oleh ujian 5.
+          expect(value, contains('MakanMana'),
+              reason: '$code $key mesti berjenama MakanMana');
+        }
+      }
     });
   });
 

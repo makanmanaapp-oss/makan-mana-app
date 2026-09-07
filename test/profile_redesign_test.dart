@@ -33,6 +33,7 @@ const _freeDoc = <String, dynamic>{
 // berhenti memaparkan badge "Pro Trial" dan ujian gagal atas sebab kalendar,
 // bukan atas sebab regresi produk.
 final _trialExpiry = DateTime.now().add(const Duration(days: 30));
+
 final _trialDoc = <String, dynamic>{
   'displayName': 'Nadia Rahman',
   'username': 'nadiarahman',
@@ -186,6 +187,15 @@ void main() {
           doc: _freeDoc,
           plan: 'free'),
     );
+    // Menu kini dikumpul dalam seksyen bersurih — baris Bahasa berada dalam
+    // seksyen "Account & Settings" di bawah lipatan pada ListView malas, jadi
+    // tatal sehingga baris itu dibina & kelihatan sebelum diketik.
+    await tester.scrollUntilVisible(
+      find.text('Language'),
+      300,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Language'));
     await tester.pumpAndSettle();
     // Dialog bahasa muncul (fungsi tukar bahasa kekal).

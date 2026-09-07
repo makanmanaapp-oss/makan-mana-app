@@ -9,6 +9,7 @@
 // Jana/kemas kini imej: flutter test --update-goldens \
 //   test/home_redesign_viewport_test.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -45,8 +46,12 @@ PlaceSummary _place(String id, String name,
     );
 
 final _hero = HomeSuggestion(
-  primary: _place('p1', 'Warung Pak Din', rating: 4.6, dist: 0.8, match: 92,
-      cuisine: 'Nasi Lemak', price: r'RM7–12'),
+  primary: _place('p1', 'Warung Pak Din',
+      rating: 4.6,
+      dist: 0.8,
+      match: 92,
+      cuisine: 'Nasi Lemak',
+      price: r'RM7–12'),
   alternatives: [_place('p2', 'Kedai Kopi Aman')],
   source: 'google_places',
 );
@@ -59,10 +64,14 @@ final _nearby = [
 ];
 
 const _profiles = [
+  (label: 'small320_s10', size: Size(320, 720), scale: 1.0),
+  (label: 'small320_s12', size: Size(320, 720), scale: 1.20),
   (label: 'small360_s10', size: Size(360, 780), scale: 1.0),
   (label: 'normal412_s10', size: Size(412, 892), scale: 1.0),
   (label: 'normal412_s13', size: Size(412, 892), scale: 1.30),
   (label: 'small360_s13', size: Size(360, 780), scale: 1.30),
+  (label: 'large430_s10', size: Size(430, 932), scale: 1.0),
+  (label: 'large430_s12', size: Size(430, 932), scale: 1.20),
 ];
 
 Widget _harness({
@@ -78,8 +87,11 @@ Widget _harness({
       homeSuggestionProvider.overrideWith((ref) async => _hero),
       nearbyPlacesProvider.overrideWith((ref) async => _nearby),
       dailyUsageProvider.overrideWith((ref) async => const DailyUsage(
-          userId: 'test', date: '20260807', plan: 'free',
-          spinUsed: 1, spinLimit: 3)),
+          userId: 'test',
+          date: '20260807',
+          plan: 'free',
+          spinUsed: 1,
+          spinLimit: 3)),
       unreadNotificationCountProvider.overrideWithValue(3),
     ],
     child: MaterialApp(
@@ -112,6 +124,21 @@ void main() {
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
     prefs = await SharedPreferences.getInstance();
+    // Stub geolocator so the real HomeScreen location probe reports "service
+    // disabled" (its normal location-unavailable path) instead of throwing an
+    // async MissingPluginException that trips takeException() in the plugin-less
+    // test env. Rendered output (default-location fallback) is unchanged.
+    TestWidgetsFlutterBinding.ensureInitialized();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+      const MethodChannel('flutter.baseflow.com/geolocator'),
+      (call) async {
+        if (call.method == 'isLocationServiceEnabled') return false;
+        if (call.method == 'checkPermission') return 0; // denied
+        if (call.method == 'requestPermission') return 0; // denied
+        return null;
+      },
+    );
   });
 
   for (final p in _profiles) {
@@ -132,7 +159,6 @@ void main() {
             prefs: prefs,
           ),
         );
-
         // Tiada overflow / pengecualian susun-atur pada mana-mana konfigurasi.
         expect(tester.takeException(), isNull, reason: 'overflow pada $tag');
 
@@ -179,8 +205,7 @@ void main() {
   });
 
   // Regresi khusus: skala teks 1.30 pada 360dp tidak melimpah selepas skrol.
-  testWidgets('Home redesign sweep-scroll 360@1.3 no overflow',
-      (tester) async {
+  testWidgets('Home redesign sweep-scroll 360@1.3 no overflow', (tester) async {
     const size = Size(360, 780);
     await tester.binding.setSurfaceSize(size);
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -190,8 +215,7 @@ void main() {
           language: 'ms', size: size, scale: 1.30, dark: false, prefs: prefs),
     );
     for (var i = 0; i < 6; i++) {
-      await tester.drag(
-          find.byType(Scrollable).first, const Offset(0, -500),
+      await tester.drag(find.byType(Scrollable).first, const Offset(0, -500),
           warnIfMissed: false);
       await tester.pump(const Duration(milliseconds: 60));
       expect(tester.takeException(), isNull, reason: 'overflow langkah $i');

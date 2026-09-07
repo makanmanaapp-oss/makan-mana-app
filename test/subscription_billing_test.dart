@@ -71,10 +71,10 @@ void main() {
           isTrue,
           reason: 'acknowledge mesti digating pada verify server');
       expect(purchase.contains('localCompletionAllowed'), isTrue,
-          reason: 'SDK queue hanya lengkap selepas backend menyatakan selamat.');
+          reason:
+              'SDK queue hanya lengkap selepas backend menyatakan selamat.');
       expect(purchase.contains('GooglePlayPurchaseParam'), isTrue);
-      expect(purchase.contains('applicationUserName: opaqueAccountId'),
-          isTrue);
+      expect(purchase.contains('applicationUserName: opaqueAccountId'), isTrue);
     });
     test('exposes a results stream for honest UX', () {
       expect(purchase.contains('Stream<PurchaseResult> get results'), isTrue);
@@ -92,8 +92,7 @@ void main() {
     });
     test('restore calls restorePurchases', () {
       expect(purchase.contains('restorePurchases('), isTrue);
-      expect(purchase.contains('applicationUserName: opaqueAccountId'),
-          isTrue);
+      expect(purchase.contains('applicationUserName: opaqueAccountId'), isTrue);
     });
   });
 
@@ -122,7 +121,8 @@ void main() {
       expect(rules.contains("'subscriptionExpiryMillis'"), isTrue);
       expect(rules.contains("'subscriptionAutoRenewing'"), isTrue);
     });
-    test('new server-only billing collections remain under the catch-all deny', () {
+    test('new server-only billing collections remain under the catch-all deny',
+        () {
       expect(rules.contains('match /{document=**}'), isTrue);
       expect(rules.contains('allow read, write: if false;'), isTrue);
     });

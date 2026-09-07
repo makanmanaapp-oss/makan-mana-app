@@ -12,20 +12,38 @@ import 'package:makan_mana/core/services/cloud_suggestion_service.dart';
 import 'package:makan_mana/core/services/location_service.dart';
 import 'package:makan_mana/features/explore/explore_pagination_controller.dart';
 import 'package:makan_mana/models/place_summary.dart';
+import 'package:makan_mana/repositories/auth_repository.dart';
 
 /// LOCATION CONSISTENCY HOTFIX — Home, Explore & Spin mesti guna lat/lng/radius
 /// yang SAMA dari satu konteks authoritative. Menghalang regresi Explore=KL.
 
 PlaceSummary _p(String id) => PlaceSummary(
-      placeId: id, name: id, cuisine: 'cafe', emoji: '🍽️',
-      rating: 4.0, userRatingCount: 10, priceLevel: 2, distanceKm: 1,
-      isOpen: true, address: 'x', matchScore: 50, matchReasonKeys: const [],
+      placeId: id,
+      name: id,
+      cuisine: 'cafe',
+      emoji: '🍽️',
+      rating: 4.0,
+      userRatingCount: 10,
+      priceLevel: 2,
+      distanceKm: 1,
+      isOpen: true,
+      address: 'x',
+      matchScore: 50,
+      matchReasonKeys: const [],
     );
 
 Position _pos(double lat, double lng) => Position(
-      latitude: lat, longitude: lng, timestamp: DateTime(2026, 1, 1),
-      accuracy: 5, altitude: 0, altitudeAccuracy: 0, heading: 0,
-      headingAccuracy: 0, speed: 0, speedAccuracy: 0, isMocked: true,
+      latitude: lat,
+      longitude: lng,
+      timestamp: DateTime(2026, 1, 1),
+      accuracy: 5,
+      altitude: 0,
+      altitudeAccuracy: 0,
+      heading: 0,
+      headingAccuracy: 0,
+      speed: 0,
+      speedAccuracy: 0,
+      isMocked: true,
     );
 
 /// LocationService boleh kawal (tiada Geolocator sebenar dalam ujian).
@@ -33,7 +51,7 @@ class _FakeLocation extends LocationService {
   _FakeLocation(this.next);
   Position? next;
   @override
-  Future<Position?> getPosition() async => next;
+  Future<Position?> getPosition({String? uid}) async => next;
 }
 
 /// Merekod lat/lng/radius yang DIHANTAR oleh Home (getNearbyPlaces) dan
@@ -45,20 +63,32 @@ class _RecordingService extends CloudSuggestionService {
 
   @override
   Future<List<PlaceSummary>?> getNearbyPlaces({
-    double? lat, double? lng, int? radius, String? languageCode,
+    double? lat,
+    double? lng,
+    int? radius,
+    String? languageCode,
   }) async {
-    homeLat = lat; homeLng = lng; homeRadius = radius;
+    homeLat = lat;
+    homeLng = lng;
+    homeRadius = radius;
     return [_p('h1')];
   }
 
   @override
   Future<PlacesPage?> getNearbyPlacesPage({
-    double? lat, double? lng, int? radius, String? languageCode, int cursor = 0,
+    double? lat,
+    double? lng,
+    int? radius,
+    String? languageCode,
+    int cursor = 0,
   }) async {
-    exploreLat = lat; exploreLng = lng; exploreRadius = radius;
+    exploreLat = lat;
+    exploreLng = lng;
+    exploreRadius = radius;
     return PlacesPage(
       places: List.generate(12, (i) => _p('e$i')),
-      nextCursor: 12, endOfResults: false,
+      nextCursor: 12,
+      endOfResults: false,
     );
   }
 }
@@ -68,6 +98,11 @@ late SharedPreferences _prefs;
 ProviderContainer _container(_RecordingService rec, LocationService loc) =>
     ProviderContainer(overrides: [
       firebaseReadyProvider.overrideWith((ref) => true),
+      // Cloud suggestions are enabled for this contract test, but Firebase
+      // Auth is not initialised by the test binding. The context only needs
+      // an anonymous UID here, so keep its AuthRepository local and inert.
+      authRepositoryProvider
+          .overrideWithValue(AuthRepository(firebaseReady: false)),
       sharedPreferencesProvider.overrideWithValue(_prefs),
       cloudSuggestionServiceProvider.overrideWithValue(rec),
       locationServiceProvider.overrideWithValue(loc),
@@ -145,15 +180,21 @@ void main() {
 
   test('stale KL cacheKey is NOT reused for another area', () {
     const kl = LocationRequestContext(
-        lat: 3.1478, lng: 101.6953, radiusMeters: 3000,
+        lat: 3.1478,
+        lng: 101.6953,
+        radiusMeters: 3000,
         locationGrid: '3.148,101.695');
     const penang = LocationRequestContext(
-        lat: 5.4141, lng: 100.3288, radiusMeters: 3000,
+        lat: 5.4141,
+        lng: 100.3288,
+        radiusMeters: 3000,
         locationGrid: '5.414,100.329');
     expect(kl.cacheKey, isNot(penang.cacheKey));
     // Radius berbeza pun tukar kunci (pool berubah).
     const klWide = LocationRequestContext(
-        lat: 3.1478, lng: 101.6953, radiusMeters: 8000,
+        lat: 3.1478,
+        lng: 101.6953,
+        radiusMeters: 8000,
         locationGrid: '3.148,101.695');
     expect(kl.cacheKey, isNot(klWide.cacheKey));
   });
@@ -181,9 +222,11 @@ void main() {
     addTearDown(c.dispose);
     final n = c.read(makanManaUserContextProvider.notifier);
     await n.updateLocation(3.1478, 101.6953, locationGrid: '3.148,101.695');
-    final p1 = c.read(makanManaUserContextProvider).buildSuggestionRequestBase();
+    final p1 =
+        c.read(makanManaUserContextProvider).buildSuggestionRequestBase();
     await n.updateLocation(5.4141, 100.3288, locationGrid: '5.414,100.329');
-    final p2 = c.read(makanManaUserContextProvider).buildSuggestionRequestBase();
+    final p2 =
+        c.read(makanManaUserContextProvider).buildSuggestionRequestBase();
     expect(p1['lat'], 3.1478);
     expect(p2['lat'], 5.4141);
     expect(p1['lat'], isNot(p2['lat']));

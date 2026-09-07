@@ -472,7 +472,7 @@ void main() {
         reason: 'pengarang kekal nampak siaran sendiri yang disorok');
     // status TIADA (dokumen legasi) = gagal-tertutup untuk bukan-pemilik.
     expect(canReadPost(post('public', status: null), stranger), isFalse,
-        reason: 'tiada status → ditolak (backfill menormalkan sebelum deploy)');
+        reason: 'tiada status -> ditolak (backfill menormalkan sebelum deploy)');
     expect(canReadPost(post('public', status: null), owner), isTrue);
     // status tidak dikenali = gagal-tertutup.
     expect(canReadPost(post('public', status: 'quarantined'), stranger), isFalse);
