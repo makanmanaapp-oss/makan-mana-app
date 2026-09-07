@@ -142,10 +142,9 @@ class _GroupHubScreenState extends ConsumerState<GroupHubScreen>
         backgroundColor: AppColors.threadsBg,
         foregroundColor: AppColors.threadsText,
         surfaceTintColor: Colors.transparent,
-        title: Text('${group.emoji} ${group.name}',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: AppColors.threadsText)),
+        // GROUP REDESIGN (Phase B): nama grup kini dipapar penuh (sehingga 2
+        // baris, kontras penuh) dalam _GroupHeader terbuka di bawah — elak
+        // pendua pada bar & elak potongan nama panjang.
         actions: [
           IconButton(
             tooltip: l.t('shareStatus'),
@@ -224,98 +223,115 @@ class _GroupHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    return Container(
-      margin: const EdgeInsets.fromLTRB(16, 4, 16, 10),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFF2A1414), Color(0xFF1B1414)],
-        ),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.threadsBorder),
-      ),
+    // GROUP REDESIGN (Phase B): header TERBUKA — bukan lagi kad hero gelap besar
+    // bergradien+berbingkai. Identiti duduk terus atas kanvas supaya nama grup
+    // guna kontras penuh (threadsText), dibenarkan 2 baris (tiada potong), dan
+    // skrin terasa hidup/komuniti, bukan dashboard-card.
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 2, 16, 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              // HOTFIX 4.5C: identiti imej/emoji sama seperti kad — resolver
-              // signed-GET (GroupAvatarResolved).
+              // HOTFIX 4.5C: identiti imej/emoji — resolver signed-GET.
               GroupAvatarResolved(
-                  groupId: group.id, emoji: group.emoji, size: 46),
-              const SizedBox(width: 12),
+                  groupId: group.id, emoji: group.emoji, size: 54),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   children: [
+                    // NAMA GRUP — item penerimaan KERAS: kontras penuh, sehingga
+                    // 2 baris, tiada potongan gelap-atas-gelap.
                     Text(group.name,
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                             color: AppColors.threadsText,
                             fontWeight: FontWeight.w800,
-                            fontSize: 16)),
-                    if (group.description.isNotEmpty)
-                      Text(group.description,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              color: AppColors.threadsMuted,
-                              fontSize: 12.5)),
+                            fontSize: 20,
+                            height: 1.15)),
+                    const SizedBox(height: 6),
+                    // Metadata sekunder yang bernafas: kiraan ahli = teks biasa,
+                    // privasi = lencana kongsi, peranan = chip (aksen OWNER
+                    // sahaja), amaran undian/bil hanya bila > 0 (chip berguna).
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text('${group.memberCount} ${l.t('membersLabel')}',
+                            style: TextStyle(
+                                color: AppColors.threadsMuted,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600)),
+                        // FIX 4 Part 10: privasi = ikon globe/lock + label.
+                        GroupPrivacyBadge(
+                            isPrivate: group.privacy == 'private'),
+                        // FIX 4 Part 11: aksen jenama untuk OWNER sahaja.
+                        _chip(
+                          switch (role) {
+                            'owner' => l.t('roleOwner'),
+                            'admin' => l.t('roleAdmin'),
+                            'viewer' => l.t('roleViewer'),
+                            _ => l.t('roleMember'),
+                          },
+                          highlight: role == 'owner',
+                        ),
+                        if (stats.activePollCount > 0)
+                          _chip(
+                              '${stats.activePollCount} '
+                              '${l.t('activePollsLabel')}',
+                              highlight: true),
+                        if (stats.unpaidBillCount > 0)
+                          _chip(
+                              '${stats.unpaidBillCount} '
+                              '${l.t('unpaidBillsLabel')}',
+                              highlight: true),
+                      ],
+                    ),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          // Chips info: ahli · privasi · peranan saya.
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: [
-              _chip('${group.memberCount} ${l.t('membersLabel')}'),
-              // FIX 4 Part 10: privasi = ikon globe/lock + label (bukan teks
-              // kosong / emoji).
-              GroupPrivacyBadge(isPrivate: group.privacy == 'private'),
-              // FIX 4 Part 11: aksen jenama untuk OWNER sahaja; admin restrained.
-              _chip(
-                switch (role) {
-                  'owner' => l.t('roleOwner'),
-                  'admin' => l.t('roleAdmin'),
-                  'viewer' => l.t('roleViewer'),
-                  _ => l.t('roleMember'),
-                },
-                highlight: role == 'owner',
-              ),
-              if (stats.activePollCount > 0)
-                _chip('${stats.activePollCount} ${l.t('activePollsLabel')}',
-                    highlight: true),
-              if (stats.unpaidBillCount > 0)
-                _chip(
-                    '${stats.unpaidBillCount} ${l.t('unpaidBillsLabel')}',
-                    highlight: true),
-            ],
-          ),
-          const SizedBox(height: 6),
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Text(
-              stats.latestActivityText.isNotEmpty
-                  ? stats.latestActivityText
-                  : l.t('noLatestActivity'),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                  color: AppColors.threadsMuted,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600),
-            ),
-          ),
-          if (canPost) ...[
+          if (group.description.isNotEmpty) ...[
             const SizedBox(height: 10),
+            Text(group.description,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    color: AppColors.threadsMuted,
+                    fontSize: 13,
+                    height: 1.35)),
+          ],
+          // Konteks aktiviti terkini dipapar RINGAN (bukan kad hero khas).
+          if (stats.latestActivityText.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Icon(Icons.bolt_outlined,
+                    size: 14, color: AppColors.threadsMuted),
+                const SizedBox(width: 5),
+                Expanded(
+                  child: Text(stats.latestActivityText,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          color: AppColors.threadsMuted,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600)),
+                ),
+              ],
+            ),
+          ],
+          // Aksi cipta teras rapat dengan identiti — chip padat, bukan 4 butang
+          // gergasi berbingkai, bukan dalam kad gelap.
+          if (canPost) ...[
+            const SizedBox(height: 14),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
@@ -638,47 +654,25 @@ class _GroupFeedTab extends ConsumerWidget {
                     style: TextStyle(
                         color: AppColors.threadsMuted,
                         fontWeight: FontWeight.w600)),
+                // PART 9: keadaan kosong RINGAN — JANGAN ulang 4 butang cipta
+                // (aksi Post/Check-in/Undian/Bil sudah ada dalam rel header).
+                // Satu CTA utama sahaja supaya tidak berulang & tidak berat.
                 if (canPost) ...[
+                  const SizedBox(height: 8),
+                  Text(l.t('groupFeedEmptyHint'),
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          color: AppColors.threadsMuted, fontSize: 12.5)),
                   const SizedBox(height: 16),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    alignment: WrapAlignment.center,
-                    children: [
-                      for (final (icon, label, action) in [
-                        (Icons.edit_outlined, l.t('typePost'), 'post'),
-                        (
-                          Icons.place_outlined,
-                          l.t('typeCheckin'),
-                          'checkin'
-                        ),
-                        (Icons.poll_outlined, l.t('typePoll'), 'poll'),
-                        (
-                          Icons.receipt_long_outlined,
-                          l.t('typeBill'),
-                          'bill'
-                        ),
-                      ])
-                        OutlinedButton(
-                          onPressed: () => onQuickAction(action),
-                          style: OutlinedButton.styleFrom(
-                            minimumSize: const Size(90, 40),
-                            foregroundColor: AppColors.threadsText,
-                            side: BorderSide(
-                                color: AppColors.threadsBorder),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(icon, size: 15),
-                              const SizedBox(width: 5),
-                              Text(label,
-                                  style:
-                                      const TextStyle(fontSize: 12.5)),
-                            ],
-                          ),
-                        ),
-                    ],
+                  FilledButton.icon(
+                    onPressed: () => onQuickAction('post'),
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    label: Text(l.t('typePost')),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primaryRed,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(150, 46),
+                    ),
                   ),
                 ],
               ],

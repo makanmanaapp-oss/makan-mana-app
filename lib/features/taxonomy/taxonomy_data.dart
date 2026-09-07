@@ -122,7 +122,7 @@ const List<TaxGroup> kMoodTaxonomy = [
   ]),
   TaxGroup('Pro AI', [
     TaxItem('dietGoal', 'Diet Goal', planLevel: 'pro'),
-    TaxItem('aiFoodCoach', 'AI Food Coach', planLevel: 'pro'),
+    TaxItem('aiFoodCoach', 'MakanMana Coach', planLevel: 'pro'),
     TaxItem('calorieSmart', 'Calorie Smart', planLevel: 'pro'),
     TaxItem('budgetCoach', 'Budget Coach', planLevel: 'pro'),
     TaxItem('mealPlan', 'Meal Plan', planLevel: 'pro'),

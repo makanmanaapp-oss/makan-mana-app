@@ -66,8 +66,7 @@ class _CommentSheetState extends ConsumerState<_CommentSheet> {
           .doc(widget.postId)
           .get()
           .timeout(const Duration(seconds: 10));
-      final parentVis =
-          parentSnap.data()?['visibility'] as String? ?? 'public';
+      final parentVis = parentSnap.data()?['visibility'] as String? ?? 'public';
       await FirebaseFirestore.instance
           .collection('feed_posts')
           .doc(widget.postId)
@@ -135,9 +134,9 @@ class _CommentSheetState extends ConsumerState<_CommentSheet> {
   }
 
   String _timeAgo(BuildContext context, dynamic ts, {bool pending = false}) {
-    // Threads Fix 1: guna penghurai jujur bersama (post lama kekal lama).
+    final clock = ref.watch(socialClockProvider).valueOrNull;
     return relativePostTime(AppLocalizations.of(context), ts,
-        pending: pending);
+        pending: pending, now: clock);
   }
 
   @override
@@ -168,10 +167,9 @@ class _CommentSheetState extends ConsumerState<_CommentSheet> {
         const Divider(height: 1, color: AppColors.softBorder),
         Expanded(
           child: commentsAsync.when(
-            loading: () =>
-                const Center(child: CircularProgressIndicator()),
-            error: (e, st) => Center(
-                child: Text('😕', style: const TextStyle(fontSize: 30))),
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, st) =>
+                Center(child: Text('😕', style: const TextStyle(fontSize: 30))),
             data: (comments) {
               if (comments.isEmpty) {
                 return Center(
@@ -204,34 +202,29 @@ class _CommentSheetState extends ConsumerState<_CommentSheet> {
                               ref,
                               AppLocalizations.of(context),
                               uid: c.data['authorUid'] as String? ?? '',
-                              snapshotName:
-                                  c.data['displayName'] as String?,
-                              snapshotPhotoUrl:
-                                  c.data['photoUrl'] as String?,
-                              snapshotPreset:
-                                  c.data['avatarPreset'] as String?,
+                              snapshotName: c.data['displayName'] as String?,
+                              snapshotPhotoUrl: c.data['photoUrl'] as String?,
+                              snapshotPreset: c.data['avatarPreset'] as String?,
                             );
                             return MakanAvatar(
                               radius: 16,
                               photoUrl: ca.photoUrl,
                               presetId: ca.avatarPreset,
                               displayName: ca.displayName,
-                              onTap: () =>
-                                  _openCommenter(context, c.data),
+                              onTap: () => _openCommenter(context, c.data),
                             );
                           }),
                           const SizedBox(width: 10),
                           Expanded(
                             child: Column(
-                              crossAxisAlignment:
-                                  CrossAxisAlignment.start,
+                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Row(
                                   children: [
                                     Expanded(
                                       child: GestureDetector(
-                                        onTap: () => _openCommenter(
-                                            context, c.data),
+                                        onTap: () =>
+                                            _openCommenter(context, c.data),
                                         child: Text(
                                           resolveAuthorIdentity(
                                             ref,
@@ -239,9 +232,8 @@ class _CommentSheetState extends ConsumerState<_CommentSheet> {
                                             uid: c.data['authorUid']
                                                     as String? ??
                                                 '',
-                                            snapshotName:
-                                                c.data['displayName']
-                                                    as String?,
+                                            snapshotName: c.data['displayName']
+                                                as String?,
                                           ).displayName,
                                           style: TextStyle(
                                             fontWeight: FontWeight.w800,
@@ -249,13 +241,13 @@ class _CommentSheetState extends ConsumerState<_CommentSheet> {
                                             color: AppColors.threadsText,
                                           ),
                                           maxLines: 1,
-                                          overflow:
-                                              TextOverflow.ellipsis,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
                                       ),
                                     ),
                                     Text(
-                                      _timeAgo(context, c.data['createdAt'],
+                                      _timeAgo(context,
+                                          resolvePostCreatedAt(c.data).value,
                                           pending: c.pending),
                                       style: TextStyle(
                                         color: AppColors.threadsMuted,
@@ -305,8 +297,7 @@ class _CommentSheetState extends ConsumerState<_CommentSheet> {
                   style: TextStyle(color: AppColors.threadsText),
                   decoration: InputDecoration(
                     hintText: l.t('commentHint'),
-                    hintStyle:
-                        TextStyle(color: AppColors.threadsMuted),
+                    hintStyle: TextStyle(color: AppColors.threadsMuted),
                     counterText: '',
                     isDense: true,
                     filled: true,
@@ -326,8 +317,7 @@ class _CommentSheetState extends ConsumerState<_CommentSheet> {
                     ? const SizedBox(
                         height: 18,
                         width: 18,
-                        child:
-                            CircularProgressIndicator(strokeWidth: 2),
+                        child: CircularProgressIndicator(strokeWidth: 2),
                       )
                     : const Icon(Icons.send_rounded,
                         color: AppColors.primaryRed),

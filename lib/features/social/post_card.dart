@@ -8,9 +8,12 @@ import '../../core/constants/app_colors.dart';
 import '../../core/events/event_types.dart';
 import '../../core/providers.dart';
 import '../../core/widgets/makan_avatar.dart';
+import '../../models/place_summary.dart';
 import '../groups/bill_attach.dart';
 import 'checkin_utils.dart';
+import 'checkin_place.dart';
 import 'comment_sheet.dart';
+import 'feed_poll_card.dart';
 import 'live_identity.dart';
 import 'post_media.dart';
 import 'post_media_carousel.dart';
@@ -49,14 +52,46 @@ class _PostCardState extends ConsumerState<PostCard> {
   }
 
   String _timeAgo(BuildContext context) {
-    // Threads Fix 1: cap masa ASAL autoritatif (SUMBER tunggal). Post lama
-    // TIDAK jadi "baru tadi"; hanya post baharu (pending) yang "baru tadi".
+    final clock = ref.watch(socialClockProvider).valueOrNull;
+    final resolved = resolvePostCreatedAt(data);
     return relativePostTime(
       AppLocalizations.of(context),
-      data['createdAt'],
+      resolved.value,
       pending: widget.post.pending,
+      now: clock,
     );
   }
+
+  Future<void> _showExactTimestamp(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final resolved = resolvePostCreatedAt(data);
+    final exact = exactPostPublicationTime(l, resolved.value);
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l.t('socialPublicationTime')),
+        content: Text(exact ?? l.t('timeUnavailable')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(l.t('closeAction')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _timestampLabel(BuildContext context) => InkWell(
+        onTap: () => _showExactTimestamp(context),
+        borderRadius: BorderRadius.circular(4),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+          child: Text(
+            _timeAgo(context),
+            style: TextStyle(color: AppColors.threadsMuted, fontSize: 13),
+          ),
+        ),
+      );
 
   Future<void> _toggleLike() async {
     final uid = ref.read(authRepositoryProvider).currentUser?.uid ?? '';
@@ -70,8 +105,8 @@ class _PostCardState extends ConsumerState<PostCard> {
     ref.read(eventLoggerProvider).logEvent(
           currentlyLiked ? EventType.postUnliked : EventType.postLiked,
           sourceScreen: 'feed',
-          metadata: postEventMetadata(widget.post.id, data,
-              sourceScreen: 'feed'),
+          metadata:
+              postEventMetadata(widget.post.id, data, sourceScreen: 'feed'),
         );
     try {
       await ref.read(socialServiceProvider).toggleLike(widget.post.id);
@@ -89,12 +124,11 @@ class _PostCardState extends ConsumerState<PostCard> {
     ref.read(eventLoggerProvider).logEvent(
           EventType.postShared,
           sourceScreen: 'feed',
-          metadata: postEventMetadata(widget.post.id, data,
-              sourceScreen: 'feed'),
+          metadata:
+              postEventMetadata(widget.post.id, data, sourceScreen: 'feed'),
         );
     try {
-      await SharePlus.instance
-          .share(ShareParams(text: buildShareText(data)));
+      await SharePlus.instance.share(ShareParams(text: buildShareText(data)));
     } catch (_) {}
   }
 
@@ -112,8 +146,7 @@ class _PostCardState extends ConsumerState<PostCard> {
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content:
-                Text(saved ? l.t('postSavedOk') : l.t('postUnsavedOk'))));
+            content: Text(saved ? l.t('postSavedOk') : l.t('postUnsavedOk'))));
       }
     } catch (_) {
       if (mounted) {
@@ -125,8 +158,7 @@ class _PostCardState extends ConsumerState<PostCard> {
 
   /// Buka media viewer skrin penuh pada indeks gambar yang ditap (SP8).
   void _openMedia([int index = 0]) {
-    context.push('/post/${widget.post.id}/media?i=$index',
-        extra: widget.post);
+    context.push('/post/${widget.post.id}/media?i=$index', extra: widget.post);
   }
 
   Future<void> _maybeDelete() async {
@@ -164,6 +196,46 @@ class _PostCardState extends ConsumerState<PostCard> {
     }
   }
 
+  CheckinPlace _checkinPlace() => CheckinPlace(
+        placeId: data['placeId'] as String?,
+        providerPlaceId: data['placeProviderId'] as String?,
+        provider: data['placeProvider'] as String? ?? 'manual',
+        name: data['placeName'] as String? ?? '',
+        areaLabel: data['areaLabel'] as String? ?? '',
+        address: data['placeAddress'] as String? ?? '',
+        lat: (data['placeLat'] as num?)?.toDouble(),
+        lng: (data['placeLng'] as num?)?.toDouble(),
+        source: data['placeSource'] as String? ?? 'manual',
+        verified: data['placeVerified'] == true,
+        isManual: data['isManualPlace'] == true,
+      );
+
+  Future<void> _openCheckinPlace() async {
+    final place = _checkinPlace();
+    if (!place.verified || place.providerPlaceId == null) {
+      await openCheckinPlaceInMaps(place);
+      return;
+    }
+    final id = place.providerPlaceId!;
+    context.push('/restaurant/$id',
+        extra: PlaceSummary(
+          placeId: id,
+          name: place.name,
+          cuisine: '',
+          emoji: '🍽️',
+          rating: 0,
+          userRatingCount: 0,
+          priceLevel: 1,
+          distanceKm: 0,
+          isOpen: true,
+          address: place.address,
+          matchScore: 0,
+          matchReasonKeys: const [],
+          source: place.source,
+          canonicalPlaceId: place.placeId,
+        ));
+  }
+
   IconData? _visIcon() => switch (data['visibility']) {
         'followers_only' => Icons.group_outlined,
         'private' => Icons.lock_outline,
@@ -188,9 +260,8 @@ class _PostCardState extends ConsumerState<PostCard> {
         payload['placeName'] as String? ??
         payload['title'] as String? ??
         '';
-    final subtitle = payload['subtitle'] as String? ??
-        payload['detail'] as String? ??
-        '';
+    final subtitle =
+        payload['subtitle'] as String? ?? payload['detail'] as String? ?? '';
     return Container(
       margin: const EdgeInsets.only(top: 8),
       padding: const EdgeInsets.all(14),
@@ -226,8 +297,8 @@ class _PostCardState extends ConsumerState<PostCard> {
           if (subtitle.isNotEmpty) ...[
             const SizedBox(height: 2),
             Text(subtitle,
-                style: TextStyle(
-                    color: AppColors.threadsMuted, fontSize: 12.5)),
+                style:
+                    TextStyle(color: AppColors.threadsMuted, fontSize: 12.5)),
           ],
         ],
       ),
@@ -271,8 +342,8 @@ class _PostCardState extends ConsumerState<PostCard> {
           .read(socialServiceProvider)
           .editPost(postId: widget.post.id, text: newText);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(l.t('editPostSaved'))));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(l.t('editPostSaved'))));
       }
     } catch (_) {
       if (mounted) {
@@ -298,8 +369,8 @@ class _PostCardState extends ConsumerState<PostCard> {
           .read(socialServiceProvider)
           .editPost(postId: widget.post.id, visibility: picked.wire);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(l.t('editPostSaved'))));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(l.t('editPostSaved'))));
       }
     } catch (_) {
       if (mounted) {
@@ -314,8 +385,8 @@ class _PostCardState extends ConsumerState<PostCard> {
     ref.read(eventLoggerProvider).logEvent(
           EventType.postNotInterested,
           sourceScreen: 'feed',
-          metadata: postEventMetadata(widget.post.id, data,
-              sourceScreen: 'feed'),
+          metadata:
+              postEventMetadata(widget.post.id, data, sourceScreen: 'feed'),
         );
     ref.read(hiddenPostIdsProvider.notifier).update(
           (ids) => {...ids, widget.post.id},
@@ -345,14 +416,14 @@ class _PostCardState extends ConsumerState<PostCard> {
     final groupId = data['groupId'] as String? ?? '';
     // SP6: bil terpaut (jika ada) — menu tunjuk Buka vs Buat/Lekat.
     final attachedBill = isGroupPost
-        ? ref.read(billForPostProvider(
-            (groupId: groupId, postId: widget.post.id)))
+        ? ref.read(
+            billForPostProvider((groupId: groupId, postId: widget.post.id)))
         : null;
     ref.read(eventLoggerProvider).logEvent(
           EventType.postMoreOpened,
           sourceScreen: 'feed',
-          metadata: postEventMetadata(widget.post.id, data,
-              sourceScreen: 'feed'),
+          metadata:
+              postEventMetadata(widget.post.id, data, sourceScreen: 'feed'),
         );
     await showModalBottomSheet<void>(
       context: context,
@@ -373,14 +444,14 @@ class _PostCardState extends ConsumerState<PostCard> {
                 onTap: () {
                   Navigator.pop(ctx);
                   ref.read(eventLoggerProvider).logEvent(
-                        EventType.billOpenedFromPost,
-                        sourceScreen: 'group_feed',
-                        metadata: {
-                          'groupId': groupId,
-                          'postId': widget.post.id,
-                          'billId': attachedBill.$1,
-                        },
-                      );
+                    EventType.billOpenedFromPost,
+                    sourceScreen: 'group_feed',
+                    metadata: {
+                      'groupId': groupId,
+                      'postId': widget.post.id,
+                      'billId': attachedBill.$1,
+                    },
+                  );
                   context.push('/tong-tong/${attachedBill.$1}');
                 },
               )
@@ -394,8 +465,8 @@ class _PostCardState extends ConsumerState<PostCard> {
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.add_link,
-                    color: AppColors.warmYellow),
+                leading:
+                    const Icon(Icons.add_link, color: AppColors.warmYellow),
                 title: Text(l.t('attachExistingBill')),
                 onTap: () {
                   Navigator.pop(ctx);
@@ -457,8 +528,8 @@ class _PostCardState extends ConsumerState<PostCard> {
                         targetUid: data['authorUid'] as String?,
                       );
                   Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(l.t('reportSent'))));
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(SnackBar(content: Text(l.t('reportSent'))));
                 },
               ),
               ListTile(
@@ -502,8 +573,7 @@ class _PostCardState extends ConsumerState<PostCard> {
         children: [
           Row(
             children: [
-              Icon(Icons.repeat,
-                  size: 15, color: AppColors.threadsMuted),
+              Icon(Icons.repeat, size: 15, color: AppColors.threadsMuted),
               const SizedBox(width: 8),
               Expanded(
                 child: GestureDetector(
@@ -519,11 +589,7 @@ class _PostCardState extends ConsumerState<PostCard> {
                   ),
                 ),
               ),
-              Text(
-                _timeAgo(context),
-                style: TextStyle(
-                    color: AppColors.threadsMuted, fontSize: 13),
-              ),
+              _timestampLabel(context),
               InkWell(
                 onTap: _moreMenu,
                 borderRadius: BorderRadius.circular(20),
@@ -537,8 +603,8 @@ class _PostCardState extends ConsumerState<PostCard> {
           ),
           EmbeddedOriginalCard(
             originalPostId: data['repostOfPostId'] as String,
-            snapshot: (data['originalSnapshot'] as Map?)
-                ?.cast<String, dynamic>(),
+            snapshot:
+                (data['originalSnapshot'] as Map?)?.cast<String, dynamic>(),
           ),
         ],
       ),
@@ -571,8 +637,7 @@ class _PostCardState extends ConsumerState<PostCard> {
                   .update((ids) => {...ids}..remove(widget.post.id)),
               borderRadius: BorderRadius.circular(8),
               child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
                 child: Text(l.t('undoAction'),
                     style: const TextStyle(
                         color: AppColors.warmYellow,
@@ -598,8 +663,7 @@ class _PostCardState extends ConsumerState<PostCard> {
     final name = author.displayName;
     // SP8: repost biasa = label kompak + kad post asal (tiada kandungan
     // sendiri, tiada baris aksi — kiraan milik post asal, bukan palsu).
-    if (data['postType'] == 'repost' &&
-        data['repostOfPostId'] is String) {
+    if (data['postType'] == 'repost' && data['repostOfPostId'] is String) {
       return _plainRepostCard(l, name);
     }
     final emoji = data['emoji'] as String? ?? '😋';
@@ -607,12 +671,11 @@ class _PostCardState extends ConsumerState<PostCard> {
     final mediaUrls = postMediaUrls(data);
     final placeName = data['placeName'] as String?;
     final cuisine = data['cuisine'] as String?;
-    final isAuto = data['type'] == 'auto' ||
-        (data['type'] == null && placeName != null);
+    final isAuto =
+        data['type'] == 'auto' || (data['type'] == null && placeName != null);
     final likedBy = (data['likedBy'] as List?)?.cast<String>() ?? const [];
     final liked = _likedOverride ?? likedBy.contains(uid);
-    final likeCount =
-        ((data['likeCount'] as num?)?.toInt() ?? 0) + _likeDelta;
+    final likeCount = ((data['likeCount'] as num?)?.toInt() ?? 0) + _likeDelta;
     final saved = (ref.watch(mySavedPostIdsProvider).value ?? const {})
         .contains(widget.post.id);
 
@@ -662,13 +725,7 @@ class _PostCardState extends ConsumerState<PostCard> {
                             size: 13, color: AppColors.threadsMuted),
                       ],
                       const Spacer(),
-                      Text(
-                        _timeAgo(context),
-                        style: TextStyle(
-                          color: AppColors.threadsMuted,
-                          fontSize: 13,
-                        ),
-                      ),
+                      _timestampLabel(context),
                       InkWell(
                         onTap: _moreMenu,
                         borderRadius: BorderRadius.circular(20),
@@ -696,14 +753,33 @@ class _PostCardState extends ConsumerState<PostCard> {
                   if (data['type'] == 'checkin') ...[
                     if (placeName != null && placeName.isNotEmpty) ...[
                       const SizedBox(height: 3),
-                      Text(
-                        '📍 ${l.t('checkinBadge')} $placeName',
-                        style: const TextStyle(
-                          color: AppColors.warmYellow,
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w800,
+                      Row(children: [
+                        Expanded(
+                          child: InkWell(
+                            onTap: _openCheckinPlace,
+                            borderRadius: BorderRadius.circular(6),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2),
+                              child: Text(
+                                '📍 ${l.t('checkinBadge')} $placeName',
+                                style: const TextStyle(
+                                  color: AppColors.warmYellow,
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
+                        IconButton(
+                          tooltip: l.t('checkinDirections'),
+                          visualDensity: VisualDensity.compact,
+                          onPressed: () =>
+                              openCheckinPlaceInMaps(_checkinPlace()),
+                          icon: const Icon(Icons.directions_outlined,
+                              size: 18, color: AppColors.warmYellow),
+                        ),
+                      ]),
                     ],
                     if (checkinSummaryLine(data).isNotEmpty) ...[
                       const SizedBox(height: 3),
@@ -728,8 +804,7 @@ class _PostCardState extends ConsumerState<PostCard> {
                         ),
                       ),
                     ],
-                    if ((data['moodTags'] as List?)?.isNotEmpty ??
-                        false) ...[
+                    if ((data['moodTags'] as List?)?.isNotEmpty ?? false) ...[
                       const SizedBox(height: 6),
                       Wrap(
                         spacing: 6,
@@ -744,8 +819,8 @@ class _PostCardState extends ConsumerState<PostCard> {
                               decoration: BoxDecoration(
                                 color: AppColors.threadsSurface,
                                 borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                    color: AppColors.threadsBorder),
+                                border:
+                                    Border.all(color: AppColors.threadsBorder),
                               ),
                               child: Text(
                                 tag,
@@ -793,6 +868,13 @@ class _PostCardState extends ConsumerState<PostCard> {
                     'meal_wallet_share',
                   }.contains(data['postType']))
                     _shareCard(l),
+                  // QA-DEV17: feed poll interaktif (postType:"poll"). Post lama
+                  // tanpa medan `poll` gagal syarat → kekal render biasa.
+                  if (data['postType'] == 'poll' && data['poll'] is Map)
+                    FeedPollCard(
+                      postId: widget.post.id,
+                      poll: (data['poll'] as Map).cast<String, dynamic>(),
+                    ),
                   // SP8: media — 1 gambar seperti dulu, 2-6 = carousel.
                   if (mediaUrls.isNotEmpty) ...[
                     const SizedBox(height: 8),
@@ -828,9 +910,7 @@ class _PostCardState extends ConsumerState<PostCard> {
                   Row(
                     children: [
                       SocialActionButton(
-                        icon: liked
-                            ? Icons.favorite
-                            : Icons.favorite_border,
+                        icon: liked ? Icons.favorite : Icons.favorite_border,
                         color: liked
                             ? AppColors.primaryRed
                             : AppColors.threadsText,
@@ -877,9 +957,7 @@ class _PostCardState extends ConsumerState<PostCard> {
                       ),
                       const Spacer(),
                       SocialActionButton(
-                        icon: saved
-                            ? Icons.bookmark
-                            : Icons.bookmark_border,
+                        icon: saved ? Icons.bookmark : Icons.bookmark_border,
                         color: saved
                             ? AppColors.warmYellow
                             : AppColors.threadsText,
@@ -898,4 +976,3 @@ class _PostCardState extends ConsumerState<PostCard> {
     );
   }
 }
-

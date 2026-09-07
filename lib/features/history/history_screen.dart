@@ -26,38 +26,128 @@ class HistoryScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l = AppLocalizations.of(context);
 
-    return DefaultTabController(
-      length: 4,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(l.t('historyTitle')),
-          bottom: TabBar(
-            isScrollable: true,
-            tabAlignment: TabAlignment.start,
-            labelColor: AppColors.primaryRed,
-            unselectedLabelColor: context.mm.onCardMuted,
-            indicatorColor: AppColors.primaryRed,
-            labelStyle: const TextStyle(
-                fontWeight: FontWeight.w800, fontSize: 13.5),
-            tabs: [
-              Tab(text: l.t('historyTabMeals')),
-              Tab(text: l.t('historyTabFitness')),
-              Tab(text: l.t('historyTabMonitor')),
-              Tab(text: l.t('historyTabReports')),
+    return HistoryEdgeSwipeHandoff(
+      // History menggunakan TabBarView mendatar penuh. Ia secara sah menang
+      // gesture di kandungan, jadi shell PageView tidak menerima drag pada
+      // sempadannya. Handoff ini sengaja terhad kepada jalur tepi 52dp: tab
+      // History kekal boleh diswipe di kawasan biasa, manakala pengguna masih
+      // boleh bergerak ke branch shell bersebelahan tanpa bottom navigation.
+      onPreviousBranch: () =>
+          StatefulNavigationShell.maybeOf(context)?.goBranch(1),
+      onNextBranch: () => StatefulNavigationShell.maybeOf(context)?.goBranch(3),
+      child: DefaultTabController(
+        length: 4,
+        child: Scaffold(
+          appBar: AppBar(
+            title: Text(l.t('historyTitle')),
+            bottom: TabBar(
+              isScrollable: true,
+              tabAlignment: TabAlignment.start,
+              labelColor: AppColors.primaryRed,
+              unselectedLabelColor: context.mm.onCardMuted,
+              indicatorColor: AppColors.primaryRed,
+              labelStyle:
+                  const TextStyle(fontWeight: FontWeight.w800, fontSize: 13.5),
+              tabs: [
+                Tab(text: l.t('historyTabMeals')),
+                Tab(text: l.t('historyTabFitness')),
+                Tab(text: l.t('historyTabMonitor')),
+                Tab(text: l.t('historyTabReports')),
+              ],
+            ),
+          ),
+          body: const TabBarView(
+            children: [
+              _MealsTab(),
+              _FitnessTab(),
+              _MonitorTab(),
+              _ReportsTab(),
             ],
           ),
-        ),
-        body: const TabBarView(
-          children: [
-            _MealsTab(),
-            _FitnessTab(),
-            _MonitorTab(),
-            _ReportsTab(),
-          ],
         ),
       ),
     );
   }
+}
+
+/// Memberi laluan keluar yang kecil dan jelas daripada pager History kepada
+/// navigasi utama. Ini ialah fallback untuk dua pager mendatar bersarang;
+/// ia tidak memasang detector global atau mengganggu drag pada kandungan/tab.
+class HistoryEdgeSwipeHandoff extends StatefulWidget {
+  const HistoryEdgeSwipeHandoff({
+    super.key,
+    required this.child,
+    required this.onPreviousBranch,
+    required this.onNextBranch,
+  });
+
+  static const double edgeWidth = 52;
+  static const double triggerDistance = 72;
+
+  final Widget child;
+  final VoidCallback onPreviousBranch;
+  final VoidCallback onNextBranch;
+
+  @override
+  State<HistoryEdgeSwipeHandoff> createState() =>
+      _HistoryEdgeSwipeHandoffState();
+}
+
+class _HistoryEdgeSwipeHandoffState extends State<HistoryEdgeSwipeHandoff> {
+  double _dragExtent = 0;
+  bool _handled = false;
+
+  void _start() {
+    _dragExtent = 0;
+    _handled = false;
+  }
+
+  void _update(DragUpdateDetails details, {required bool towardNext}) {
+    if (_handled) return;
+    _dragExtent += details.delta.dx;
+    final crossedBoundary = towardNext
+        ? _dragExtent <= -HistoryEdgeSwipeHandoff.triggerDistance
+        : _dragExtent >= HistoryEdgeSwipeHandoff.triggerDistance;
+    if (!crossedBoundary) return;
+    _handled = true;
+    if (towardNext) {
+      widget.onNextBranch();
+    } else {
+      widget.onPreviousBranch();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Stack(
+        fit: StackFit.expand,
+        children: [
+          widget.child,
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            width: HistoryEdgeSwipeHandoff.edgeWidth,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onHorizontalDragStart: (_) => _start(),
+              onHorizontalDragUpdate: (details) =>
+                  _update(details, towardNext: false),
+            ),
+          ),
+          Positioned(
+            right: 0,
+            top: 0,
+            bottom: 0,
+            width: HistoryEdgeSwipeHandoff.edgeWidth,
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onHorizontalDragStart: (_) => _start(),
+              onHorizontalDragUpdate: (details) =>
+                  _update(details, towardNext: true),
+            ),
+          ),
+        ],
+      );
 }
 
 // ---------- Tab 1: Makanan (kandungan asal V1/V2) ----------

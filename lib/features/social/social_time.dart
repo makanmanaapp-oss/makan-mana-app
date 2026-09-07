@@ -1,87 +1,129 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 
 import '../../app/localization/app_localizations.dart';
 
-/// Threads Fix 1 — INTEGRITI CAP MASA POST.
+/// Authoritative timestamp resolution for a social record.
 ///
-/// SUMBER KEBENARAN tunggal untuk mentafsir `createdAt` post/komen dan
-/// memformat masa relatif. Sebelum ini setiap surface mengulang:
-///
-///     if (ts is! Timestamp) return l.t('justNow');   // ← PEPIJAT
-///
-/// yang menjadikan MANA-MANA nilai bukan-`Timestamp` (null pending, legasi
-/// String/int, atau hilang) dipapar sebagai "baru tadi"/hari ini — jadi post
-/// LAMA kelihatan seperti dicipta hari ini. Ganti dengan penghurai teguh +
-/// keadaan JUJUR "masa tidak diketahui" (bukan masa semasa palsu).
+/// `createdAt` is always preferred. Older documents are read safely from a
+/// trusted, historical field only; this resolver never substitutes the current
+/// time for missing or malformed data.
+class PostTimestampResolution {
+  const PostTimestampResolution({required this.value, required this.source});
 
-/// Tafsir nilai `createdAt` Firestore kepada instan sebenar (atau null).
-///
-/// Menyokong: `Timestamp`, `DateTime`, epoch `int` (saat atau milisaat), dan
-/// rentetan ISO-8601 legasi. Nilai lain / null / tak boleh dihurai → null
-/// (JANGAN ganti dengan DateTime.now()).
-DateTime? parsePostCreatedAt(dynamic ts) {
-  if (ts is Timestamp) return ts.toDate();
-  if (ts is DateTime) return ts;
-  if (ts is int) {
-    // Heuristik saat vs milisaat: epoch saat 2020 ≈ 1.6e9 (10 digit);
-    // milisaat ≈ 1.6e12 (13 digit). Ambang 1e11 memisah keduanya bersih.
-    final ms = ts > 100000000000 ? ts : ts * 1000;
-    return DateTime.fromMillisecondsSinceEpoch(ms);
+  final DateTime? value;
+  final String? source;
+
+  bool get isKnown => value != null;
+  bool get isLegacyFallback => source != null && source != 'createdAt';
+}
+
+/// Parse a Firestore timestamp or one of the supported legacy encodings.
+DateTime? parsePostCreatedAt(dynamic value) {
+  if (value is Timestamp) {
+    return value.toDate();
   }
-  if (ts is String) {
-    final s = ts.trim();
-    if (s.isEmpty) return null;
-    return DateTime.tryParse(s);
+  if (value is DateTime) {
+    return value;
+  }
+  if (value is int) {
+    final milliseconds = value.abs() > 100000000000 ? value : value * 1000;
+    return DateTime.fromMillisecondsSinceEpoch(milliseconds);
+  }
+  if (value is String) {
+    final trimmed = value.trim();
+    return trimmed.isEmpty ? null : DateTime.tryParse(trimmed);
   }
   return null;
 }
 
-/// Masa relatif JUJUR untuk `createdAt`.
+/// Resolve the publication instant without fabricating history.
 ///
-/// - `pending == true` (tulisan optimistik pengguna, serverTimestamp belum
-///   diselesaikan) DAN masa masih null → "baru tadi" (post memang baru dicipta).
-/// - Masa sah → dikira dari instan ASAL (post lama kekal lama; UTC/lokal tidak
-///   boleh menukar post lama menjadi "hari ini").
-/// - Masa TIDAK diketahui (bukan pending) → "masa tidak diketahui" — BUKAN
-///   masa semasa palsu.
+/// Alternate fields are deliberately limited to fields that historically held
+/// a publication instant. `updatedAt` and `editedAt` are excluded: using either
+/// would reset a post's displayed age after an interaction or an edit.
+PostTimestampResolution resolvePostCreatedAt(Map<String, dynamic> data) {
+  const historicalFields = [
+    'createdAt',
+    'postedAt',
+    'publishedAt',
+    'timestamp'
+  ];
+  for (final field in historicalFields) {
+    final parsed = parsePostCreatedAt(data[field]);
+    if (parsed != null) {
+      return PostTimestampResolution(value: parsed, source: field);
+    }
+  }
+  return const PostTimestampResolution(value: null, source: null);
+}
+
+String _relativeUnit(AppLocalizations l, String key, int value) =>
+    l.t(key).replaceAll('{count}', '$value');
+
+/// Facebook-style social age ladder, shared by every social surface.
 ///
-/// [now] disuntik untuk ujian deterministik.
+/// Calendar labels use the user's locale, while relative labels use MakanMana's
+/// existing localization catalogue. [now] is injectable for deterministic QA.
 String relativePostTime(
   AppLocalizations l,
-  dynamic ts, {
+  dynamic timestamp, {
   bool pending = false,
   DateTime? now,
 }) {
-  final dt = parsePostCreatedAt(ts);
-  if (dt == null) {
-    return pending ? l.t('justNow') : l.t('timeUnavailable');
+  final date = parsePostCreatedAt(timestamp);
+  if (date == null) {
+    return pending ? l.t('socialTimeNow') : l.t('timeUnavailable');
   }
-  // Banding pada zon yang sama supaya sisihan UTC↔lokal (Malaysia +8) tidak
-  // boleh menukar post lama menjadi "hari ini" berhampiran tengah malam.
-  final local = dt.isUtc ? dt.toLocal() : dt;
-  final ref = now ?? DateTime.now();
-  final diff = ref.difference(local);
 
-  // Masa hadapan (jam peranti terkebelakang) / < 1 minit → baru tadi.
-  if (diff.isNegative || diff.inMinutes < 1) return l.t('justNow');
-  if (diff.inMinutes < 60) return '${diff.inMinutes}m';
-  if (diff.inHours < 24) return '${diff.inHours}j';
-  return '${diff.inDays}h';
+  final localDate = date.isUtc ? date.toLocal() : date;
+  final reference = now ?? DateTime.now();
+  final difference = reference.difference(localDate);
+
+  // A future value can happen while a device clock is behind the server. It is
+  // shown as new, never as a negative age.
+  if (difference.isNegative || difference.inSeconds < 60) {
+    return l.t('socialTimeNow');
+  }
+  if (difference.inMinutes < 60) {
+    return _relativeUnit(l, 'socialTimeMinutes', difference.inMinutes);
+  }
+  if (difference.inHours < 24) {
+    return _relativeUnit(l, 'socialTimeHours', difference.inHours);
+  }
+  if (difference.inHours < 48) return l.t('socialTimeDayOne');
+  if (difference.inDays < 7) {
+    return _relativeUnit(l, 'socialTimeDays', difference.inDays);
+  }
+  if (difference.inDays < 28) {
+    final weeks = difference.inDays ~/ 7;
+    return weeks == 1
+        ? l.t('socialTimeWeekOne')
+        : _relativeUnit(l, 'socialTimeWeeks', weeks);
+  }
+
+  final locale = l.locale.toLanguageTag();
+  return localDate.year == reference.year
+      ? DateFormat.MMMd(locale).format(localDate)
+      : DateFormat.yMMMd(locale).format(localDate);
 }
 
-/// Threads Fix 1.1 — pembanding kekisar (TERBARU dahulu) berasaskan instan
-/// KANONIKAL, JENIS-AGNOSTIK (Timestamp / DateTime / int / ISO String).
-///
-/// Untuk `List.sort` sisi-klien (cth. tab balasan profil). Nilai tidak
-/// diketahui (null / tak boleh dihurai) diletak DI HUJUNG — TIDAK dianggap
-/// "sekarang". Susunan bergantung pada instan sebenar, bukan jenis medan
-/// runtime, supaya rekod createdAt legasi (jika wujud) tidak boleh memecahkan
-/// kronologi secara senyap.
+/// Full, exact publication date for the timestamp tap / details affordance.
+/// Returns null rather than inventing a date for an unknown legacy document.
+String? exactPostPublicationTime(AppLocalizations l, dynamic timestamp) {
+  final date = parsePostCreatedAt(timestamp);
+  if (date == null) return null;
+  final localDate = date.isUtc ? date.toLocal() : date;
+  return DateFormat('d MMMM y, h:mm a', l.locale.toLanguageTag())
+      .format(localDate);
+}
+
+/// Comparator for client-side profile/reply lists. Unknown values sort last.
 int comparePostRecencyDesc(dynamic a, dynamic b) {
   final da = parsePostCreatedAt(a);
   final db = parsePostCreatedAt(b);
   if (da == null && db == null) return 0;
-  if (da == null) return 1; // tidak diketahui → hujung
+  if (da == null) return 1;
   if (db == null) return -1;
-  return db.compareTo(da); // terbaru dahulu
+  return db.compareTo(da);
 }

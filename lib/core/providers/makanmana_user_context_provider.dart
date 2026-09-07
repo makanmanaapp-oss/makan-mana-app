@@ -19,13 +19,12 @@ final makanManaUserContextRepositoryProvider =
 ///
 /// Nota: kekal hidup sepanjang sesi (bukan autoDispose) supaya jambatan
 /// (mood/bahasa/tema) berterusan mendengar perubahan provider lama.
-final makanManaUserContextProvider = StateNotifierProvider<
-    MakanManaUserContextNotifier, MakanManaUserContext>(
+final makanManaUserContextProvider =
+    StateNotifierProvider<MakanManaUserContextNotifier, MakanManaUserContext>(
   (ref) => MakanManaUserContextNotifier(ref),
 );
 
-class MakanManaUserContextNotifier
-    extends StateNotifier<MakanManaUserContext> {
+class MakanManaUserContextNotifier extends StateNotifier<MakanManaUserContext> {
   MakanManaUserContextNotifier(this._ref)
       : super(const MakanManaUserContext()) {
     _bridgeLegacyProviders();
@@ -40,8 +39,7 @@ class MakanManaUserContextNotifier
   MakanManaUserContextRepository get _repo =>
       _ref.read(makanManaUserContextRepositoryProvider);
 
-  String get _uid =>
-      _ref.read(authRepositoryProvider).currentUser?.uid ?? '';
+  String get _uid => _ref.read(authRepositoryProvider).currentUser?.uid ?? '';
 
   // ---------------- Jambatan provider lama (backward compat) ----------------
 
@@ -128,8 +126,8 @@ class MakanManaUserContextNotifier
   }
 
   Future<void> updateDefaultRadiusKm(double radiusKm) async {
-    state = state.copyWith(
-        defaultRadiusKm: radiusKm, selectedRadiusKm: radiusKm);
+    state =
+        state.copyWith(defaultRadiusKm: radiusKm, selectedRadiusKm: radiusKm);
     await _repo.writeProfileFields(_uid, {'defaultRadiusKm': radiusKm});
     _log('radius_changed',
         metadata: {'newValue': radiusKm, 'scope': 'default', 'unit': 'km'});
@@ -152,6 +150,24 @@ class MakanManaUserContextNotifier
     );
   }
 
+  /// Kemas kini coarse state sahaja selepas resolver lokasi sedia ada selesai.
+  /// [locationGrid] melindungi daripada keputusan geocoder lama menimpa lokasi
+  /// yang telah bergerak; tiada write Firestore untuk ciri persembahan ini.
+  void updateLocationState({
+    required String locationGrid,
+    required String? resolvedState,
+  }) {
+    if (state.locationGrid != locationGrid) return;
+    state = state.copyWith(locationState: resolvedState);
+  }
+
+  /// Hanya untuk matriks QA APK debug. Ia tidak boleh diaktifkan dalam
+  /// release dan tidak menyentuh koordinat, grid atau Firestore.
+  void updateDebugLocationStateForQa(String resolvedState) {
+    assert(kDebugMode);
+    state = state.copyWith(locationState: resolvedState);
+  }
+
   Future<void> updateFoodProfile(Map<String, dynamic> fields) async {
     state = state.copyWith(
       dietType: fields['dietType'] as String?,
@@ -164,10 +180,9 @@ class MakanManaUserContextNotifier
       spicyPreference: (fields['spicyPreference'] as num?)?.toInt(),
       usualMealTimes:
           _asStrList(fields['usualMealTimes']) ?? state.usualMealTimes,
-      dislikedFoods:
-          _asStrList(fields['dislikedFoods']) ?? state.dislikedFoods,
-      preferredMealTypes: _asStrList(fields['preferredMealTypes']) ??
-          state.preferredMealTypes,
+      dislikedFoods: _asStrList(fields['dislikedFoods']) ?? state.dislikedFoods,
+      preferredMealTypes:
+          _asStrList(fields['preferredMealTypes']) ?? state.preferredMealTypes,
       drinkPreference: fields['drinkPreference'] as String?,
       sweetDrinkHabit: fields['sweetDrinkHabit'] as String?,
     );
@@ -212,8 +227,7 @@ class MakanManaUserContextNotifier
     final old = state.fitGoal;
     state = state.copyWith(fitGoal: fitGoal);
     await _repo.writeFitGoal(_uid, fitGoal);
-    _log('fit_goal_updated',
-        metadata: {'oldValue': old, 'newValue': fitGoal});
+    _log('fit_goal_updated', metadata: {'oldValue': old, 'newValue': fitGoal});
   }
 
   Future<void> updateSportMood(String sportMood) async {

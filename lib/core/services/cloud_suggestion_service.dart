@@ -103,6 +103,31 @@ class CloudSuggestionService {
         'mode': mode,
       });
       final data = Map<String, dynamic>.from(res.data);
+      // QA-DEV3 diagnostik (debug/QA sahaja — di-strip dalam release). Guna
+      // semula metadata canonicalDiagnostics sedia ada; TIADA koordinat/PII.
+      assert(() {
+        final diag = data['canonicalDiagnostics'];
+        final cand = (data['alternatives'] as List?)?.length ??
+            (data['candidates'] as List?)?.length ??
+            0;
+        if (diag is Map) {
+          final a2 = diag['algorithm2'];
+          debugPrint('MM SUGGEST[$mode]: source=${data['source']} '
+              'algoVer=${data['algorithmVersion']} cohort=${diag['cohort']} '
+              'readSource=${diag['source']} '
+              'algo2Enabled=${a2 is Map ? a2['enabled'] : a2} '
+              'canonicalCount=${diag['canonicalCount']} '
+              'legacyCount=${diag['legacyCount']} '
+              'forceLegacy=${diag['forceLegacy']} rollout=${diag['rollout']} '
+              'candidates=$cand');
+        } else {
+          debugPrint('MM SUGGEST[$mode]: source=${data['source']} '
+              'algoVer=${data['algorithmVersion']} '
+              'canonicalDiagnostics=ABSENT(not-eligible/owner-only) '
+              'candidates=$cand');
+        }
+        return true;
+      }());
       if (data['status'] == 'PAYWALL_REQUIRED') {
         return CloudSpinResult(
           paywallRequired: true,
@@ -166,7 +191,15 @@ class CloudSuggestionService {
         if (placeId != null) 'placeId': placeId,
         if (reason != null) 'reason': reason,
       });
-      return Map<String, dynamic>.from(res.data);
+      final data = Map<String, dynamic>.from(res.data);
+      assert(() {
+        debugPrint('MM NEXT[$action]: keys=${data.keys.toList()} '
+            'exhausted=${data['exhausted']} '
+            'remaining=${data['remainingCount'] ?? data['remaining']} '
+            'diagnostics=${data['diagnostics'] ?? data['canonicalDiagnostics']}');
+        return true;
+      }());
+      return data;
     } catch (e) {
       debugPrint('MakanMana: nextSuggestion gagal (fallback tempatan): $e');
       return null;

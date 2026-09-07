@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -8,18 +9,23 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../app/localization/app_localizations.dart';
 import '../../core/constants/app_colors.dart';
-import '../../core/constants/app_constants.dart';
 import '../../core/events/event_types.dart';
 import '../../core/providers.dart';
 import '../../core/utils/time_slot_utils.dart';
+import '../../core/widgets/makan_avatar.dart';
 import '../groups/group_polls.dart';
 import 'checkin_utils.dart';
+import 'checkin_place.dart';
+import 'checkin_place_service.dart';
+import 'food_profile.dart';
+import 'poll_form.dart';
 import 'repost.dart';
 import 'social_providers.dart';
 import 'visibility.dart';
 
 /// Social Prompt 4: Unified Composer — satu pintu untuk Post, Check-in,
-/// Poll (pintasan grup), Bill (pintasan Tong-Tong) dan Status.
+/// Poll (pintasan grup) dan Status. QA-DEV16: Bil/Tong-Tong dibuang dari
+/// composer posting (sistem Tong-Tong kekal utuh di luar composer).
 /// Halaman penuh melalui route GoRouter (Navigator.push mentah tidak
 /// render dengan betul pada setup ini). [groupId] null = siaran awam.
 Future<void> showComposeSheet(
@@ -36,7 +42,7 @@ Future<void> showComposeSheet(
 }
 
 /// Jenis kandungan dalam composer bersatu.
-enum ComposerType { post, checkin, poll, bill, status }
+enum ComposerType { post, checkin, poll, status }
 
 class ComposePage extends ConsumerStatefulWidget {
   const ComposePage({
@@ -77,7 +83,28 @@ class _ComposePageState extends ConsumerState<ComposePage> {
 
   static const _maxImages = 6;
 
+  // QA-DEV17: editor poll INLINE untuk feed poll (non-grup). Poll ialah post
+  // feed biasa (postType:"poll"); grup kekal guna showCreatePollSheet. Had
+  // dikongsi dengan pelayan melalui poll_form.dart (kPollOption*).
+  final _pollQuestionCtrl = TextEditingController();
+  final List<TextEditingController> _pollOptionCtrls = [
+    TextEditingController(),
+    TextEditingController(),
+  ];
+
   bool get _isQuote => widget.quoteOfPostId != null;
+
+  /// Poll feed dalam composer HANYA untuk non-grup (grup guna aliran sedia
+  /// ada). true bila jenis=poll dan bukan dalam grup.
+  bool get _isFeedPoll => _type == ComposerType.poll && !_inGroup;
+
+  /// Soalan 2-120 aksara + sekurang-kurangnya 2 pilihan berbeza (bukan kosong).
+  /// Pelayan tetap authoritative; ini untuk dayakan/matikan butang Post.
+  bool get _pollValid => isFeedPollFormValid(
+      _pollQuestionCtrl.text, _pollOptionCtrls.map((c) => c.text).toList());
+
+  List<String> get _pollOptionsTrimmed =>
+      cleanPollOptions(_pollOptionCtrls.map((c) => c.text).toList());
 
   // Medan check-in.
   final _placeCtrl = TextEditingController();
@@ -88,6 +115,11 @@ class _ComposePageState extends ConsumerState<ComposePage> {
   final Set<String> _moodTags = {};
   bool _saveToHistory = false;
   String? _inlineError;
+  Timer? _placeDebounce;
+  int _placeRequestToken = 0;
+  bool _placeSearching = false;
+  List<CheckinPlace> _placeResults = const [];
+  CheckinPlace? _selectedPlace;
 
   bool get _inGroup => widget.groupId != null;
 
@@ -119,7 +151,6 @@ class _ComposePageState extends ConsumerState<ComposePage> {
       'checkin' => ComposerType.checkin,
       'status' => ComposerType.status,
       'poll' => ComposerType.poll,
-      'bill' => ComposerType.bill,
       _ => ComposerType.post,
     };
     // SP9.2B: check-in default PERIBADI (followers_only dimatikan; spend
@@ -144,9 +175,14 @@ class _ComposePageState extends ConsumerState<ComposePage> {
     _logger.logEvent(EventType.composerClosed, sourceScreen: 'composer');
     _captionCtrl.dispose();
     _placeCtrl.dispose();
+    _placeDebounce?.cancel();
     _areaCtrl.dispose();
     _menuCtrl.dispose();
     _spendCtrl.dispose();
+    _pollQuestionCtrl.dispose();
+    for (final c in _pollOptionCtrls) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -155,7 +191,9 @@ class _ComposePageState extends ConsumerState<ComposePage> {
       _images.isNotEmpty ||
       _placeCtrl.text.trim().isNotEmpty ||
       _menuCtrl.text.trim().isNotEmpty ||
-      _spendCtrl.text.trim().isNotEmpty;
+      _spendCtrl.text.trim().isNotEmpty ||
+      _pollQuestionCtrl.text.trim().isNotEmpty ||
+      _pollOptionCtrls.any((c) => c.text.trim().isNotEmpty);
 
   /// Metadata event tanpa teks mentah / lokasi tepat.
   Map<String, dynamic> _eventMeta() => {
@@ -166,6 +204,7 @@ class _ComposePageState extends ConsumerState<ComposePage> {
         'imageCount': _images.length,
         if (_isQuote) 'originalPostId': widget.quoteOfPostId,
         'hasPlace': _placeCtrl.text.trim().isNotEmpty,
+        if (_selectedPlace != null) 'placeSource': _selectedPlace!.source,
         'hasSpend': _spendCtrl.text.trim().isNotEmpty,
         'hasRating': _rating > 0,
         'saveToHistory': _saveToHistory,
@@ -176,12 +215,12 @@ class _ComposePageState extends ConsumerState<ComposePage> {
     return switch (_type) {
       ComposerType.checkin => 'checkin',
       ComposerType.status => 'status',
+      ComposerType.poll => 'poll',
       _ => 'food_post',
     };
   }
 
-  PostVisibility _effectiveVis() =>
-      _inGroup ? PostVisibility.groupOnly : _vis;
+  PostVisibility _effectiveVis() => _inGroup ? PostVisibility.groupOnly : _vis;
 
   void _selectType(ComposerType t) {
     if (_type == t) return;
@@ -283,9 +322,63 @@ class _ComposePageState extends ConsumerState<ComposePage> {
       case ComposerType.status:
         if (caption.isEmpty) return l.t('statusHint');
         return null;
-      default:
-        return null;
+      case ComposerType.poll:
+        // Grup: dikendali oleh shortcut (tiada butang Post); feed poll perlu
+        // soalan + >=2 pilihan sah.
+        if (!_isFeedPoll) return null;
+        return _pollValid ? null : l.t('pollNeedQuestionOptions');
     }
+  }
+
+  void _onPlaceChanged(String value) {
+    if (_selectedPlace != null && value.trim() != _selectedPlace!.name) {
+      _selectedPlace = null;
+    }
+    _placeDebounce?.cancel();
+    final query = value.trim();
+    if (query.length < 2) {
+      setState(() {
+        _placeResults = const [];
+        _placeSearching = false;
+      });
+      return;
+    }
+    final token = ++_placeRequestToken;
+    setState(() => _placeSearching = true);
+    _placeDebounce = Timer(const Duration(milliseconds: 300), () async {
+      try {
+        final places = await CheckinPlaceService().search(
+          query,
+          languageCode: ref.read(languageProvider).languageCode,
+        );
+        if (!mounted || token != _placeRequestToken) return;
+        setState(() {
+          _placeResults = places;
+          _placeSearching = false;
+        });
+      } catch (_) {
+        if (!mounted || token != _placeRequestToken) return;
+        setState(() => _placeSearching = false);
+      }
+    });
+  }
+
+  void _selectPlace(CheckinPlace place) {
+    _placeDebounce?.cancel();
+    _placeRequestToken++;
+    setState(() {
+      _selectedPlace = place;
+      _placeCtrl.text = place.name;
+      _areaCtrl.text = place.areaLabel;
+      _placeResults = const [];
+      _placeSearching = false;
+    });
+  }
+
+  void _useManualPlace() {
+    final name = _placeCtrl.text.trim();
+    if (name.isEmpty) return;
+    _selectPlace(CheckinPlace.manual(name, areaLabel: _areaCtrl.text));
   }
 
   Future<void> _submit() async {
@@ -295,8 +388,51 @@ class _ComposePageState extends ConsumerState<ComposePage> {
       setState(() => _inlineError = err);
       return;
     }
+    // QA-DEV17: feed poll → callable createFeedPoll (server-authoritative).
+    if (_isFeedPoll) {
+      setState(() {
+        _posting = true;
+        _inlineError = null;
+      });
+      try {
+        await ref.read(socialServiceProvider).createFeedPoll(
+              question: _pollQuestionCtrl.text.trim(),
+              options: _pollOptionsTrimmed,
+              visibility: _effectiveVis().wire,
+            );
+        _logger.logEvent(
+          EventType.postCreated,
+          sourceScreen: 'composer',
+          metadata: _eventMeta(),
+        );
+        if (mounted) {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(l.t('postSent'))));
+        }
+      } catch (_) {
+        _logger.logEvent(
+          EventType.composerPostFailed,
+          sourceScreen: 'composer',
+          metadata: _eventMeta(),
+        );
+        if (mounted) {
+          setState(() => _posting = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('📡 ${l.t('postFailed')}')));
+        }
+      }
+      return;
+    }
     final uid = ref.read(authRepositoryProvider).currentUser?.uid ?? '';
     final isCheckin = _type == ComposerType.checkin;
+    final checkinPlace = isCheckin
+        ? (_selectedPlace ??
+            (_placeCtrl.text.trim().isEmpty
+                ? null
+                : CheckinPlace.manual(_placeCtrl.text,
+                    areaLabel: _areaCtrl.text)))
+        : null;
     setState(() {
       _posting = true;
       _inlineError = null;
@@ -320,17 +456,15 @@ class _ComposePageState extends ConsumerState<ComposePage> {
         );
         if (mounted) {
           Navigator.pop(context);
-          ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(l.t('postSent'))));
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(l.t('postSent'))));
         }
         return;
       }
       final postId = await ref.read(socialServiceProvider).createPost(
             uid: uid,
             text: _captionCtrl.text.trim(),
-            images: _type == ComposerType.status
-                ? const []
-                : List.of(_images),
+            images: _type == ComposerType.status ? const [] : List.of(_images),
             onUploadProgress: (done, total) {
               if (mounted) {
                 setState(() {
@@ -342,17 +476,16 @@ class _ComposePageState extends ConsumerState<ComposePage> {
             groupId: widget.groupId,
             visibility: _effectiveVis().wire,
             postType: _postTypeWire(),
-            placeName: isCheckin && _placeCtrl.text.trim().isNotEmpty
-                ? _placeCtrl.text.trim()
+            placeId: checkinPlace?.placeId,
+            placeName: checkinPlace?.name,
+            areaLabel: checkinPlace?.areaLabel.isNotEmpty == true
+                ? checkinPlace!.areaLabel
                 : null,
-            areaLabel: isCheckin && _areaCtrl.text.trim().isNotEmpty
-                ? _areaCtrl.text.trim()
-                : null,
+            checkinPlace: checkinPlace?.toWire(),
             menuName: isCheckin && _menuCtrl.text.trim().isNotEmpty
                 ? _menuCtrl.text.trim()
                 : null,
-            totalSpend:
-                isCheckin ? parseSpendInput(_spendCtrl.text) : null,
+            totalSpend: isCheckin ? parseSpendInput(_spendCtrl.text) : null,
             userRating: isCheckin && _rating >= 1 ? _rating : null,
             moodTags: isCheckin ? _moodTags.toList() : null,
           );
@@ -375,8 +508,7 @@ class _ComposePageState extends ConsumerState<ComposePage> {
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text(
-                isCheckin ? l.t('checkinPosted') : l.t('postSent'))));
+            content: Text(isCheckin ? l.t('checkinPosted') : l.t('postSent'))));
       }
     } catch (e) {
       _logger.logEvent(
@@ -409,8 +541,8 @@ class _ComposePageState extends ConsumerState<ComposePage> {
           .collection('meals')
           .add({
         // Medan serasi model Meal sedia ada (History screen).
-        'placeId': '',
-        'placeNameSnapshot': _placeCtrl.text.trim(),
+        'placeId': _selectedPlace?.placeId ?? '',
+        'placeNameSnapshot': _selectedPlace?.name ?? _placeCtrl.text.trim(),
         'cuisineTags': <String>[],
         'emoji': '📍',
         'timeSlot': TimeSlotUtils.now(),
@@ -473,8 +605,10 @@ class _ComposePageState extends ConsumerState<ComposePage> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final showSubmit =
-        _type != ComposerType.poll && _type != ComposerType.bill;
+    // Feed poll (non-grup) hantar melalui butang Post; poll grup guna shortcut.
+    final showSubmit = _type != ComposerType.poll || _isFeedPoll;
+    // Post DIMATIKAN bila kandungan tidak sah/kosong; DIHIDUPKAN bila sah.
+    final canPost = showSubmit && !_posting && _validate(l) == null;
 
     return PopScope(
       canPop: !_hasContent || _posting,
@@ -489,8 +623,11 @@ class _ComposePageState extends ConsumerState<ComposePage> {
           backgroundColor: AppColors.threadsBg,
           foregroundColor: AppColors.threadsText,
           surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          scrolledUnderElevation: 0,
           leading: IconButton(
             icon: const Icon(Icons.close),
+            tooltip: l.t('discardAction'),
             onPressed: _posting
                 ? null
                 : () async {
@@ -500,131 +637,303 @@ class _ComposePageState extends ConsumerState<ComposePage> {
           ),
           title: Text(
             l.t('composerTitle'),
-            style: TextStyle(color: AppColors.threadsText),
+            style: TextStyle(
+                color: AppColors.threadsText, fontWeight: FontWeight.w800),
           ),
           actions: [
             if (showSubmit)
               Padding(
                 padding: const EdgeInsets.only(right: 12),
-                child: Center(
-                  child: ElevatedButton(
-                    onPressed: _posting ? null : _submit,
-                    // PENTING: tema global set minimumSize lebar infiniti
-                    // (Size.fromHeight) — mesti di-override dalam
-                    // AppBar/Row, jika tidak seluruh halaman gagal layout.
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(88, 40),
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 8),
-                    ),
-                    child: _posting
-                        ? const SizedBox(
-                            height: 16,
-                            width: 16,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white),
-                          )
-                        : Text(_type == ComposerType.checkin
-                            ? l.t('typeCheckin')
-                            : l.t('postAction')),
-                  ),
-                ),
+                child: Center(child: _postButton(l, canPost)),
               ),
           ],
         ),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Mod quote: jenis dikunci — tiada chips.
-              if (!_isQuote) ...[
-                _typeChips(l),
-                const SizedBox(height: 14),
-              ],
-              if (_inlineError != null) ...[
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: AppColors.primaryRed.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                        color:
-                            AppColors.primaryRed.withValues(alpha: 0.5)),
+        body: SafeArea(
+          bottom: true,
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Baris identiti pengguna SEMASA (avatar + nama) — komposer
+                // terasa seperti feed sosial, bukan borang berkotak.
+                _identityRow(l),
+                if (_inlineError != null) ...[
+                  const SizedBox(height: 4),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppColors.primaryRed.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                          color: AppColors.primaryRed.withValues(alpha: 0.5)),
+                    ),
+                    child: Text(
+                      '⚠️ $_inlineError',
+                      style: TextStyle(
+                          color: AppColors.threadsText,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600),
+                    ),
                   ),
-                  child: Text(
-                    '⚠️ $_inlineError',
-                    style: TextStyle(
-                        color: AppColors.threadsText,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600),
-                  ),
-                ),
-                const SizedBox(height: 12),
+                ],
+                const SizedBox(height: 4),
+                if (_isQuote)
+                  _quoteBody(l)
+                else ...[
+                  switch (_type) {
+                    ComposerType.post => _postBody(l),
+                    ComposerType.checkin => _checkinBody(l),
+                    ComposerType.poll => _pollBody(l),
+                    ComposerType.status => _statusBody(l),
+                  },
+                  // Toolbar ikon INLINE terus di bawah ruang teks (rujukan
+                  // Threads) — sentiasa kelihatan atas keyboard; elak
+                  // pertindihan dengan overlay avatar global di sudut bawah.
+                  const SizedBox(height: 6),
+                  _iconToolbar(l),
+                ],
               ],
-              if (_isQuote)
-                _quoteBody(l)
-              else
-                switch (_type) {
-                  ComposerType.post => _postBody(l),
-                  ComposerType.checkin => _checkinBody(l),
-                  ComposerType.poll => _pollBody(l),
-                  ComposerType.bill => _billBody(l),
-                  ComposerType.status => _statusBody(l),
-                },
-            ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _typeChips(AppLocalizations l) {
-    final entries = [
-      (ComposerType.post, '📝', l.t('typePost')),
-      (ComposerType.checkin, '📍', l.t('typeCheckin')),
-      (ComposerType.poll, '🗳️', l.t('typePoll')),
-      (ComposerType.bill, '🧾', l.t('typeBill')),
-      (ComposerType.status, '💬', l.t('typeStatus')),
-    ];
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
+  Widget _postButton(AppLocalizations l, bool canPost) {
+    // PENTING: tema global set minimumSize lebar infiniti (Size.fromHeight)
+    // — mesti di-override dalam AppBar, jika tidak seluruh halaman gagal
+    // layout. Post = satu-satunya CTA butang dominan (merah MakanMana).
+    return ElevatedButton(
+      onPressed: canPost ? _submit : null,
+      style: ElevatedButton.styleFrom(
+        backgroundColor: AppColors.primaryRed,
+        foregroundColor: Colors.white,
+        disabledBackgroundColor: AppColors.primaryRed.withValues(alpha: 0.38),
+        disabledForegroundColor: Colors.white.withValues(alpha: 0.85),
+        elevation: 0,
+        minimumSize: const Size(72, 38),
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 6),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        textStyle: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
+      ),
+      child: _posting
+          ? const SizedBox(
+              height: 16,
+              width: 16,
+              child: CircularProgressIndicator(
+                  strokeWidth: 2, color: Colors.white),
+            )
+          : Text(_type == ComposerType.checkin
+              ? l.t('typeCheckin')
+              : l.t('postAction')),
+    );
+  }
+
+  /// Baris identiti: avatar + nama pengguna SEMASA (live), pemilih privasi
+  /// ringan di kanan. Sumber identiti reaktif → tukar akaun menyegar sendiri.
+  Widget _identityRow(AppLocalizations l) {
+    final uid = ref.watch(authRepositoryProvider).currentUser?.uid ?? '';
+    final profile =
+        uid.isEmpty ? null : ref.watch(publicProfileProvider(uid)).valueOrNull;
+    final hasProfile = profile != null && profile.exists;
+    final name = hasProfile
+        ? profile.displayName
+        : (ref.watch(myDisplayNameProvider).valueOrNull ?? 'Foodie');
+    final username = profile?.username;
+    final showVis =
+        !_isQuote && (_type != ComposerType.poll || _isFeedPoll);
+    return Padding(
+      padding: const EdgeInsets.only(top: 2, bottom: 6),
       child: Row(
         children: [
-          for (final (t, emoji, label) in entries) ...[
-            InkWell(
-              onTap: _posting ? null : () => _selectType(t),
-              borderRadius: BorderRadius.circular(20),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 14, vertical: 8),
-                decoration: BoxDecoration(
-                  color: _type == t
-                      ? AppColors.primaryRed
-                      : AppColors.threadsSurface,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                      color: _type == t
-                          ? AppColors.primaryRed
-                          : AppColors.threadsBorder),
-                ),
-                child: Text(
-                  '$emoji $label',
+          MakanAvatar(
+            radius: 21,
+            photoUrl: profile?.photoUrl,
+            presetId: profile?.avatarPreset,
+            displayName: name,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                    color: _type == t
-                        ? Colors.white
-                        : AppColors.threadsText,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                  ),
+                      color: AppColors.threadsText,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800),
                 ),
-              ),
+                if (username != null && username.isNotEmpty)
+                  Text(
+                    '@$username',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        color: AppColors.threadsMuted, fontSize: 12.5),
+                  ),
+              ],
             ),
+          ),
+          if (showVis) ...[
             const SizedBox(width: 8),
+            _visibilityRow(),
           ],
         ],
+      ),
+    );
+  }
+
+  /// Toolbar ikon ringkas (tanpa kotak besar): Galeri, Kamera, Check-in,
+  /// Undian, Lagi. Ikon aktif = merah MakanMana; media dimatikan bila jenis
+  /// semasa tidak menyokong gambar. Kiraan aksara ringan di hujung kanan.
+  Widget _iconToolbar(AppLocalizations l) {
+    final canImage = !_posting &&
+        (_type == ComposerType.post || _type == ComposerType.checkin);
+    final len = _captionCtrl.text.characters.length;
+    final showCount = (_type == ComposerType.post ||
+            _type == ComposerType.status ||
+            _type == ComposerType.checkin) &&
+        len >= 400;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Divider(height: 1, thickness: 0.6, color: AppColors.threadsBorder),
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: Row(
+            children: [
+              _toolIcon(
+                icon: Icons.image_outlined,
+                tooltip: l.t('gallery'),
+                enabled: canImage,
+                onTap: () => _pickImage(ImageSource.gallery),
+              ),
+              _toolIcon(
+                icon: Icons.photo_camera_outlined,
+                tooltip: l.t('camera'),
+                enabled: canImage,
+                onTap: () => _pickImage(ImageSource.camera),
+              ),
+              _toolIcon(
+                icon: Icons.location_on_outlined,
+                tooltip: l.t('typeCheckin'),
+                active: _type == ComposerType.checkin,
+                enabled: !_posting,
+                onTap: () => _selectType(_type == ComposerType.checkin
+                    ? ComposerType.post
+                    : ComposerType.checkin),
+              ),
+              _toolIcon(
+                icon: Icons.how_to_vote_outlined,
+                tooltip: l.t('typePoll'),
+                active: _type == ComposerType.poll,
+                enabled: !_posting,
+                onTap: () => _selectType(_type == ComposerType.poll
+                    ? ComposerType.post
+                    : ComposerType.poll),
+              ),
+              _toolIcon(
+                icon: Icons.more_horiz,
+                tooltip: l.t('seeMore'),
+                active: _type == ComposerType.status,
+                enabled: !_posting,
+                onTap: _showMoreSheet,
+              ),
+              const Spacer(),
+              if (showCount)
+                Padding(
+                  padding: const EdgeInsets.only(right: 10),
+                  child: Text(
+                    '$len/500',
+                    style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: len >= 500
+                            ? AppColors.primaryRed
+                            : AppColors.threadsMuted),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _toolIcon({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback onTap,
+    bool active = false,
+    bool enabled = true,
+  }) {
+    final color = !enabled
+        ? AppColors.threadsMuted.withValues(alpha: 0.4)
+        : active
+            ? AppColors.primaryRed
+            : AppColors.threadsMuted;
+    // Tap target 44×44 (akses) walaupun ikon nampak minimal.
+    return IconButton(
+      onPressed: enabled ? onTap : null,
+      tooltip: tooltip,
+      iconSize: 22,
+      visualDensity: VisualDensity.compact,
+      constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+      icon: Icon(icon, color: color),
+    );
+  }
+
+  /// "Lagi": jenis komposer sekunder (Post/Status/Bil) — kekalkan fungsi
+  /// sedia ada tanpa segmented chips besar.
+  void _showMoreSheet() {
+    final l = AppLocalizations.of(context);
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.threadsSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final (t, icon, label) in <(ComposerType, IconData, String)>[
+              (ComposerType.post, Icons.edit_outlined, l.t('typePost')),
+              (
+                ComposerType.status,
+                Icons.chat_bubble_outline,
+                l.t('typeStatus')
+              ),
+            ])
+              ListTile(
+                leading: Icon(icon,
+                    color: _type == t
+                        ? AppColors.primaryRed
+                        : AppColors.threadsText),
+                title: Text(label,
+                    style: TextStyle(
+                        color: AppColors.threadsText,
+                        fontWeight: FontWeight.w700)),
+                trailing: _type == t
+                    ? const Icon(Icons.check_circle,
+                        color: AppColors.primaryRed)
+                    : null,
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _selectType(t);
+                },
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
   }
@@ -658,25 +967,46 @@ class _ComposePageState extends ConsumerState<ComposePage> {
       );
 
   Widget _captionField(AppLocalizations l, String hint,
-      {int minLines = 3, int maxLines = 6}) {
+      {int minLines = 3, int maxLines = 8, bool autofocus = false}) {
+    // Komposer teks TANPA border (gaya sosial terbuka). Kiraan 0/500 lalai
+    // disembunyikan (counterText '') — kiraan ringan dipapar di toolbar bila
+    // menghampiri had. Had 500 aksara kekal DIKUATKUASAKAN oleh maxLength.
     return TextField(
       controller: _captionCtrl,
       maxLines: maxLines,
       minLines: minLines,
       maxLength: 500,
+      autofocus: autofocus,
+      textCapitalization: TextCapitalization.sentences,
+      cursorColor: AppColors.primaryRed,
       onChanged: (v) => setState(() {}),
-      style: TextStyle(color: AppColors.threadsText),
-      decoration: _fieldDeco(hint),
+      style: TextStyle(
+          color: AppColors.threadsText, fontSize: 17, height: 1.35),
+      decoration: InputDecoration(
+        hintText: hint,
+        hintStyle: TextStyle(color: AppColors.threadsMuted, fontSize: 17),
+        border: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        focusedBorder: InputBorder.none,
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(vertical: 4),
+        counterText: '',
+      ),
     );
   }
 
-  Widget _imagePreviewAndButtons(AppLocalizations l) {
+  /// Pratonton media INLINE sahaja (thumbnail 1-6, boleh buang). Butang
+  /// Kamera/Galeri besar DIBUANG — tindakan media kini di toolbar ikon.
+  Widget _imagePreview(AppLocalizations l) {
+    final uploading =
+        _posting && _uploadTotal > 0 && _uploadDone < _uploadTotal;
+    if (_images.isEmpty && !uploading) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // SP8: thumbnail mendatar 1-6 gambar; setiap satu boleh dibuang.
         if (_images.isNotEmpty) ...[
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           SizedBox(
             height: 96,
             child: ListView.separated(
@@ -727,7 +1057,7 @@ class _ComposePageState extends ConsumerState<ComposePage> {
           ),
         ],
         // Kemajuan upload semasa hantar (contoh: "Memuat naik gambar 2/3").
-        if (_posting && _uploadTotal > 0 && _uploadDone < _uploadTotal) ...[
+        if (uploading) ...[
           const SizedBox(height: 8),
           Row(
             children: [
@@ -739,39 +1069,11 @@ class _ComposePageState extends ConsumerState<ComposePage> {
               const SizedBox(width: 10),
               Text(
                 '${l.t('uploadingImages')} ${_uploadDone + 1}/$_uploadTotal',
-                style: TextStyle(
-                    color: AppColors.threadsMuted, fontSize: 12.5),
+                style: TextStyle(color: AppColors.threadsMuted, fontSize: 12.5),
               ),
             ],
           ),
         ],
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed:
-                    _posting ? null : () => _pickImage(ImageSource.camera),
-                style:
-                    OutlinedButton.styleFrom(minimumSize: const Size(0, 46)),
-                icon: const Icon(Icons.photo_camera_outlined, size: 20),
-                label: Text(l.t('camera')),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _posting
-                    ? null
-                    : () => _pickImage(ImageSource.gallery),
-                style:
-                    OutlinedButton.styleFrom(minimumSize: const Size(0, 46)),
-                icon: const Icon(Icons.photo_library_outlined, size: 20),
-                label: Text(l.t('gallery')),
-              ),
-            ),
-          ],
-        ),
       ],
     );
   }
@@ -779,8 +1081,7 @@ class _ComposePageState extends ConsumerState<ComposePage> {
   Widget _visibilityRow() {
     if (_inGroup) {
       return Container(
-        padding:
-            const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
           color: AppColors.threadsSurface,
           borderRadius: BorderRadius.circular(20),
@@ -858,23 +1159,16 @@ class _ComposePageState extends ConsumerState<ComposePage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _captionField(l, l.t('composeHint')),
-        _imagePreviewAndButtons(l),
-        const SizedBox(height: 14),
-        _visibilityRow(),
+        // Privasi kini di baris identiti; media di toolbar ikon.
+        _captionField(l, l.t('composeHint'), autofocus: true),
+        _imagePreview(l),
       ],
     );
   }
 
   Widget _statusBody(AppLocalizations l) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _captionField(l, l.t('statusHint'), minLines: 2, maxLines: 4),
-        const SizedBox(height: 14),
-        _visibilityRow(),
-      ],
-    );
+    return _captionField(l, l.t('statusHint'),
+        minLines: 2, maxLines: 6, autofocus: true);
   }
 
   Widget _checkinBody(AppLocalizations l) {
@@ -885,10 +1179,33 @@ class _ComposePageState extends ConsumerState<ComposePage> {
         TextField(
           controller: _placeCtrl,
           maxLength: 60,
-          onChanged: (v) => setState(() {}),
+          onChanged: _onPlaceChanged,
           style: TextStyle(color: AppColors.threadsText),
-          decoration: _fieldDeco(l.t('checkinPlaceHint')),
+          decoration: _fieldDeco(l.t('checkinPlaceHint')).copyWith(
+            suffixIcon: _placeSearching
+                ? const Padding(
+                    padding: EdgeInsets.all(14),
+                    child: SizedBox(
+                        height: 16,
+                        width: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2)),
+                  )
+                : const Icon(Icons.search_outlined),
+          ),
         ),
+        if (_selectedPlace != null) _selectedPlaceCard(l),
+        if (_placeResults.isNotEmpty) _placeResultsList(l),
+        if (_placeCtrl.text.trim().length >= 2 &&
+            _selectedPlace == null &&
+            !_placeSearching)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _posting ? null : _useManualPlace,
+              icon: const Icon(Icons.edit_location_alt_outlined, size: 18),
+              label: Text(l.t('checkinUseManual')),
+            ),
+          ),
         _label(l.t('checkinAreaLabel')),
         TextField(
           controller: _areaCtrl,
@@ -907,8 +1224,7 @@ class _ComposePageState extends ConsumerState<ComposePage> {
         _label(l.t('checkinSpendLabel')),
         TextField(
           controller: _spendCtrl,
-          keyboardType:
-              const TextInputType.numberWithOptions(decimal: true),
+          keyboardType: const TextInputType.numberWithOptions(decimal: true),
           onChanged: (v) => setState(() {}),
           style: TextStyle(color: AppColors.threadsText),
           decoration: _fieldDeco('12.50'),
@@ -920,12 +1236,11 @@ class _ComposePageState extends ConsumerState<ComposePage> {
               InkWell(
                 onTap: _posting
                     ? null
-                    : () => setState(
-                        () => _rating = _rating == i ? 0 : i),
+                    : () => setState(() => _rating = _rating == i ? 0 : i),
                 borderRadius: BorderRadius.circular(8),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 3, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 3, vertical: 4),
                   child: Icon(
                     i <= _rating ? Icons.star : Icons.star_border,
                     size: 30,
@@ -953,8 +1268,8 @@ class _ComposePageState extends ConsumerState<ComposePage> {
                         }),
                 borderRadius: BorderRadius.circular(18),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 7),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                   decoration: BoxDecoration(
                     color: _moodTags.contains(tag)
                         ? AppColors.warmYellow
@@ -980,18 +1295,14 @@ class _ComposePageState extends ConsumerState<ComposePage> {
           ],
         ),
         _label(l.t('captionLabel')),
-        _captionField(l, l.t('checkinCaptionHint'),
-            minLines: 2, maxLines: 4),
-        _imagePreviewAndButtons(l),
-        const SizedBox(height: 14),
-        _visibilityRow(),
+        _captionField(l, l.t('checkinCaptionHint'), minLines: 2, maxLines: 4),
+        _imagePreview(l),
         const SizedBox(height: 8),
         // Persetujuan eksplisit: rekod meal PERIBADI (bukan awam).
         SwitchListTile(
           value: _saveToHistory,
-          onChanged: _posting
-              ? null
-              : (v) => setState(() => _saveToHistory = v),
+          onChanged:
+              _posting ? null : (v) => setState(() => _saveToHistory = v),
           contentPadding: EdgeInsets.zero,
           activeTrackColor: AppColors.primaryRed,
           title: Text(l.t('saveToHistoryLabel'),
@@ -1000,35 +1311,212 @@ class _ComposePageState extends ConsumerState<ComposePage> {
                   fontSize: 14,
                   fontWeight: FontWeight.w700)),
           subtitle: Text(l.t('saveToHistoryNote'),
-              style: TextStyle(
-                  color: AppColors.threadsMuted, fontSize: 12)),
+              style: TextStyle(color: AppColors.threadsMuted, fontSize: 12)),
         ),
       ],
     );
   }
 
+  Widget _selectedPlaceCard(AppLocalizations l) {
+    final place = _selectedPlace!;
+    return Container(
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppColors.threadsSurface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.threadsBorder),
+      ),
+      child: Row(children: [
+        Icon(
+            place.verified
+                ? Icons.verified_outlined
+                : Icons.edit_location_alt_outlined,
+            size: 18,
+            color:
+                place.verified ? AppColors.warmYellow : AppColors.threadsMuted),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            place.verified
+                ? l.t('checkinPlaceVerified')
+                : l.t('checkinPlaceManual'),
+            style: TextStyle(
+                color: AppColors.threadsMuted,
+                fontSize: 12,
+                fontWeight: FontWeight.w700),
+          ),
+        ),
+        IconButton(
+          tooltip: l.t('checkinRemovePlace'),
+          onPressed:
+              _posting ? null : () => setState(() => _selectedPlace = null),
+          icon: const Icon(Icons.close, size: 18),
+        ),
+      ]),
+    );
+  }
+
+  Widget _placeResultsList(AppLocalizations l) => Container(
+        margin: const EdgeInsets.only(top: 4),
+        decoration: BoxDecoration(
+          color: AppColors.threadsSurface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.threadsBorder),
+        ),
+        child: Column(
+          children: [
+            for (final place in _placeResults.take(6))
+              ListTile(
+                dense: true,
+                leading: Icon(place.source == 'makanmana_shared'
+                    ? Icons.storefront_outlined
+                    : Icons.location_on_outlined),
+                title: Text(place.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        color: AppColors.threadsText,
+                        fontWeight: FontWeight.w700)),
+                subtitle: Text(
+                  place.areaLabel.isNotEmpty ? place.areaLabel : place.address,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: AppColors.threadsMuted),
+                ),
+                trailing: place.source == 'makanmana_shared'
+                    ? Icon(Icons.verified_outlined,
+                        color: AppColors.warmYellow, size: 18)
+                    : null,
+                onTap: _posting ? null : () => _selectPlace(place),
+              ),
+          ],
+        ),
+      );
+
   Widget _pollBody(AppLocalizations l) {
-    return _shortcutCard(
-      emoji: '🗳️',
-      text: _inGroup ? l.t('pollGroupShortcut') : l.t('pollPublicSoon'),
-      buttonLabel: _inGroup ? l.t('pollGroupShortcut') : null,
-      onTap: _inGroup
-          ? () => showCreatePollSheet(context, widget.groupId!)
-          : null,
+    // Grup: kekal shortcut ke aliran poll grup sedia ada (Group Poll freeze).
+    if (_inGroup) {
+      return _shortcutCard(
+        emoji: '🗳️',
+        text: l.t('pollGroupShortcut'),
+        buttonLabel: l.t('pollGroupShortcut'),
+        onTap: () => showCreatePollSheet(context, widget.groupId!),
+      );
+    }
+    // QA-DEV17: editor poll feed INLINE (Status/awam). "Poll awam akan datang"
+    // DIBUANG — poll kini post feed sebenar melalui createFeedPoll.
+    return _feedPollEditor(l);
+  }
+
+  Widget _feedPollEditor(AppLocalizations l) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _pollField(
+          controller: _pollQuestionCtrl,
+          hint: l.t('pollQuestionHint'),
+          maxLength: 120,
+          autofocus: true,
+        ),
+        const SizedBox(height: 10),
+        Text(l.t('pollOptions'),
+            style: TextStyle(
+                color: AppColors.threadsMuted,
+                fontSize: 12.5,
+                fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        for (var i = 0; i < _pollOptionCtrls.length; i++)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _pollField(
+                    controller: _pollOptionCtrls[i],
+                    hint: '${l.t('pollOption')} ${i + 1}',
+                    maxLength: 60,
+                  ),
+                ),
+                if (_pollOptionCtrls.length > kPollOptionMin)
+                  IconButton(
+                    onPressed: _posting ? null : () => _removePollOption(i),
+                    tooltip: l.t('discardAction'),
+                    icon: Icon(Icons.close,
+                        size: 18, color: AppColors.threadsMuted),
+                  ),
+              ],
+            ),
+          ),
+        if (_pollOptionCtrls.length < kPollOptionMax)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: _posting ? null : _addPollOption,
+              icon: const Icon(Icons.add, size: 18),
+              label: Text(l.t('addOption')),
+            ),
+          ),
+      ],
     );
   }
 
-  Widget _billBody(AppLocalizations l) {
-    return _shortcutCard(
-      emoji: '🧾',
-      text: l.t('billGroupNote'),
-      buttonLabel: l.t('billShortcut'),
-      onTap: () => context.push(RoutePaths.tongTongCreate),
+  void _addPollOption() {
+    if (_pollOptionCtrls.length >= kPollOptionMax) return;
+    setState(() => _pollOptionCtrls.add(TextEditingController()));
+  }
+
+  void _removePollOption(int i) {
+    if (_pollOptionCtrls.length <= kPollOptionMin) return;
+    setState(() {
+      final ctrl = _pollOptionCtrls.removeAt(i);
+      ctrl.dispose();
+    });
+  }
+
+  Widget _pollField({
+    required TextEditingController controller,
+    required String hint,
+    required int maxLength,
+    bool autofocus = false,
+  }) {
+    return TextField(
+      controller: controller,
+      maxLength: maxLength,
+      autofocus: autofocus,
+      onChanged: (_) => setState(() {}),
+      textCapitalization: TextCapitalization.sentences,
+      cursorColor: AppColors.primaryRed,
+      style: TextStyle(color: AppColors.threadsText),
+      decoration: InputDecoration(
+        counterText: '',
+        hintText: hint,
+        hintStyle: TextStyle(color: AppColors.threadsMuted),
+        filled: true,
+        fillColor: AppColors.threadsSurface,
+        isDense: true,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.threadsBorder),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.threadsBorder),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: AppColors.primaryRed, width: 1.2),
+        ),
+      ),
     );
   }
 
-  /// Kad pintasan (Poll/Bill) — TIADA ciptaan palsu; hanya navigasi ke
-  /// aliran sedia ada atau mesej "akan datang" yang jujur.
+  /// Kad pintasan (Poll) — TIADA ciptaan palsu; hanya navigasi ke aliran
+  /// sedia ada atau mesej "akan datang" yang jujur.
+  /// QA-DEV16: Bil/Tong-Tong DIBUANG dari composer posting (owner req). Sistem
+  /// Tong-Tong (route/skrin/servis/data) kekal utuh di tempat lain.
   Widget _shortcutCard({
     required String emoji,
     required String text,
@@ -1060,8 +1548,7 @@ class _ComposePageState extends ConsumerState<ComposePage> {
             const SizedBox(height: 14),
             ElevatedButton(
               onPressed: _posting ? null : onTap,
-              style: ElevatedButton.styleFrom(
-                  minimumSize: const Size(200, 44)),
+              style: ElevatedButton.styleFrom(minimumSize: const Size(200, 44)),
               child: Text(buttonLabel),
             ),
           ],

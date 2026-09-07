@@ -2,16 +2,27 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:makan_mana/core/providers.dart';
+import 'package:makan_mana/core/providers/location_context_provider.dart';
 import 'package:makan_mana/core/services/cloud_suggestion_service.dart';
 import 'package:makan_mana/features/explore/explore_pagination_controller.dart';
 import 'package:makan_mana/models/place_summary.dart';
+import 'package:makan_mana/repositories/auth_repository.dart';
 
 /// Phase 2.2A — ujian kawalan pagination Explore.
 
 PlaceSummary p(String id) => PlaceSummary(
-      placeId: id, name: id, cuisine: 'cafe', emoji: '🍽️',
-      rating: 4.0, userRatingCount: 10, priceLevel: 2, distanceKm: 1,
-      isOpen: true, address: 'x', matchScore: 50, matchReasonKeys: const [],
+      placeId: id,
+      name: id,
+      cuisine: 'cafe',
+      emoji: '🍽️',
+      rating: 4.0,
+      userRatingCount: 10,
+      priceLevel: 2,
+      distanceKm: 1,
+      isOpen: true,
+      address: 'x',
+      matchScore: 50,
+      matchReasonKeys: const [],
     );
 
 /// Fake: page 1 = p0..p11 (cursor→12), page 2 = p12..p19 (end). p11 repeats on
@@ -21,30 +32,53 @@ class _FakeService extends CloudSuggestionService {
   int calls = 0;
   @override
   Future<PlacesPage?> getNearbyPlacesPage({
-    double? lat, double? lng, int? radius, String? languageCode, int cursor = 0,
+    double? lat,
+    double? lng,
+    int? radius,
+    String? languageCode,
+    int cursor = 0,
   }) async {
     calls++;
     if (cursor == 0) {
       return PlacesPage(
         places: List.generate(12, (i) => p('p$i')),
-        nextCursor: 12, endOfResults: false,
+        nextCursor: 12,
+        endOfResults: false,
       );
     }
     return PlacesPage(
-      places: [p('p11'), ...List.generate(8, (i) => p('p${12 + i}'))], // p11 dup
+      places: [
+        p('p11'),
+        ...List.generate(8, (i) => p('p${12 + i}'))
+      ], // p11 dup
       nextCursor: null, endOfResults: true,
     );
   }
 }
 
-ProviderContainer makeContainer(CloudSuggestionService fake) => ProviderContainer(
-      overrides: [
-        firebaseReadyProvider.overrideWith((ref) => true),
-        cloudSuggestionServiceProvider.overrideWithValue(fake),
-      ],
-    );
+ProviderContainer makeContainer(CloudSuggestionService fake) {
+  final container = ProviderContainer(
+    overrides: [
+      firebaseReadyProvider.overrideWith((ref) => true),
+      // The pagination fake requires cloud suggestions but not a real
+      // Firebase Auth app. Keep the location context anonymous in tests.
+      authRepositoryProvider
+          .overrideWithValue(AuthRepository(firebaseReady: false)),
+      locationContextProvider.overrideWith(
+        (ref) async => const LocationRequestContext(radiusMeters: 3000),
+      ),
+      cloudSuggestionServiceProvider.overrideWithValue(fake),
+    ],
+  );
+  // This provider is auto-disposed. Keep it observed for each contract test
+  // so a page request cannot complete after its controller is disposed.
+  container.listen(explorePaginationProvider, (_, __) {});
+  return container;
+}
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   test('page 1 loads 12', () async {
     final fake = _FakeService();
     final c = makeContainer(fake);
@@ -76,7 +110,9 @@ void main() {
     await c.read(explorePaginationProvider.notifier).loadFirst();
     await c.read(explorePaginationProvider.notifier).loadMore();
     final callsBefore = fake.calls;
-    await c.read(explorePaginationProvider.notifier).loadMore(); // should do nothing
+    await c
+        .read(explorePaginationProvider.notifier)
+        .loadMore(); // should do nothing
     expect(fake.calls, callsBefore);
   });
 

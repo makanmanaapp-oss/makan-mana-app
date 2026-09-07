@@ -43,6 +43,15 @@ void main() {
       expect(src, contains('RoutePaths.social'));
     });
 
+    test('label Threads kekal untuk aksesibiliti tetapi tidak dipapar', () {
+      final start = src.indexOf('class _ThreadsButton');
+      final end = src.indexOf('class _NotificationBell');
+      final button = src.substring(start, end);
+      expect(button, contains("label: l.t('threadsLabel')"));
+      expect(button, contains("message: l.t('threadsLabel')"));
+      expect(button, isNot(contains("Text(l.t('threadsLabel')")));
+    });
+
     test('ikon forum lama dibuang dari header', () {
       expect(src.contains('Icons.forum_outlined'), isFalse,
           reason: 'ikon forum lama sepatutnya diganti loceng+Threads');
@@ -86,6 +95,14 @@ void main() {
 
     test('bar carian ada ikon penapis merah', () {
       expect(src, contains('Icons.tune_rounded'));
+    });
+
+    test('ukuran polish kekal pada sasaran padat', () {
+      expect(src, contains('fontSize: 27'));
+      expect(src, contains('scale: 1.12'));
+      expect(src, contains('BoxConstraints(minHeight: 72)'));
+      expect(src, contains('height: 166'));
+      expect(src, contains('width: 110'));
     });
   });
 }

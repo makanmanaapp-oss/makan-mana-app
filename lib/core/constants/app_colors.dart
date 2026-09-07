@@ -15,7 +15,10 @@ class AppColors {
   static const softYellow = Color(0xFFFBEDC9); // isian lembut kuning pucat
 
   // Permukaan & teks Bright Mode.
-  static const creamBackground = Color(0xFFFFF9F2);
+  // QA-DEV10: latar utama Bright Mode = PUTIH TULEN #FFFFFF (bukan lagi krim
+  // #FFF9F2). Token kekal dinamakan creamBackground demi perubahan minimal
+  // (satu lapisan tema authoritative). Bright-only — Dark tidak terjejas.
+  static const creamBackground = Color(0xFFFFFFFF);
   static const cardWhite = Color(0xFFFFFFFF);
   static const secondarySurface = Color(0xFFF7F4EF);
   static const darkText = Color(0xFF1C1D20);

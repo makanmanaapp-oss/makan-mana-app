@@ -132,7 +132,9 @@ void main() {
           feed.contains(
               'GroupAvatarResolved(groupId: g.id, emoji: g.emoji, size: 46)'),
           isTrue);
-      expect(hub.contains('groupId: group.id, emoji: group.emoji, size: 46'),
+      // GROUP REDESIGN (Phase B): header avatar sengaja DIPERBESAR (46→54) untuk
+      // identiti yang lebih dominan pada header terbuka baharu.
+      expect(hub.contains('groupId: group.id, emoji: group.emoji, size: 54'),
           isTrue);
       expect(
           hub.contains('GroupAvatarResolved(groupId: g.id, emoji: g.emoji, size: 72)'),

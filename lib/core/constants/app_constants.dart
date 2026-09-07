@@ -25,6 +25,7 @@ class RoutePaths {
   static const themePicker = '/theme-picker';
   static const privacy = '/privacy';
   static const settings = '/settings';
+  static const notificationSettings = '/settings/notifications';
   static const fitToday = '/fit/today';
   static const fitMonitor = '/fit/monitor';
   static const fitOnboarding = '/fit/onboarding';

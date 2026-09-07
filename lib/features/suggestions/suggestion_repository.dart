@@ -54,10 +54,18 @@ final homeSuggestionProvider =
   // guna GPS sebenar dari fetch pertama (elak fetch KL sementara sebelum GPS
   // sedia + jadikan Home AI Pick sekawasan dengan Explore & Spin). Refetch
   // automatik bila lokasi berubah (provider di-invalidate).
-  await ref.watch(locationContextProvider.future);
+  final loc = await ref.watch(locationContextProvider.future);
 
   final full = ref.read(makanManaUserContextProvider);
   final dummy = ref.read(dummySuggestionServiceProvider);
+
+  // AUTHORITY LOKASI (QA-DEV6): tiada lokasi sah (GPS gagal + tiada last-valid
+  // disimpan) → JANGAN minta cadangan. Kalau lat/lng null dihantar, pelayan
+  // jatuh senyap ke KL. Papar keadaan lokasi-tak-tersedia yang jujur — BUKAN
+  // restoran sekitar Kuala Lumpur.
+  if (!loc.hasLocation) {
+    return const HomeSuggestion(isEmpty: true, source: 'location_unavailable');
+  }
 
   // Tiada Firebase (mod dev): tunjuk SAMPEL berlabel, bukan "live".
   if (!ref.read(firebaseReadyProvider)) {

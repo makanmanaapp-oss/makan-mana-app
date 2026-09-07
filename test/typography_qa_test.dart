@@ -189,8 +189,9 @@ void main() {
     expect(MMColors.dark.elevatedCard.toARGB32(), 0xFF1E2229);
     expect(MMColors.dark.onCard.toARGB32(), 0xFFF5F7FA);
     expect(MMColors.dark.chipSelectedBackground.toARGB32(), 0xFFF6D778);
-    // Bright DILINDUNGI — nilai diluluskan owner tidak berubah.
-    expect(MMColors.light.appBackground.toARGB32(), 0xFFFFF9F2);
+    // QA-DEV10: latar utama Bright Mode = PUTIH TULEN #FFFFFF (diluluskan owner,
+    // ganti krim lama #FFF9F2). Kad kekal putih; token lain Bright tak berubah.
+    expect(MMColors.light.appBackground.toARGB32(), 0xFFFFFFFF);
     expect(MMColors.light.card.toARGB32(), 0xFFFFFFFF);
     expect(MMColors.light.onCard.toARGB32(), 0xFF1C1D20);
     expect(MMColors.light.border.toARGB32(), 0xFFE4E1DC);
@@ -261,7 +262,9 @@ void main() {
   // 919 kunci asal + 334 kunci Sport Mood/blok senaman + 5 kunci UI statik
   // + 6 kunci UI am ISSUE 001.3 (notis legal, kongsi, keutamaan lanjut)
   // + 124 kunci kad kedai/detail + 88 kunci laporan/pembetulan Phase 1.11.
-  test('l10n: semua 1504 kunci dan parameter sepadan', () {
+  // Baseline semasa termasuk kunci Check-in, social timestamp dan
+  // Notification V2 Prompt 2 (16 terjemahan untuk empat jenis group/social).
+  test('l10n: semua 1738 kunci dan parameter sepadan', () {
     final msKeys = AppLocalizations.keysForTesting(const Locale('ms'));
     // Phase 2.2A: +2 kunci (loadMore, endOfResults) merentas 4 bahasa.
     // Location hotfix: +1 kunci (near) merentas 4 bahasa.
@@ -282,7 +285,17 @@ void main() {
     // Front Page Redesign 1A: +2 kunci hero Home (homeHeroLead, homeHeroAccent)
     //   merentas 4 bahasa.
     // Refinement Home: +2 kunci (threadsLabel, fitExclusive) merentas 4 bahasa.
-    expect(msKeys, hasLength(1580));
+    // PROMPT 4: +26 kunci Tetapan Notifikasi (notifSettingsTitle..notifSaveError,
+    //   notifLoadError sedia ada) merentas 4 bahasa.
+    // QA-DEV21: +17 kunci Activity (tab, pengelasan masa, empty state,
+    // actions dan salinan notifikasi) merentas 4 bahasa.
+    // QA-DEV28: +1 bentuk Follow dengan nama pelaku awam.
+    // QA-DEV29: +8 kunci salinan sosial mesra-pelaku merentas 4 bahasa —
+    //   Reaction/Comment/Reply/Repost/Quote BodyWithActor + Mention
+    //   Title/Body/BodyWithActor (nama pelaku sebenar untuk semua jenis sosial).
+    // PHASE 1C-A1: +2 kunci status akaun (accountSuspendedTitle/Body) untuk
+    //   penguatkuasaan penggantungan akaun sisi-app merentas 4 bahasa.
+    expect(msKeys, hasLength(1738));
     final placeholder = RegExp(r'\{[^}]+\}');
     final msValues = AppLocalizations.valuesForTesting(const Locale('ms'));
     for (final language in ['en', 'zh', 'ta']) {

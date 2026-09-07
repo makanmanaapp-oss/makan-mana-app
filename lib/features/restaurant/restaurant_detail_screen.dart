@@ -30,9 +30,11 @@ import '../place_corrections/report_entry_sheet.dart';
 import 'canonical/restaurant_detail_flags.dart';
 
 class RestaurantDetailScreen extends ConsumerStatefulWidget {
-  const RestaurantDetailScreen({super.key, required this.placeId});
+  const RestaurantDetailScreen(
+      {super.key, required this.placeId, this.initialPlace});
 
   final String placeId;
+  final PlaceSummary? initialPlace;
 
   @override
   ConsumerState<RestaurantDetailScreen> createState() =>
@@ -172,8 +174,7 @@ class _RestaurantDetailScreenState
     // Phase 1.14F-R: strip diagnostik kohort DEBUG-ONLY (tidak dalam keluaran).
     // Kini juga digate oleh flag kebolehlihatan (default OFF) supaya paparan
     // biasa BERSIH; hidupkan eksplisit untuk QA. Logik produksi tak berubah.
-    final String? diagUid =
-        ref.read(authRepositoryProvider).currentUser?.uid;
+    final String? diagUid = ref.read(authRepositoryProvider).currentUser?.uid;
     Widget diag(Widget w, String surface) =>
         (kDebugMode && RestaurantDetailFlags.cohortDiagnosticsVisible)
             ? CohortDiagnosticsOverlay(
@@ -182,9 +183,11 @@ class _RestaurantDetailScreenState
     final current = ref.watch(currentSuggestionProvider);
     // Utamakan tempat semasa jika ID sepadan (tempat Google sebenar);
     // jika tidak cuba senarai dummy.
-    final place = (current != null && current.placeId == placeId)
-        ? current
-        : ref.read(dummySuggestionServiceProvider).byId(placeId) ?? current;
+    final place = widget.initialPlace ??
+        ((current != null && current.placeId == placeId)
+            ? current
+            : ref.read(dummySuggestionServiceProvider).byId(placeId) ??
+                current);
 
     if (place == null) {
       // Flag OFF: kekalkan paparan legasi (ralat ringkas). Flag ON: keadaan
@@ -203,24 +206,26 @@ class _RestaurantDetailScreenState
     // sama; skrin legasi di bawah kekal utuh & tersedia bila flag OFF.
     if (RestaurantDetailFlags.canonicalRestaurantDetailEnabled) {
       final vm = restaurantDetailFromSummary(place);
-      return diag(CanonicalRestaurantDetailScreen(
-        vm: vm,
-        callbacks: RestaurantDetailCallbacks(
-          onBack: () => context.pop(),
-          onOpenMaps: () =>
-              openPlaceInMaps(ref, place, source: 'restaurant_detail'),
-          onSave: () => _toggleFavorite(place, false),
-          onShare: () => _share(context, place),
-          onRate: () => _rate(place, 'checkin'),
-          onLogMeal: () => _logMeal(place),
-          // PHASE 1.11: titik masuk laporan (flag OFF = butang tidak dipapar).
-          onReportIncorrectInformation: () => showReportEntrySheet(
-            context,
-            snapshot: captureSnapshot(vm, capturedAt: DateTime.now()),
-            repository: ref.read(placeCorrectionRepositoryProvider),
+      return diag(
+          CanonicalRestaurantDetailScreen(
+            vm: vm,
+            callbacks: RestaurantDetailCallbacks(
+              onBack: () => context.pop(),
+              onOpenMaps: () =>
+                  openPlaceInMaps(ref, place, source: 'restaurant_detail'),
+              onSave: () => _toggleFavorite(place, false),
+              onShare: () => _share(context, place),
+              onRate: () => _rate(place, 'checkin'),
+              onLogMeal: () => _logMeal(place),
+              // PHASE 1.11: titik masuk laporan (flag OFF = butang tidak dipapar).
+              onReportIncorrectInformation: () => showReportEntrySheet(
+                context,
+                snapshot: captureSnapshot(vm, capturedAt: DateTime.now()),
+                repository: ref.read(placeCorrectionRepositoryProvider),
+              ),
+            ),
           ),
-        ),
-      ), 'detail:${place.dataSource ?? "legacy"} (backend)');
+          'detail:${place.dataSource ?? "legacy"} (backend)');
     }
 
     // ================= REDESIGN (Image 3) — laluan LEGASI (produksi) =========
@@ -337,12 +342,8 @@ class _RestaurantDetailScreenState
                       text: '${place.distanceKm} km',
                     ),
                   _MetricCard(
-                    icon: open
-                        ? Icons.circle
-                        : Icons.schedule_outlined,
-                    iconColor: open
-                        ? AppColors.openGreen
-                        : palette.subtext,
+                    icon: open ? Icons.circle : Icons.schedule_outlined,
+                    iconColor: open ? AppColors.openGreen : palette.subtext,
                     text: l.t(availabilityLabelKey(place)),
                     textColor: open ? AppColors.openGreen : null,
                   ),
@@ -352,12 +353,9 @@ class _RestaurantDetailScreenState
                       text: priceText,
                     ),
                   // Rating komuniti MakanMana (verified) — jika autoritatif.
-                  ref
-                      .watch(placeCommunityProvider(place.placeId))
-                      .maybeWhen(
+                  ref.watch(placeCommunityProvider(place.placeId)).maybeWhen(
                         data: (details) {
-                          final rating =
-                              details?['communityRating'] as num?;
+                          final rating = details?['communityRating'] as num?;
                           final count = details?['communityCount'] as num?;
                           if (rating == null) return const SizedBox.shrink();
                           return _MetricCard(
@@ -407,9 +405,7 @@ class _RestaurantDetailScreenState
                   ),
                   ref.watch(isFavoriteProvider(place.placeId)).maybeWhen(
                         data: (isFav) => _IconAction(
-                          icon: isFav
-                              ? Icons.bookmark
-                              : Icons.bookmark_border,
+                          icon: isFav ? Icons.bookmark : Icons.bookmark_border,
                           tooltip: l.t('save'),
                           onTap: () => _toggleFavorite(place, isFav),
                         ),
@@ -513,9 +509,8 @@ class _RestaurantDetailScreenState
                       }
                       return Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: reviews
-                            .map((r) => _ReviewTile(review: r))
-                            .toList(),
+                        children:
+                            reviews.map((r) => _ReviewTile(review: r)).toList(),
                       );
                     },
                     orElse: () => const SizedBox.shrink(),
@@ -591,43 +586,43 @@ class _MetricCard extends StatelessWidget {
     return ConstrainedBox(
       constraints: BoxConstraints(maxWidth: maxW),
       child: Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
-      decoration: BoxDecoration(
-        color: palette.card,
-        borderRadius: BorderRadius.circular(14),
-        border: palette.isDark ? Border.all(color: palette.border) : null,
-        boxShadow: palette.isDark
-            ? null
-            : [
-                BoxShadow(
-                  color: const Color(0xFF7A3B1E).withValues(alpha: 0.06),
-                  blurRadius: 14,
-                  offset: const Offset(0, 5),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          color: palette.card,
+          borderRadius: BorderRadius.circular(14),
+          border: palette.isDark ? Border.all(color: palette.border) : null,
+          boxShadow: palette.isDark
+              ? null
+              : [
+                  BoxShadow(
+                    color: const Color(0xFF7A3B1E).withValues(alpha: 0.06),
+                    blurRadius: 14,
+                    offset: const Offset(0, 5),
+                  ),
+                ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 18, color: iconColor ?? palette.primary),
+            const SizedBox(width: 7),
+            // Fleksibel + ellipsis: teks status panjang (cth. jam tak disahkan)
+            // pada skala 1.3 tidak melimpah lebar baris Wrap.
+            Flexible(
+              child: Text(
+                text,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                softWrap: false,
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                  color: textColor ?? palette.text,
                 ),
-              ],
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 18, color: iconColor ?? palette.primary),
-          const SizedBox(width: 7),
-          // Fleksibel + ellipsis: teks status panjang (cth. jam tak disahkan)
-          // pada skala 1.3 tidak melimpah lebar baris Wrap.
-          Flexible(
-            child: Text(
-              text,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              softWrap: false,
-              style: TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-                color: textColor ?? palette.text,
               ),
             ),
-          ),
-        ],
-      ),
+          ],
+        ),
       ),
     );
   }
@@ -711,14 +706,12 @@ class _IconAction extends StatelessWidget {
                   decoration: BoxDecoration(
                     color: bg,
                     borderRadius: BorderRadius.circular(15),
-                    border: filled
-                        ? null
-                        : Border.all(color: palette.border),
+                    border: filled ? null : Border.all(color: palette.border),
                     boxShadow: (filled && !palette.isDark)
                         ? [
                             BoxShadow(
-                              color: AppColors.primaryRed
-                                  .withValues(alpha: 0.28),
+                              color:
+                                  AppColors.primaryRed.withValues(alpha: 0.28),
                               blurRadius: 14,
                               offset: const Offset(0, 6),
                             ),
@@ -782,8 +775,8 @@ class _ReviewTile extends StatelessWidget {
                 ),
               Text(
                 '★' * rating,
-                style: const TextStyle(
-                    fontSize: 12, color: AppColors.warmYellow),
+                style:
+                    const TextStyle(fontSize: 12, color: AppColors.warmYellow),
               ),
             ],
           ),
@@ -791,8 +784,8 @@ class _ReviewTile extends StatelessWidget {
             const SizedBox(height: 5),
             Text(
               text,
-              style: TextStyle(
-                  fontSize: 13.5, height: 1.3, color: mm.onCardMuted),
+              style:
+                  TextStyle(fontSize: 13.5, height: 1.3, color: mm.onCardMuted),
             ),
           ],
         ],

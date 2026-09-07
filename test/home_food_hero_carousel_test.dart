@@ -171,6 +171,55 @@ void main() {
     expect(find.byKey(ValueKey<String>(_assets[0])), findsOneWidget);
   });
 
+  testWidgets(
+      'one failing asset among valid ones does NOT trip red-circle fallback',
+      (tester) async {
+    // Toleransi kegagalan sementara: satu aset gagal TIDAK boleh mengalir ke
+    // fallback bulatan-merah selagi ada aset sah. (Senarai-hitam kekal hanya
+    // selepas ≥2 kegagalan aset yang sama.)
+    await tester.pumpWidget(_harness((c) => HomeFoodHeroCarousel(
+          palette: HomePalette.of(c),
+          initialIndex: 0,
+          autoPlay: false,
+          assetsOverride: ['assets/__nope__.png', _assets[0], _assets[1]],
+        )));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 600));
+    while (tester.takeException() != null) {} // ralat aset tak-sah dijangka
+    expect(find.byKey(ValueKey<String>(_assets[0])), findsOneWidget);
+    expect(find.byType(MmIcon), findsNothing); // TIADA fallback bulatan-merah
+  });
+
+  testWidgets(
+      'food visual scaled to tuned 1.12 (~+25% luas); layout footprint kekal',
+      (tester) async {
+    // Saiz hero dituning pada 1.12 (≈ +25% luas — memenuhi "~20% lebih besar")
+    // — maksimum selamat-limpahan; skala lebih besar melimpah Home @430dp.
+    await tester.binding.setSurfaceSize(const Size(412, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(_harness(
+      (c) => HomeFoodHeroCarousel(
+          palette: HomePalette.of(c), initialIndex: 0, autoPlay: false),
+      size: const Size(412, 900),
+    ));
+    await tester.pump();
+    final scales = tester
+        .widgetList<Transform>(find.descendant(
+          of: find.byType(HomeFoodHeroCarousel),
+          matching: find.byType(Transform),
+        ))
+        .map((t) => t.transform.getRow(0)[0])
+        .toList();
+    expect(scales.any((s) => (s - 1.12).abs() < 0.001), isTrue,
+        reason: 'jangka skala hero 1.12, dapat $scales');
+    // Footprint susun atur (kotak imej) kekal 197×175 pada 412dp — Transform
+    // hanya mengecat lebih besar, tiada limpahan Row / anjakan headline.
+    final img = tester.widget<Image>(find.byKey(ValueKey<String>(_assets[0])));
+    expect(img.width, 197.0);
+    expect(img.height, 175.0);
+    expect(img.fit, BoxFit.contain);
+  });
+
   for (final size in const [Size(360, 780), Size(412, 900)]) {
     for (final scale in const [1.0, 1.3]) {
       for (final dark in const [false, true]) {

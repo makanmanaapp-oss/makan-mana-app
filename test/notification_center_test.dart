@@ -82,8 +82,16 @@ void main() {
       expect(n.rawType, 'social_comment');
       expect(n.category, MakanNotificationCategory.social);
       expect(n.entityId, 'p1');
+      expect(n.actorDisplaySnapshot, isNull);
       expect(n.isCritical, isTrue);
       expect(n.schemaVersion, 2);
+    });
+
+    test('actor display snapshot dibaca untuk fallback identiti', () {
+      final n = MakanNotification.fromMap('i', {
+        'actorDisplaySnapshot': ' Q ',
+      });
+      expect(n.actorDisplaySnapshot, 'Q');
     });
 
     test('timestamp int (epoch ms) diurai', () {

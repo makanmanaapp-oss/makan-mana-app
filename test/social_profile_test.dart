@@ -105,25 +105,26 @@ List<Override> _overrides({
     [
       sharedPreferencesProvider.overrideWithValue(_prefs),
       authRepositoryProvider.overrideWithValue(_FakeAuth()),
+      // The production clock deliberately uses a one-minute periodic stream
+      // while a social surface is mounted. Widget tests do not need a live
+      // clock tick, and overriding it prevents that valid timer from outliving
+      // the test binding's teardown invariant.
+      socialClockProvider
+          .overrideWith((ref) => Stream.value(DateTime(2026, 1, 1))),
       publicProfileProvider.overrideWith((ref, uid) {
         _profileStreamCount++;
-        return Stream.value(
-            _profiles[uid] ?? FoodProfile.fromMap(uid, null));
+        return Stream.value(_profiles[uid] ?? FoodProfile.fromMap(uid, null));
       }),
       userPublicPostsProvider.overrideWith((ref, uid) => Stream.value(
           posts.where((p) => p.data['authorUid'] == uid).toList())),
       myCommentsProvider.overrideWith((ref) => Stream.value(myComments)),
       userPublicRepliesProvider.overrideWith((ref, uid) => Stream.value(
-          myComments
-              .where((c) => c.data['authorUid'] == uid)
-              .toList())),
+          myComments.where((c) => c.data['authorUid'] == uid).toList())),
       myBlockedIdsProvider.overrideWith((ref) => Stream.value(blocked)),
       myMutedIdsProvider.overrideWith((ref) => Stream.value(const {})),
       mySavedPostIdsProvider.overrideWith((ref) => Stream.value(const {})),
-      isFollowingProvider
-          .overrideWith((ref, uid) => Stream.value(amFollowing)),
-      postByIdProvider
-          .overrideWith((ref, id) => Stream.value(postById[id])),
+      isFollowingProvider.overrideWith((ref, uid) => Stream.value(amFollowing)),
+      postByIdProvider.overrideWith((ref, id) => Stream.value(postById[id])),
     ];
 
 Widget _app(Widget home,
@@ -237,8 +238,8 @@ void main() {
   group('ISSUE 004 identiti live', () {
     testWidgets('post lama papar nama & avatar TERKINI', (tester) async {
       _ignoreNetworkImageErrors();
-      _profiles['u1'] = _mkProfile('u1',
-          name: 'Nama Baru', photoUrl: 'https://x/new.jpg');
+      _profiles['u1'] =
+          _mkProfile('u1', name: 'Nama Baru', photoUrl: 'https://x/new.jpg');
       final post = _mkPost('p1', 'u1', snapshotName: 'Nama Lama');
       AuthorIdentity? captured;
       await _pump(
@@ -297,8 +298,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('akaun dipadam guna label selamat dilokalkan',
-        (tester) async {
+    testWidgets('akaun dipadam guna label selamat dilokalkan', (tester) async {
       final post = _mkPost('p3', 'u-gone');
       await _pump(
         tester,
@@ -345,8 +345,7 @@ void main() {
           ])),
           overrides: [
             ..._overrides(),
-            publicProfileProvider
-                .overrideWith((ref, uid) => controller.stream),
+            publicProfileProvider.overrideWith((ref, uid) => controller.stream),
           ],
         ),
       );
@@ -376,10 +375,8 @@ void main() {
   // ISSUE 005: profil gaya Threads
   // ============================================================
   group('ISSUE 005 profil Threads', () {
-    testWidgets('profil sendiri: Edit + Kongsi, TIADA Follow',
-        (tester) async {
-      _profiles[_myUid] =
-          _mkProfile(_myUid, name: 'Saya', username: 'saya');
+    testWidgets('profil sendiri: Edit + Kongsi, TIADA Follow', (tester) async {
+      _profiles[_myUid] = _mkProfile(_myUid, name: 'Saya', username: 'saya');
       await _pump(
         tester,
         _app(const SizedBox(),
@@ -393,8 +390,7 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('profil orang lain: Follow + DM, tiada Edit',
-        (tester) async {
+    testWidgets('profil orang lain: Follow + DM, tiada Edit', (tester) async {
       _profiles['u2'] = _mkProfile('u2', name: 'Kawan', username: 'kawan');
       await _pump(
         tester,
@@ -414,8 +410,7 @@ void main() {
       await _pump(
         tester,
         _app(const SizedBox(),
-            overrides: _overrides(amFollowing: true),
-            router: _router('/u/u2')),
+            overrides: _overrides(amFollowing: true), router: _router('/u/u2')),
       );
       final l = AppLocalizations(const Locale('ms'));
       expect(find.text(l.t('following')), findsOneWidget);
@@ -425,8 +420,7 @@ void main() {
       await _pump(
         tester,
         _app(const SizedBox(),
-            overrides: _overrides(blocked: {'u3'}),
-            router: _router('/u/u3')),
+            overrides: _overrides(blocked: {'u3'}), router: _router('/u/u3')),
       );
       expect(find.text(l.t('blockedProfileNote')), findsOneWidget);
       expect(find.text(l.t('unblock')), findsOneWidget);
@@ -447,15 +441,15 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('4 tab utama render; Posts tapis repost; Reposts papar '
+    testWidgets(
+        '4 tab utama render; Posts tapis repost; Reposts papar '
         'repost+quote', (tester) async {
       _profiles['u2'] = _mkProfile('u2', name: 'Kawan');
       _profiles['u1'] = _mkProfile('u1', name: 'Asal');
       final posts = [
         _mkPost('n1', 'u2', text: 'post biasa'),
         _mkPost('c1', 'u2', text: 'checkin sini', type: 'checkin'),
-        _mkPost('r1', 'u2',
-            text: '', postType: 'repost', repostOf: 'orig1'),
+        _mkPost('r1', 'u2', text: '', postType: 'repost', repostOf: 'orig1'),
         _mkPost('q1', 'u2',
             text: 'quote saya', postType: 'quote_repost', repostOf: 'orig1'),
       ];
@@ -463,8 +457,7 @@ void main() {
       await _pump(
         tester,
         _app(const SizedBox(),
-            overrides:
-                _overrides(posts: posts, postById: {'orig1': orig}),
+            overrides: _overrides(posts: posts, postById: {'orig1': orig}),
             router: _router('/u/u2')),
       );
       final l = AppLocalizations(const Locale('ms'));
@@ -506,7 +499,8 @@ void main() {
           reason: 'tap media tidak membuka viewer');
     });
 
-    testWidgets('tab Balasan: sendiri papar balasan + induk; orang lain '
+    testWidgets(
+        'tab Balasan: sendiri papar balasan + induk; orang lain '
         'papar nota privasi; induk dipadam selamat', (tester) async {
       _profiles[_myUid] = _mkProfile(_myUid, name: 'Saya');
       _profiles['u1'] = _mkProfile('u1', name: 'Asal');
@@ -565,8 +559,8 @@ void main() {
             overrides: _overrides(), router: _router('/u/u2')),
       );
       // Avatar header = satu-satunya MakanAvatar (tiada post dalam ujian).
-      final avatarFinder = find.byWidgetPredicate(
-          (w) => w.runtimeType.toString() == 'MakanAvatar');
+      final avatarFinder = find
+          .byWidgetPredicate((w) => w.runtimeType.toString() == 'MakanAvatar');
       expect(avatarFinder, findsOneWidget);
       await tester.tap(avatarFinder);
       await _settle(tester);
@@ -590,10 +584,8 @@ void main() {
       final l = AppLocalizations(const Locale('ms'));
       expect(find.textContaining('-5'), findsNothing,
           reason: 'kiraan negatif bocor ke UI');
-      expect(find.textContaining('0 ${l.t('statFollowers')}'),
-          findsOneWidget);
-      await tester
-          .tap(find.textContaining('0 ${l.t('statFollowers')}'));
+      expect(find.textContaining('0 ${l.t('statFollowers')}'), findsOneWidget);
+      await tester.tap(find.textContaining('0 ${l.t('statFollowers')}'));
       await _settle(tester);
       expect(find.text('FOLLOWERS_STUB'), findsOneWidget);
     });
@@ -605,9 +597,7 @@ void main() {
         await _pump(
           tester,
           _app(const SizedBox(),
-              overrides: _overrides(),
-              theme: theme,
-              router: _router('/u/u2')),
+              overrides: _overrides(), theme: theme, router: _router('/u/u2')),
         );
         final scaffold = tester.widget<Scaffold>(find
             .descendant(
@@ -619,8 +609,7 @@ void main() {
       }
     });
 
-    testWidgets('Tamil 360dp @1.30: 4 tab muat tanpa overflow',
-        (tester) async {
+    testWidgets('Tamil 360dp @1.30: 4 tab muat tanpa overflow', (tester) async {
       await tester.binding.setSurfaceSize(const Size(360, 800));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       _profiles['u2'] = _mkProfile('u2',
@@ -632,9 +621,7 @@ void main() {
       await _pump(
         tester,
         _app(const SizedBox(),
-            overrides: _overrides(),
-            language: 'ta',
-            router: _router('/u/u2')),
+            overrides: _overrides(), language: 'ta', router: _router('/u/u2')),
       );
       // MediaQuery textScale dalam router harness: guna builder global.
       expect(tester.takeException(), isNull,
@@ -651,15 +638,14 @@ void main() {
       await _pump(
         tester,
         _app(const SizedBox(),
-            overrides: _overrides(),
-            language: 'zh',
-            router: _router('/u/u2')),
+            overrides: _overrides(), language: 'zh', router: _router('/u/u2')),
       );
       expect(find.text('美食用户'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('balasan AWAM orang lain dipaparkan; induk tak boleh '
+    testWidgets(
+        'balasan AWAM orang lain dipaparkan; induk tak boleh '
         'dibaca DISKIP senyap', (tester) async {
       _profiles['u2'] = _mkProfile('u2', name: 'Kawan');
       _profiles['u1'] = _mkProfile('u1', name: 'Asal');
@@ -682,8 +668,7 @@ void main() {
         tester,
         _app(const SizedBox(),
             overrides: _overrides(
-                myComments: replies,
-                postById: {'pub1': pub, 'priv1': null}),
+                myComments: replies, postById: {'pub1': pub, 'priv1': null}),
             router: _router('/u/u2')),
       );
       final l = AppLocalizations(const Locale('ms'));
@@ -702,7 +687,8 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('zh: pratonton balasan render; statistik 360dp @1.30 tiada '
+    testWidgets(
+        'zh: pratonton balasan render; statistik 360dp @1.30 tiada '
         'overflow atau elipsis', (tester) async {
       await tester.binding.setSurfaceSize(const Size(360, 800));
       addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -721,8 +707,7 @@ void main() {
       await _pump(
         tester,
         _app(const SizedBox(),
-            overrides: _overrides(
-                myComments: replies, postById: {'pub1': pub}),
+            overrides: _overrides(myComments: replies, postById: {'pub1': pub}),
             language: 'zh',
             router: _router('/u/u2')),
       );

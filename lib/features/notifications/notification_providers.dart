@@ -27,7 +27,7 @@ final notificationsStreamProvider =
       .doc(uid)
       .collection('notifications')
       .orderBy('createdAt', descending: true)
-      .limit(50);
+      .limit(30);
   return q.snapshots().map((snap) {
     final now = DateTime.now();
     final out = <MakanNotification>[];
@@ -35,11 +35,21 @@ final notificationsStreamProvider =
       final n = MakanNotification.fromMap(d.id, d.data());
       // Sembunyi notifikasi luput (tidak dipapar, tidak dikira).
       if (n.expiresAt != null && n.expiresAt!.isBefore(now)) continue;
+      // PROMPT 4A: rekod push-sahaja (In-App OFF) TIDAK dipapar & TIDAK dikira
+      // dalam badge belum-baca; ia wujud hanya untuk resolusi ketuk push.
+      if (!n.inAppVisible) continue;
       out.add(n);
     }
     return out;
   });
 });
+
+/// Fetches one historical page after the live first page. This is intentionally
+/// a one-shot query: only the newest 30 notifications need a realtime listener.
+final olderNotificationsProvider = FutureProvider.autoDispose
+    .family<List<MakanNotification>, NotificationPageCursor>(
+  (ref, cursor) => ref.read(notificationRepositoryProvider).fetchOlder(cursor),
+);
 
 /// Kiraan belum-baca AUTHORITATIF (diterbit dari strim sebenar). 0 = tiada badge.
 final unreadNotificationCountProvider = Provider.autoDispose<int>((ref) {
@@ -72,17 +82,23 @@ class NotificationRepository {
         .collection('notifications');
   }
 
-  /// Tanda satu notifikasi dibaca (isRead + readAt sahaja).
-  Future<void> markRead(String id) async {
+  /// Tanda satu notifikasi dibuka/dibaca. Rules membenarkan hanya state milik
+  /// penerima; kandungan/destinasi tidak pernah boleh ditulis klien.
+  Future<void> markOpened(String id) async {
     final col = _col;
     if (col == null || id.isEmpty) return;
     try {
       await col.doc(id).set(
-        {'isRead': true, 'readAt': FieldValue.serverTimestamp()},
+        {
+          'isRead': true,
+          'readAt': FieldValue.serverTimestamp(),
+          'openedAt': FieldValue.serverTimestamp(),
+          'status': 'read',
+        },
         SetOptions(merge: true),
       );
     } catch (e) {
-      debugPrint('MakanMana: markRead gagal: $e');
+      debugPrint('MakanMana: markOpened gagal: $e');
     }
   }
 
@@ -97,7 +113,11 @@ class NotificationRepository {
         if (id.isEmpty) continue;
         batch.set(
           col.doc(id),
-          {'isRead': true, 'readAt': FieldValue.serverTimestamp()},
+          {
+            'isRead': true,
+            'readAt': FieldValue.serverTimestamp(),
+            'status': 'read',
+          },
           SetOptions(merge: true),
         );
         n++;
@@ -108,6 +128,53 @@ class NotificationRepository {
       debugPrint('MakanMana: markAllRead gagal: $e');
     }
   }
+
+  /// Loads one bounded page after [cursor], preserving Firestore's stable
+  /// createdAt + document-id ordering. It never subscribes to old history.
+  Future<List<MakanNotification>> fetchOlder(
+      NotificationPageCursor cursor) async {
+    final col = _col;
+    if (col == null) return const [];
+    try {
+      final snap = await col
+          .orderBy('createdAt', descending: true)
+          .orderBy(FieldPath.documentId)
+          .startAfter([
+            Timestamp.fromDate(cursor.createdAt),
+            cursor.id,
+          ])
+          .limit(30)
+          .get();
+      final now = DateTime.now();
+      return snap.docs
+          .map((doc) => MakanNotification.fromMap(doc.id, doc.data()))
+          .where((n) => n.expiresAt == null || !n.expiresAt!.isBefore(now))
+          .where((n) => n.inAppVisible) // PROMPT 4A: hide push-only records
+          .toList(growable: false);
+    } catch (e) {
+      debugPrint('MakanMana: load older notifications gagal: $e');
+      return const [];
+    }
+  }
+}
+
+/// Cursor contract for a later "load more" button. The live Home badge and
+/// first Notification Center page intentionally share one 30-document stream;
+/// no unbounded history listener is created.
+class NotificationPageCursor {
+  const NotificationPageCursor(this.createdAt, this.id);
+  final DateTime createdAt;
+  final String id;
+}
+
+NotificationPageCursor? notificationNextPageCursor(
+  List<MakanNotification> notifications,
+) {
+  if (notifications.isEmpty) return null;
+  final oldest = notifications.reduce(
+    (a, b) => a.createdAt.isBefore(b.createdAt) ? a : b,
+  );
+  return NotificationPageCursor(oldest.createdAt, oldest.id);
 }
 
 final notificationRepositoryProvider =

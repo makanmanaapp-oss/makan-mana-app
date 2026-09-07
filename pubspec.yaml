@@ -1,7 +1,7 @@
 name: makan_mana
 description: MakanMana - AI food recommendation app untuk Malaysia.
 publish_to: "none"
-version: 0.1.7+9
+version: 0.1.8+13
 
 environment:
   sdk: ">=3.5.0 <4.0.0"
@@ -23,6 +23,7 @@ dependencies:
   flutter_riverpod: ^2.6.1
   go_router: any
   geolocator: any
+  geocoding: any
   intl: any
   cached_network_image: any
   lottie: any

@@ -123,6 +123,22 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () => context.push(RoutePaths.themePicker),
           ),
 
+          // ---------- Notifikasi (PROMPT 4) ----------
+          sectionLabel(l.t('notifSettingsTitle')),
+          ListTile(
+            tileColor: context.tCard,
+            shape: tileShape(),
+            leading: const Icon(Icons.notifications_none,
+                color: AppColors.primaryRed),
+            title: Text(l.t('notifSettingsTitle')),
+            subtitle: Text(l.t('notifSettingsSubtitle'),
+                style: const TextStyle(fontSize: 12)),
+            trailing: const Icon(Icons.chevron_right, size: 20),
+            onTap: firebaseReady
+                ? () => context.push(RoutePaths.notificationSettings)
+                : null,
+          ),
+
           // ---------- Bahasa & Pelan ----------
           sectionLabel(l.t('languageLabel')),
           ListTile(
@@ -291,6 +307,11 @@ class SettingsScreen extends ConsumerWidget {
       await ref
           .read(notificationServiceProvider)
           .detach(ref.read(currentUidProvider));
+      // AUTHORITY LOKASI (QA-DEV7): padam lokasi tepat berskop-UID sebelum
+      // sign-out — koordinat akaun ini tidak boleh kekal untuk akaun seterusnya.
+      await ref
+          .read(locationServiceProvider)
+          .clearPersistedLocation(uid: ref.read(currentUidProvider));
       await ref.read(authRepositoryProvider).signOut();
       if (context.mounted) context.go(RoutePaths.login);
     } catch (_) {

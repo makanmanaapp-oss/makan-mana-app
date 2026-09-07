@@ -11,6 +11,7 @@ import '../../core/constants/app_colors.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/entitlement/entitlement.dart';
 import '../../core/location/location_display.dart';
+import '../../core/providers/location_context_provider.dart';
 import '../../core/entitlement/plan_tier.dart';
 import '../../core/events/event_types.dart';
 import '../../core/mood/availability_label.dart';
@@ -19,6 +20,7 @@ import '../../core/providers.dart';
 import '../../core/providers/makanmana_user_context_provider.dart';
 import '../../core/widgets/mm_icons.dart';
 import '../../core/widgets/place_image.dart';
+import 'home_local_hero.dart';
 import 'home_palette.dart';
 import '../notifications/notification_providers.dart';
 import '../../models/meal.dart';
@@ -289,8 +291,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             Expanded(
               child: Text(l.t('aiPickLoading'),
                   style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.mutedText)),
+                      fontWeight: FontWeight.w700, color: AppColors.mutedText)),
             ),
           ],
         ),
@@ -334,21 +335,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ElevatedButton(
                   onPressed: () =>
                       notifier.updateSelectedRadiusKm(v.toDouble()),
-                  style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(0, 40)),
+                  style:
+                      ElevatedButton.styleFrom(minimumSize: const Size(0, 40)),
                   child: Text('${l.t('increaseTo')} ${v}km'),
                 ),
               OutlinedButton(
                 onPressed: () => notifier.updateSelectedMood('moodSurprise',
                     category: 'variety'),
-                style:
-                    OutlinedButton.styleFrom(minimumSize: const Size(0, 40)),
+                style: OutlinedButton.styleFrom(minimumSize: const Size(0, 40)),
                 child: Text(l.t('changeMoodAction')),
               ),
               OutlinedButton(
                 onPressed: () => ref.invalidate(homeSuggestionProvider),
-                style:
-                    OutlinedButton.styleFrom(minimumSize: const Size(0, 40)),
+                style: OutlinedButton.styleFrom(minimumSize: const Size(0, 40)),
                 child: Text(l.t('retryAction')),
               ),
             ],
@@ -402,8 +401,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           const SizedBox(height: 8),
           Text('${l.t('noNearbyTitle')} (${r}km)',
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                  fontWeight: FontWeight.w700, fontSize: 14)),
+              style:
+                  const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
           const SizedBox(height: 14),
           Wrap(
             spacing: 8,
@@ -414,14 +413,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ElevatedButton(
                   onPressed: () =>
                       notifier.updateSelectedRadiusKm(v.toDouble()),
-                  style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(0, 42)),
+                  style:
+                      ElevatedButton.styleFrom(minimumSize: const Size(0, 42)),
                   child: Text('${l.t('increaseTo')} ${v}km'),
                 ),
               OutlinedButton(
                 onPressed: () => ref.invalidate(nearbyPlacesProvider),
-                style:
-                    OutlinedButton.styleFrom(minimumSize: const Size(0, 42)),
+                style: OutlinedButton.styleFrom(minimumSize: const Size(0, 42)),
                 child: Text(l.t('retryAction')),
               ),
             ],
@@ -435,6 +433,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final service = ref.watch(dummySuggestionServiceProvider);
+    // Pastikan Home mencetuskan aliran konteks lokasi yang sama digunakan
+    // oleh Explore/Spin. Hero sendiri hanya membaca state daripada context.
+    ref.watch(locationContextProvider);
     final ctx = ref.watch(makanManaUserContextProvider);
     // Front Page Redesign 1A — palet skop-Home (bright = hex spesifikasi
     // tepat; dark = token tema). Global AppColors/context.mm tidak diubah.
@@ -465,11 +466,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           if (!_previewFailedLogged) {
             _previewFailedLogged = true;
             ref.read(eventLoggerProvider).logEvent(
-                  EventType.suggestionRequestFailed,
-                  sourceScreen: SourceScreen.home,
-                  sourceMode: SourceMode.preview,
-                  metadata: {'error': e.runtimeType.toString()},
-                );
+              EventType.suggestionRequestFailed,
+              sourceScreen: SourceScreen.home,
+              sourceMode: SourceMode.preview,
+              metadata: {'error': e.runtimeType.toString()},
+            );
           }
         },
       );
@@ -479,9 +480,28 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     // sebagai lokasi semasa pengguna (sumber tunggal LocationDisplay).
     final locKind = LocationDisplay.resolve(
         lat: ctx.currentLat, manualName: ctx.locationName);
+    // Cip lokasi: bila lokasi peranti/tersimpan sebenar + negeri authoritative
+    // telah diselesaikan (ctx.locationState), papar NEGERI (mis. "Selangor")
+    // — berguna, ringkas & muat tanpa ellipsis. Jika tiada negeri, guna label
+    // generik sedia ada (kejujuran fallback dikekalkan). TIADA lokasi direka.
+    final resolvedState = ctx.locationState?.trim() ?? '';
     final locName = locKind == LocationDisplayKind.manual
         ? ctx.locationName!
-        : l.t(LocationDisplay.labelKey(locKind));
+        : (locKind == LocationDisplayKind.deviceOrStored &&
+                resolvedState.isNotEmpty
+            ? resolvedState
+            : l.t(LocationDisplay.labelKey(locKind)));
+    // Presentation-only: coarse state telah diselesaikan oleh existing
+    // locationContextProvider. Hero tidak meminta GPS/geocoding sendiri.
+    final heroJoiner = l.locale.languageCode == 'zh' ? '' : ' ';
+    final languageHero =
+        '${l.t('homeHeroLead')}$heroJoiner${l.t('homeHeroAccent')}'
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .trim();
+    final heroPlan = LocalHeroPhrasePlan(
+      appLanguagePhrase: languageHero,
+      localStatePhrase: MalaysiaStateHeroVoice.phraseFor(ctx.locationState),
+    );
 
     // Tempat sebenar dari pelayan (cache 7 hari); dummy semasa loading.
     final nearbyAsync = ref.watch(nearbyPlacesProvider);
@@ -520,7 +540,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           Container(
             width: double.infinity,
             padding: EdgeInsets.fromLTRB(
-                20, MediaQuery.paddingOf(context).top + 8, 16, 14),
+                20, MediaQuery.paddingOf(context).top + 4, 16, 8),
             color: palette.background,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -541,7 +561,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     _ThreadsButton(palette: palette),
                   ],
                 ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 6),
                 // PRE-AAB: salam PREMIUM dua-lapis — frasa masa ringan (subtext)
                 // di baris atas, NAMA sebenar pengguna disorot kuat (w800, teks
                 // gelap, lebih besar) di baris bawah. Localization dikekalkan
@@ -585,24 +605,25 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ],
                   );
                 }),
-                const SizedBox(height: 8),
+                const SizedBox(height: 4),
                 // 4 + 5. Tajuk besar (satu perkataan disorot) + visual hero.
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
                     Expanded(
-                      child: Text.rich(
-                        TextSpan(children: [
-                          TextSpan(text: '${l.t('homeHeroLead')} '),
+                      child: DynamicLocalHero(
+                        plan: heroPlan,
+                        languageSpan: TextSpan(children: [
+                          TextSpan(text: '${l.t('homeHeroLead')}$heroJoiner'),
                           TextSpan(
                             text: l.t('homeHeroAccent'),
                             style: TextStyle(color: palette.primary),
                           ),
                         ]),
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
+                        // Polished compact hero: 29 → 27 (-6.9%) while
+                        // retaining the existing hierarchy and wrapping.
                         style: TextStyle(
-                          fontSize: 29,
+                          fontSize: 27,
                           fontWeight: FontWeight.w800,
                           height: 1.12,
                           color: palette.text,
@@ -614,453 +635,470 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     HomeFoodHeroCarousel(palette: palette),
                   ],
                 ),
-                const SizedBox(height: 14),
-                  // UI-01b: chip spin ambil saiz intrinsik (sentiasa boleh
-                  // dibaca); chip radius pula yang mengecil dahulu — Spacer
-                  // lama memampatkan chip spin kepada "S…" pada 360dp.
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      // Prompt 4: cip radius boleh tap (lokasi · radius).
-                      Flexible(
-                        child: GestureDetector(
-                          onTap: () => _showRadiusSheet(context),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 10, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: palette.offWhite,
-                              borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: palette.border),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(Icons.location_on,
-                                    size: 15, color: palette.primary),
-                                const SizedBox(width: 4),
-                                Flexible(
-                                  child: ConstrainedBox(
-                                    // Inter sedikit lebih lebar — beri ruang
-                                    // supaya "· 3km" tidak dielipsiskan.
-                                    constraints:
-                                        const BoxConstraints(maxWidth: 168),
-                                    child: Text(
-                                      '$locName · ${radiusKm}km',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 12.5,
-                                        color: palette.text,
-                                        fontWeight: FontWeight.w700,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                Icon(Icons.expand_more,
-                                    size: 16, color: palette.subtext),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      // Penunjuk spin harian: "Spin 2/3" (Free) / "Spin ∞"
-                      // (Plus/Pro) — saiz intrinsik, tidak dimampatkan.
-                      ref.watch(dailyUsageProvider).maybeWhen(
-                            data: (usage) => Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: palette.offWhite,
-                                borderRadius: BorderRadius.circular(20),
-                                border: Border.all(color: palette.border),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  MmIcon(MmIconType.spin,
-                                      size: 14,
-                                      color: palette.primary,
-                                      accent: palette.primary),
-                                  const SizedBox(width: 5),
-                                  Text(
-                                    usage.unlimited
-                                        ? '${l.t('spinShort')} ∞'
-                                        : '${l.t('spinShort')} '
-                                            '${usage.spinUsed}'
-                                            '/${usage.spinLimit}',
-                                    maxLines: 1,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w800,
-                                      color: palette.primary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            orElse: () => const SizedBox.shrink(),
-                          ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-            // Bar carian - terus ke Explore (ada carian penuh).
-            // Front Page Redesign 1A — bar carian: 56dp, radius 22, permukaan
-            // kad, sempadan halus, elevasi lembut, ikon carian besar + ikon
-            // penapis merah. Callback dikekalkan (→ Explore carian penuh).
-            GestureDetector(
-              onTap: () => context.go(RoutePaths.explore),
-              child: Container(
-                height: 56,
-                padding: const EdgeInsets.fromLTRB(16, 0, 8, 0),
-                decoration: BoxDecoration(
-                  color: palette.card,
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: palette.border),
-                  boxShadow: palette.isDark
-                      ? null
-                      : [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.05),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                ),
-                child: Row(
+                const SizedBox(height: 8),
+                // UI-01b: chip spin ambil saiz intrinsik (sentiasa boleh
+                // dibaca); chip radius pula yang mengecil dahulu — Spacer
+                // lama memampatkan chip spin kepada "S…" pada 360dp.
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Icon(Icons.search, size: 26, color: palette.subtext),
-                    const SizedBox(width: 10),
-                    // QA akhir: Expanded + ellipsis — hint melimpah pada
-                    // 360dp skala teks 1.30.
-                    Expanded(
-                      child: Text(
-                        l.t('searchHint'),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: palette.subtext),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    // Ikon penapis merah (kanan) — buka Explore (penapis penuh).
-                    Container(
-                      height: 40,
-                      width: 40,
-                      decoration: BoxDecoration(
-                        color: palette.primary.withValues(alpha: 0.10),
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      child: Icon(Icons.tune_rounded,
-                          size: 20, color: palette.primary),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Mood chips
-            Text(
-              l.t('moodTitle'),
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-                // SP10: theme-aware (mod gelap boleh dibaca).
-                color: context.tText,
-              ),
-            ),
-            const SizedBox(height: 10),
-            // Gating M5: Basic percuma; Plus/Pro penuh ikut pelan,
-            // selain tu teaser -> paywall (soft, tunjuk nilai dulu).
-            Builder(builder: (builderContext) {
-              final ent = ref.watch(entitlementProvider);
-              final plusOk = ent.isPlusOrAbove;
-              final proOk = ent.isPro;
-              final selectedMood = ref.watch(selectedMoodProvider);
-
-              // Prompt 5: pilih mood -> kemas kini konteks (yang turut
-              // menyegerak selectedMoodProvider + log mood_selected).
-              // nearbyPlacesProvider mendengar mood -> Home susun semula.
-              void select(String mood) {
-                final f = moodFormulaFor(mood);
-                ref
-                    .read(makanManaUserContextProvider.notifier)
-                    .updateSelectedMood(mood, category: f.category.name);
-              }
-
-              // Front Page Redesign 1A — jubin mood (bukan chip rata):
-              // dipilih = merah + ikon/label putih + kedalaman merah-gelap;
-              // tak dipilih = putih + ikon merah + label gelap + sempadan.
-              // ID kanonikal, kelakuan pilih, skrol mendatar dikekalkan.
-              return SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    ...basicMoods.map((m) => Padding(
-                          padding: const EdgeInsets.only(right: 10),
-                          child: _MoodTile(
-                            label: l.t(m.$1),
-                            icon: m.$2,
-                            selected: selectedMood == m.$1,
-                            palette: palette,
-                            onTap: () => select(m.$1),
-                          ),
-                        )),
-                    ...plusMoods.map((m) => Padding(
-                          padding: const EdgeInsets.only(right: 10),
-                          child: _MoodTile(
-                            label: l.t(m.$1),
-                            icon: m.$2,
-                            selected: selectedMood == m.$1,
-                            palette: palette,
-                            badge: plusOk ? null : l.t('plusBadge'),
-                            onTap: plusOk
-                                ? () => select(m.$1)
-                                : () => _showMoodPreview(m.$1, m.$2, 'plus'),
-                          ),
-                        )),
-                    ...proMoods.map((m) => Padding(
-                          padding: const EdgeInsets.only(right: 10),
-                          child: _MoodTile(
-                            label: l.t(m.$1),
-                            icon: m.$2,
-                            selected: selectedMood == m.$1,
-                            palette: palette,
-                            badge: proOk ? null : l.t('proBadge'),
-                            onTap: proOk
-                                ? () => select(m.$1)
-                                : () => _showMoodPreview(m.$1, m.$2, 'pro'),
-                          ),
-                        )),
-                    // Pintasan hub Pro Tools (meterai Pro proprietary).
-                    Padding(
-                      padding: const EdgeInsets.only(right: 10),
-                      child: _MoodTile(
-                        label: l.t('proHubTitle'),
-                        icon: MmIconType.proSeal,
-                        selected: false,
-                        palette: palette,
-                        badge: proOk ? null : l.t('proBadge'),
-                        onTap: () => context.push('/pro'),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }),
-            const SizedBox(height: 24),
-
-            // Hero AI Pick
-            Text(
-              l.t('aiPickTitle'),
-              style: TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w700,
-                color: context.tText,
-              ),
-            ),
-            const SizedBox(height: 10),
-            // Prompt 6: AI Pick sebenar dari getSuggestions (mode preview).
-            ref.watch(homeSuggestionProvider).when(
-                  loading: () => _aiPickLoading(l),
-                  error: (e, _) => _aiPickError(l),
-                  data: (s) {
-                    if (s.isEmpty || s.primary == null) {
-                      return _aiPickEmpty(l, radiusKm);
-                    }
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        if (s.isSample) _sampleBanner(l),
-                        if (s.isSample) const SizedBox(height: 8),
-                        _HeroPickCard(
-                          place: s.primary!,
-                          onTap: () => _openSuggestionFromHome(s),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-            // Kad "Macam mana makan tadi?" - makan 24 jam yang belum dinilai.
-            ref.watch(mealsProvider).maybeWhen(
-                  data: (meals) {
-                    Meal? unrated;
-                    for (final m in meals) {
-                      if (m.id.isNotEmpty &&
-                          m.satisfactionRating == null &&
-                          DateTime.now().difference(m.mealTime).inHours < 24) {
-                        unrated = m;
-                        break;
-                      }
-                    }
-                    if (unrated == null) return const SizedBox.shrink();
-                    final meal = unrated;
-                    return Padding(
-                      padding: const EdgeInsets.only(top: 12),
-                      child: InkWell(
-                        onTap: () => context.push(
-                          '/rate',
-                          extra: RatingArgs(
-                            placeId: meal.placeId,
-                            placeName: meal.placeNameSnapshot,
-                            emoji: meal.emoji,
-                            cuisine: meal.cuisine,
-                            source: 'meal',
-                            mealId: meal.id,
-                          ),
-                        ),
-                        borderRadius: BorderRadius.circular(18),
+                    // Prompt 4: cip radius boleh tap (lokasi · radius).
+                    Flexible(
+                      child: GestureDetector(
+                        onTap: () => _showRadiusSheet(context),
                         child: Container(
-                          padding: const EdgeInsets.all(14),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 10, vertical: 6),
                           decoration: BoxDecoration(
-                            color: context.mm.softFill,
-                            borderRadius: BorderRadius.circular(18),
+                            color: palette.offWhite,
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: palette.border),
                           ),
                           child: Row(
+                            mainAxisSize: MainAxisSize.min,
                             children: [
-                              PlaceImage(
-                                name: meal.placeNameSnapshot,
-                                height: 40,
-                                width: 40,
-                                borderRadius: 12,
-                                monogramFontSize: 15,
-                              ),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  '${l.t('howWasMeal')} '
-                                  '${meal.placeNameSnapshot}?',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 14.5,
-                                    color: context.mm.onCard,
+                              Icon(Icons.location_on,
+                                  size: 15, color: palette.primary),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: ConstrainedBox(
+                                  // Inter sedikit lebih lebar — beri ruang
+                                  // supaya "· 3km" tidak dielipsiskan.
+                                  constraints:
+                                      const BoxConstraints(maxWidth: 190),
+                                  child: Text(
+                                    '$locName · ${radiusKm}km',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      color: palette.text,
+                                      fontWeight: FontWeight.w700,
+                                    ),
                                   ),
                                 ),
                               ),
-                              const Icon(Icons.chevron_right,
-                                  size: 24, color: AppColors.mutedText),
+                              Icon(Icons.expand_more,
+                                  size: 16, color: palette.subtext),
                             ],
                           ),
                         ),
                       ),
-                    );
-                  },
-                  orElse: () => const SizedBox.shrink(),
-                ),
-            const SizedBox(height: 24),
-
-            // Berdekatan + penunjuk mood semasa (Prompt 5).
-            // QA akhir: tajuk Expanded + chip Flexible — Row tegar melimpah
-            // kanan pada 360dp skala teks 1.30.
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    l.t('nearbyTitle'),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700,
-                      color: context.tText,
                     ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Flexible(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: context.mm.softFill,
-                      borderRadius: BorderRadius.circular(20),
+                    const SizedBox(width: 8),
+                    // Penunjuk spin harian: "Spin 2/3" (Free) / "Spin ∞"
+                    // (Plus/Pro) — saiz intrinsik, tidak dimampatkan.
+                    Flexible(
+                      // Pada 320dp (termasuk teks sistem 1.2), kedua-dua
+                      // kawalan kekal dalam satu baris. FittedBox tidak
+                      // mengubah rupa pada lebar biasa, hanya mengecil jika
+                      // ruang sebenar tidak mencukupi.
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerRight,
+                        child: ref.watch(dailyUsageProvider).maybeWhen(
+                              data: (usage) => Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 6),
+                                decoration: BoxDecoration(
+                                  color: palette.offWhite,
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(color: palette.border),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    MmIcon(MmIconType.spin,
+                                        size: 14,
+                                        color: palette.primary,
+                                        accent: palette.primary),
+                                    const SizedBox(width: 5),
+                                    Text(
+                                      usage.unlimited
+                                          ? '${l.t('spinShort')} ∞'
+                                          : '${l.t('spinShort')} '
+                                              '${usage.spinUsed}'
+                                              '/${usage.spinLimit}',
+                                      maxLines: 1,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w800,
+                                        color: palette.primary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              orElse: () => const SizedBox.shrink(),
+                            ),
+                      ),
                     ),
-                    child: Text(
-                      '${l.t('moodLabel')}: ${l.t(ctx.selectedMood)}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          color: context.mm.onCard),
-                    ),
-                  ),
+                  ],
                 ),
               ],
             ),
-            const SizedBox(height: 10),
-            if (nearby.isEmpty)
-              _nearbyEmptyState(context, l, radiusKm)
-            else
-              // Front Page Redesign 1A — karusel mendatar kad penemuan makanan.
-              // Tinggi kad diberi pampasan skala teks supaya tiada kliping pada
-              // 1.30. Lebar kad konsisten. Penyedia/callback nearby dikekalkan.
-              SizedBox(
-                height: 214 *
-                    (1 +
-                        0.55 *
-                            (MediaQuery.textScalerOf(context).scale(14) / 14 -
-                                1)),
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  padding: EdgeInsets.zero,
-                  clipBehavior: Clip.none,
-                  itemCount: nearby.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 12),
-                  itemBuilder: (_, i) => SizedBox(
-                    width: 158,
-                    child: _NearbyCard(
-                      place: nearby[i],
-                      // Phase 2.3C — status buka berasas bukti (helper tunggal).
-                      openLabel: l.t(availabilityLabelKey(nearby[i])),
-                      onTap: () => _openSuggestion(nearby[i]),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Bar carian - terus ke Explore (ada carian penuh).
+                // Front Page Redesign 1A — bar carian: 52dp, radius 20, permukaan
+                // kad, sempadan halus, elevasi lembut, ikon carian seimbang + ikon
+                // penapis merah. Callback dikekalkan (→ Explore carian penuh).
+                GestureDetector(
+                  onTap: () => context.go(RoutePaths.explore),
+                  child: Container(
+                    height: 52,
+                    padding: const EdgeInsets.fromLTRB(14, 0, 7, 0),
+                    decoration: BoxDecoration(
+                      color: palette.card,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: palette.border),
+                      boxShadow: palette.isDark
+                          ? null
+                          : [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.05),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.search, size: 24, color: palette.subtext),
+                        const SizedBox(width: 9),
+                        // QA akhir: Expanded + ellipsis — hint melimpah pada
+                        // 360dp skala teks 1.30.
+                        Expanded(
+                          child: Text(
+                            l.t('searchHint'),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(color: palette.subtext),
+                          ),
+                        ),
+                        const SizedBox(width: 7),
+                        // Ikon penapis merah (kanan) — buka Explore (penapis penuh).
+                        Container(
+                          height: 38,
+                          width: 38,
+                          decoration: BoxDecoration(
+                            color: palette.primary.withValues(alpha: 0.10),
+                            borderRadius: BorderRadius.circular(13),
+                          ),
+                          child: Icon(Icons.tune_rounded,
+                              size: 20, color: palette.primary),
+                        ),
+                      ],
                     ),
                   ),
                 ),
-              ),
-            const SizedBox(height: 24),
+                const SizedBox(height: 20),
 
-            // Front Page Redesign 1 — Fit Coach DI BAWAH AI Pick + Nearby
-            // (bukan antara Mood dan AI Pick). Susunan: Mood → AI Pick →
-            // Nearby → Fit Coach → promo pilihan. Fungsi & callback dikekalkan.
-            const FitCoachCard(),
-            const SizedBox(height: 24),
+                // Mood chips
+                Text(
+                  l.t('moodTitle'),
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    // SP10: theme-aware (mod gelap boleh dibaca).
+                    color: context.tText,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                // Gating M5: Basic percuma; Plus/Pro penuh ikut pelan,
+                // selain tu teaser -> paywall (soft, tunjuk nilai dulu).
+                Builder(builder: (builderContext) {
+                  final ent = ref.watch(entitlementProvider);
+                  final plusOk = ent.isPlusOrAbove;
+                  final proOk = ent.isPro;
+                  final selectedMood = ref.watch(selectedMoodProvider);
 
-            // Kad insight AI (promo pilihan sedia ada — dikekalkan di bawah).
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: context.mm.softFill,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                    color:
-                        AppColors.warmYellow.withValues(alpha: 0.55)),
-              ),
-              child: Row(
-                children: [
-                  const MmIcon(MmIconType.foodMemory,
-                      size: 26, color: AppColors.primaryRed),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      l.t('aiInsight'),
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: context.mm.onCard,
+                  // Prompt 5: pilih mood -> kemas kini konteks (yang turut
+                  // menyegerak selectedMoodProvider + log mood_selected).
+                  // nearbyPlacesProvider mendengar mood -> Home susun semula.
+                  void select(String mood) {
+                    final f = moodFormulaFor(mood);
+                    ref
+                        .read(makanManaUserContextProvider.notifier)
+                        .updateSelectedMood(mood, category: f.category.name);
+                  }
+
+                  // Front Page Redesign 1A — jubin mood (bukan chip rata):
+                  // dipilih = merah + ikon/label putih + kedalaman merah-gelap;
+                  // tak dipilih = putih + ikon merah + label gelap + sempadan.
+                  // ID kanonikal, kelakuan pilih, skrol mendatar dikekalkan.
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        ...basicMoods.map((m) => Padding(
+                              padding: const EdgeInsets.only(right: 10),
+                              child: _MoodTile(
+                                label: l.t(m.$1),
+                                icon: m.$2,
+                                selected: selectedMood == m.$1,
+                                palette: palette,
+                                onTap: () => select(m.$1),
+                              ),
+                            )),
+                        ...plusMoods.map((m) => Padding(
+                              padding: const EdgeInsets.only(right: 10),
+                              child: _MoodTile(
+                                label: l.t(m.$1),
+                                icon: m.$2,
+                                selected: selectedMood == m.$1,
+                                palette: palette,
+                                badge: plusOk ? null : l.t('plusBadge'),
+                                onTap: plusOk
+                                    ? () => select(m.$1)
+                                    : () =>
+                                        _showMoodPreview(m.$1, m.$2, 'plus'),
+                              ),
+                            )),
+                        ...proMoods.map((m) => Padding(
+                              padding: const EdgeInsets.only(right: 10),
+                              child: _MoodTile(
+                                label: l.t(m.$1),
+                                icon: m.$2,
+                                selected: selectedMood == m.$1,
+                                palette: palette,
+                                badge: proOk ? null : l.t('proBadge'),
+                                onTap: proOk
+                                    ? () => select(m.$1)
+                                    : () => _showMoodPreview(m.$1, m.$2, 'pro'),
+                              ),
+                            )),
+                        // Pintasan hub Pro Tools (meterai Pro proprietary).
+                        Padding(
+                          padding: const EdgeInsets.only(right: 10),
+                          child: _MoodTile(
+                            label: l.t('proHubTitle'),
+                            icon: MmIconType.proSeal,
+                            selected: false,
+                            palette: palette,
+                            badge: proOk ? null : l.t('proBadge'),
+                            onTap: () => context.push('/pro'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+                const SizedBox(height: 16),
+
+                // Hero AI Pick
+                Text(
+                  l.t('aiPickTitle'),
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: context.tText,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                // Prompt 6: AI Pick sebenar dari getSuggestions (mode preview).
+                ref.watch(homeSuggestionProvider).when(
+                      loading: () => _aiPickLoading(l),
+                      error: (e, _) => _aiPickError(l),
+                      data: (s) {
+                        if (s.isEmpty || s.primary == null) {
+                          return _aiPickEmpty(l, radiusKm);
+                        }
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (s.isSample) _sampleBanner(l),
+                            if (s.isSample) const SizedBox(height: 8),
+                            _HeroPickCard(
+                              place: s.primary!,
+                              onTap: () => _openSuggestionFromHome(s),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                // Kad "Macam mana makan tadi?" - makan 24 jam yang belum dinilai.
+                ref.watch(mealsProvider).maybeWhen(
+                      data: (meals) {
+                        Meal? unrated;
+                        for (final m in meals) {
+                          if (m.id.isNotEmpty &&
+                              m.satisfactionRating == null &&
+                              DateTime.now().difference(m.mealTime).inHours <
+                                  24) {
+                            unrated = m;
+                            break;
+                          }
+                        }
+                        if (unrated == null) return const SizedBox.shrink();
+                        final meal = unrated;
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: InkWell(
+                            onTap: () => context.push(
+                              '/rate',
+                              extra: RatingArgs(
+                                placeId: meal.placeId,
+                                placeName: meal.placeNameSnapshot,
+                                emoji: meal.emoji,
+                                cuisine: meal.cuisine,
+                                source: 'meal',
+                                mealId: meal.id,
+                              ),
+                            ),
+                            borderRadius: BorderRadius.circular(18),
+                            child: Container(
+                              padding: const EdgeInsets.all(14),
+                              decoration: BoxDecoration(
+                                color: context.mm.softFill,
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                              child: Row(
+                                children: [
+                                  PlaceImage(
+                                    name: meal.placeNameSnapshot,
+                                    height: 40,
+                                    width: 40,
+                                    borderRadius: 12,
+                                    monogramFontSize: 15,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      '${l.t('howWasMeal')} '
+                                      '${meal.placeNameSnapshot}?',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 14.5,
+                                        color: context.mm.onCard,
+                                      ),
+                                    ),
+                                  ),
+                                  const Icon(Icons.chevron_right,
+                                      size: 24, color: AppColors.mutedText),
+                                ],
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                      orElse: () => const SizedBox.shrink(),
+                    ),
+                const SizedBox(height: 24),
+
+                // Berdekatan + penunjuk mood semasa (Prompt 5).
+                // QA akhir: tajuk Expanded + chip Flexible — Row tegar melimpah
+                // kanan pada 360dp skala teks 1.30.
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        l.t('nearbyTitle'),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: context.tText,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    // QA-DEV11: chip mood intrinsik + had lebar (bukan Flexible
+                    // flex:1 yang mengongsi Row 50/50) supaya tajuk "Berdekatan
+                    // dengan anda" TIDAK dipotong; had lebar elak chip menghimpit
+                    // tajuk pada skrin sempit / skala teks besar.
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 150),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: context.mm.softFill,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Text(
+                          '${l.t('moodLabel')}: ${l.t(ctx.selectedMood)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: context.mm.onCard),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                if (nearby.isEmpty)
+                  _nearbyEmptyState(context, l, radiusKm)
+                else
+                  // Front Page Redesign 1A — karusel mendatar kad penemuan makanan.
+                  // Tinggi kad diberi pampasan skala teks supaya tiada kliping pada
+                  // 1.30. Lebar kad konsisten. Penyedia/callback nearby dikekalkan.
+                  SizedBox(
+                    height: 214 *
+                        (1 +
+                            0.55 *
+                                (MediaQuery.textScalerOf(context).scale(14) /
+                                        14 -
+                                    1)),
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      padding: EdgeInsets.zero,
+                      clipBehavior: Clip.none,
+                      itemCount: nearby.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 12),
+                      itemBuilder: (_, i) => SizedBox(
+                        width: 158,
+                        child: _NearbyCard(
+                          place: nearby[i],
+                          // Phase 2.3C — status buka berasas bukti (helper tunggal).
+                          openLabel: l.t(availabilityLabelKey(nearby[i])),
+                          onTap: () => _openSuggestion(nearby[i]),
+                        ),
                       ),
                     ),
                   ),
-                ],
-              ),
-            ),
+                const SizedBox(height: 24),
+
+                // Front Page Redesign 1 — Fit Coach DI BAWAH AI Pick + Nearby
+                // (bukan antara Mood dan AI Pick). Susunan: Mood → AI Pick →
+                // Nearby → Fit Coach → promo pilihan. Fungsi & callback dikekalkan.
+                const FitCoachCard(),
+                const SizedBox(height: 24),
+
+                // Kad insight AI (promo pilihan sedia ada — dikekalkan di bawah).
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: context.mm.softFill,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(
+                        color: AppColors.warmYellow.withValues(alpha: 0.55)),
+                  ),
+                  child: Row(
+                    children: [
+                      const MmIcon(MmIconType.foodMemory,
+                          size: 26, color: AppColors.primaryRed),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          l.t('aiInsight'),
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: context.mm.onCard,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
@@ -1080,19 +1118,30 @@ class _HeroPickCard extends StatelessWidget {
   final PlaceSummary place;
   final VoidCallback onTap;
 
-  Widget _meta(IconData? icon, String text) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            Icon(icon, size: 13, color: Colors.white.withValues(alpha: 0.9)),
-            const SizedBox(width: 3),
+  Widget _meta(IconData? icon, String text) => ConstrainedBox(
+        // Match label boleh panjang selepas dilokalkan. Had ini membenarkan
+        // Wrap menurunkan meta ke baris baharu pada 320dp tanpa limpahan.
+        constraints: const BoxConstraints(maxWidth: 120),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 13, color: Colors.white.withValues(alpha: 0.9)),
+              const SizedBox(width: 3),
+            ],
+            Flexible(
+              child: Text(
+                text,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white.withValues(alpha: 0.95)),
+              ),
+            ),
           ],
-          Text(text,
-              style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white.withValues(alpha: 0.95))),
-        ],
+        ),
       );
 
   @override
@@ -1135,8 +1184,8 @@ class _HeroPickCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 9, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.18),
                       borderRadius: BorderRadius.circular(20),
@@ -1175,7 +1224,8 @@ class _HeroPickCard extends StatelessWidget {
                     spacing: 12,
                     runSpacing: 4,
                     children: [
-                      if (showRating) _meta(Icons.star_rounded, '${place.rating}'),
+                      if (showRating)
+                        _meta(Icons.star_rounded, '${place.rating}'),
                       if (showDistance)
                         _meta(Icons.place_rounded, '${place.distanceKm} km'),
                       if (showPrice) _meta(null, place.priceEstimate),
@@ -1223,7 +1273,9 @@ class _HeroPickCard extends StatelessWidget {
                   child: PlaceImage(
                     name: place.name,
                     photoUrl: place.photoUrl,
-                    height: 150,
+                    // AI Pick visual: 150×110 → 166×110 (+10.7% area),
+                    // retaining the proven narrow-phone text width.
+                    height: 166,
                     width: 110,
                     borderRadius: 0,
                   ),
@@ -1347,7 +1399,8 @@ class _NearbyCard extends StatelessWidget {
                         metaBits.join(' • '),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 11.5, color: palette.subtext),
+                        style:
+                            TextStyle(fontSize: 11.5, color: palette.subtext),
                       ),
                     ],
                     if (place.cuisine.trim().isNotEmpty) ...[
@@ -1356,8 +1409,7 @@ class _NearbyCard extends StatelessWidget {
                         place.cuisine,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                            fontSize: 11, color: palette.subtext),
+                        style: TextStyle(fontSize: 11, color: palette.subtext),
                       ),
                     ],
                     const Spacer(),
@@ -1426,8 +1478,10 @@ class _MoodTile extends StatelessWidget {
         onTap: onTap,
         child: Container(
           width: 80,
-          constraints: const BoxConstraints(minHeight: 84),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+          // Compact mood cards: 84 → 72 dp (-14.3%), still comfortably
+          // above the 48 dp minimum touch target.
+          constraints: const BoxConstraints(minHeight: 72),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
           decoration: BoxDecoration(
             color: selected ? palette.primary : palette.card,
             borderRadius: BorderRadius.circular(18),
@@ -1450,7 +1504,7 @@ class _MoodTile extends StatelessWidget {
               Stack(
                 clipBehavior: Clip.none,
                 children: [
-                  MmIcon(icon, size: 26, color: iconColor, accent: iconColor),
+                  MmIcon(icon, size: 24, color: iconColor, accent: iconColor),
                   if (badge != null)
                     Positioned(
                       right: -14,
@@ -1471,7 +1525,7 @@ class _MoodTile extends StatelessWidget {
                     ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 5),
               Text(
                 label,
                 textAlign: TextAlign.center,
@@ -1534,7 +1588,14 @@ class HomeFoodHeroCarousel extends StatefulWidget {
 
 class _HomeFoodHeroCarouselState extends State<HomeFoodHeroCarousel> {
   late int _index;
+  // Aset yang gagal SECARA KEKAL (≥2 kali) — dilangkau + boleh cetus fallback.
   final Set<int> _failed = {};
+  // Kiraan kegagalan setiap aset. Satu ralat sekejap (mis. tekanan memori
+  // seketika / dekod tergendala) TIDAK menyenaraihitamkan aset sah secara
+  // kekal; ia dicuba semula pada pusingan berikut. Hanya kegagalan berulang
+  // (≥2 kali) menjadikan aset itu kekal-gagal. Ini menghalang satu tersandung
+  // sementara daripada mengalir ke fallback bulatan-merah walau aset sah.
+  final Map<int, int> _failCount = {};
   Timer? _timer;
   bool _didPrecache = false;
 
@@ -1570,8 +1631,7 @@ class _HomeFoodHeroCarouselState extends State<HomeFoodHeroCarousel> {
   }
 
   void _precache(int i) {
-    precacheImage(AssetImage(_assets[i]), context)
-        .catchError((Object _) {});
+    precacheImage(AssetImage(_assets[i]), context).catchError((Object _) {});
   }
 
   int _nextIndex(int from) {
@@ -1601,13 +1661,21 @@ class _HomeFoodHeroCarouselState extends State<HomeFoodHeroCarousel> {
   Widget build(BuildContext context) {
     final mq = MediaQuery.maybeOf(context);
     final width = mq?.size.width ?? 412;
+    final compact = width < 340;
     final small = width < 360;
-    // PRE-AAB: hero makanan DIBESARKAN ~20% (dominan visual lebih premium),
-    // nisbah dikekalkan, kekal di kanan. 412: 164→197 ×146→175 (≈+20%);
-    // <360: 140→168 ×124→149. Title kekal Expanded di kiri (tiada overflow;
-    // tajuk hanya membalut lebih rapat) — tidak menutup loceng/Threads/tajuk.
-    final boxW = small ? 168.0 : 197.0;
-    final boxH = small ? 149.0 : 175.0;
+    // Compact hero polish: kekalkan footprint susun atur, tetapi besarkan
+    // visual makanan +12% linear (≈ +25% luas) melalui Transform supaya
+    // headline/lokasi tidak ditolak ke bawah. 412: 197×175 layout → kira-kira
+    // 221×196 rendered; <360: 168×149 → kira-kira 188×167.
+    // NOTA SAIZ (arahan produk "~20% lebih besar"): 1.12 = maksimum yang
+    // dituning — ia sudah ≈ +25% luas (memenuhi "lebih kurang 20%") DAN
+    // selamat daripada limpahan pada 360/390/412/430dp. Skala lebih besar
+    // (mis. 1.20) MELIMPAH Home terpasang pada 430dp (dibukti ujian viewport)
+    // dan dikunci-kontrak pada 'scale: 1.12' oleh home_layout_order_test.
+    // 320dp masih beri keutamaan kepada tajuk; visual kekal lebih besar
+    // daripada asal selepas skala 1.12 tanpa memaksa Row melimpah.
+    final boxW = compact ? 150.0 : (small ? 168.0 : 197.0);
+    final boxH = compact ? 133.0 : (small ? 149.0 : 175.0);
     final reduceMotion = mq?.disableAnimations ?? false;
     final dpr = mq?.devicePixelRatio ?? 2.0;
     final cacheW = (boxW * dpr).round().clamp(220, 840);
@@ -1624,18 +1692,24 @@ class _HomeFoodHeroCarouselState extends State<HomeFoodHeroCarousel> {
     final path = _assets[_index];
     final image = Image.asset(
       path,
-      key: ValueKey<String>(path), // ValueKey ikut aset → AnimatedSwitcher tukar
+      key:
+          ValueKey<String>(path), // ValueKey ikut aset → AnimatedSwitcher tukar
       width: boxW,
       height: boxH,
       fit: BoxFit.contain, // jangan potong pinggan / jangan herot nisbah
       cacheWidth: cacheW, // decode cekap; tiada dekod segerak 9 imej penuh
       errorBuilder: (_, __, ___) {
-        // Aset ini gagal → tanda & maju ke aset sah seterusnya (Home tak crash,
-        // tiada UI imej-pecah / laluan aset terdedah).
+        // Aset ini gagal muat → maju ke aset seterusnya (Home tak crash, tiada
+        // UI imej-pecah / laluan aset terdedah). Senarai-hitam KEKAL hanya
+        // selepas aset yang SAMA gagal ≥2 kali; kegagalan sementara pertama
+        // dicuba semula pada pusingan berikut supaya aset sah tidak jatuh ke
+        // fallback secara kekal.
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
           setState(() {
-            _failed.add(_index);
+            final fails = (_failCount[_index] ?? 0) + 1;
+            _failCount[_index] = fails;
+            if (fails >= 2) _failed.add(_index);
             _index = _nextIndex(_index);
           });
         });
@@ -1648,24 +1722,31 @@ class _HomeFoodHeroCarouselState extends State<HomeFoodHeroCarousel> {
       child: SizedBox(
         width: boxW,
         height: boxH,
-        child: AnimatedSwitcher(
-          duration: reduceMotion
-              ? const Duration(milliseconds: 1) // hormati kurang-gerakan
-              : const Duration(milliseconds: 430), // 350–550ms
-          switchInCurve: Curves.easeOutCubic,
-          switchOutCurve: Curves.easeIn,
-          transitionBuilder: (child, animation) {
-            // Slaid mendatar lembut + pudar (tiada putar/lantun/zum agresif).
-            final slide = Tween<Offset>(
-              begin: const Offset(0.16, 0),
-              end: Offset.zero,
-            ).animate(animation);
-            return FadeTransition(
-              opacity: animation,
-              child: SlideTransition(position: slide, child: child),
-            );
-          },
-          child: image,
+        child: Transform.translate(
+          offset: const Offset(0, -2),
+          child: Transform.scale(
+            scale: 1.12,
+            alignment: Alignment.centerRight,
+            child: AnimatedSwitcher(
+              duration: reduceMotion
+                  ? const Duration(milliseconds: 1) // hormati kurang-gerakan
+                  : const Duration(milliseconds: 430), // 350–550ms
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeIn,
+              transitionBuilder: (child, animation) {
+                // Slaid mendatar lembut + pudar (tiada putar/lantun/zum agresif).
+                final slide = Tween<Offset>(
+                  begin: const Offset(0.16, 0),
+                  end: Offset.zero,
+                ).animate(animation);
+                return FadeTransition(
+                  opacity: animation,
+                  child: SlideTransition(position: slide, child: child),
+                );
+              },
+              child: image,
+            ),
+          ),
         ),
       ),
     );
@@ -1740,8 +1821,7 @@ class _FavoriteButton extends ConsumerWidget {
   final PlaceSummary place;
   final bool onLight;
 
-  Future<void> _toggle(
-      BuildContext context, WidgetRef ref, bool isFav) async {
+  Future<void> _toggle(BuildContext context, WidgetRef ref, bool isFav) async {
     final l = AppLocalizations.of(context);
     final ent = ref.read(entitlementProvider);
     // Gate lembut Plus (sama seperti skrin restoran) — tiada pintasan.
@@ -1847,26 +1927,26 @@ class _BrandWordmark extends StatelessWidget {
             fit: BoxFit.scaleDown,
             alignment: Alignment.centerLeft,
             child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('makan',
-                  style: TextStyle(
-                    fontSize: 22,
-                    height: 0.98,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.5,
-                    color: palette.primary,
-                  )),
-              Text('mana',
-                  style: TextStyle(
-                    fontSize: 22,
-                    height: 0.98,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.5,
-                    color: palette.yellow,
-                  )),
-            ],
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('makan',
+                    style: TextStyle(
+                      fontSize: 22,
+                      height: 0.98,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.5,
+                      color: palette.primary,
+                    )),
+                Text('mana',
+                    style: TextStyle(
+                      fontSize: 22,
+                      height: 0.98,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.5,
+                      color: palette.yellow,
+                    )),
+              ],
             ),
           ),
         ),
@@ -1876,7 +1956,8 @@ class _BrandWordmark extends StatelessWidget {
 }
 
 /// Butang Threads (api) — pasangan konsisten dgn loceng. Ke feed sosial sedia
-/// ada (destinasi Threads). Label "Threads" di bawah bulatan (ikut rujukan).
+/// ada (destinasi Threads). Nama kekal pada Semantics/tooltip, tetapi tidak
+/// lagi dipapar di bawah ikon supaya header lebih padat.
 class _ThreadsButton extends StatelessWidget {
   const _ThreadsButton({required this.palette});
   final HomePalette palette;
@@ -1887,31 +1968,28 @@ class _ThreadsButton extends StatelessWidget {
     return Semantics(
       button: true,
       label: l.t('threadsLabel'),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => context.push(RoutePaths.social),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              height: 38,
-              width: 38,
-              decoration: BoxDecoration(
-                color: palette.offWhite,
-                shape: BoxShape.circle,
-                border: Border.all(color: palette.border),
+      child: Tooltip(
+        message: l.t('threadsLabel'),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => context.push(RoutePaths.social),
+          child: SizedBox(
+            width: 40,
+            height: 40,
+            child: Center(
+              child: Container(
+                height: 38,
+                width: 38,
+                decoration: BoxDecoration(
+                  color: palette.offWhite,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: palette.border),
+                ),
+                child: Icon(Icons.local_fire_department_rounded,
+                    size: 21, color: palette.primary),
               ),
-              child: Icon(Icons.local_fire_department_rounded,
-                  size: 21, color: palette.primary),
             ),
-            const SizedBox(height: 2),
-            Text(l.t('threadsLabel'),
-                style: TextStyle(
-                  fontSize: 9.5,
-                  fontWeight: FontWeight.w700,
-                  color: palette.subtext,
-                )),
-          ],
+          ),
         ),
       ),
     );

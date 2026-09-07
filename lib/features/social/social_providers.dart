@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -9,20 +11,31 @@ final socialServiceProvider = Provider<SocialService>(
   (ref) => SocialService(firebaseReady: ref.watch(firebaseReadyProvider)),
 );
 
+/// One shared, lightweight clock for all live social timestamps.
+///
+/// Riverpod keeps one subscription while any social surface watches it, so a
+/// feed of hundreds of cards never creates hundreds of timers. The immediate
+/// value still comes from DateTime.now() at render time; this stream only asks
+/// active labels to recalculate roughly once per minute.
+final socialClockProvider = StreamProvider.autoDispose<DateTime>((ref) {
+  return Stream<DateTime>.periodic(
+    const Duration(minutes: 1),
+    (_) => DateTime.now(),
+  );
+});
+
 /// PRIVASI (Social 1.1): post auto lama ("makan kat ...") yang dicipta
 /// tanpa persetujuan/visibility TIDAK lagi dipapar di permukaan awam —
 /// hanya penulisnya sendiri boleh nampak. Backend baharu sudah berhenti
 /// mencipta post sebegini; backfill Firestore penuh = Social Prompt 8.
 bool _legacyAutoHidden(Map<String, dynamic> data, String myUid) =>
-    data['type'] == 'auto' &&
-    (myUid.isEmpty || data['authorUid'] != myUid);
+    data['type'] == 'auto' && (myUid.isEmpty || data['authorUid'] != myUid);
 
 /// Feed awam (bukan grup), 50 siaran terkini.
 /// SP9.2B: query HANYA visibility=='public' — followers_only kini
 /// owner-only di rules (query luas akan gagal jika pulangkan doc yang
 /// rules tolak). Post soft-deleted ditapis di client.
-final publicFeedProvider =
-    StreamProvider<List<FeedPostData>>((ref) {
+final publicFeedProvider = StreamProvider<List<FeedPostData>>((ref) {
   if (!ref.watch(firebaseReadyProvider)) return Stream.value(const []);
   final myUid = ref.watch(authRepositoryProvider).currentUser?.uid ?? '';
   return FirebaseFirestore.instance
@@ -32,7 +45,8 @@ final publicFeedProvider =
       .limit(60)
       .snapshots()
       .map((snap) => snap.docs
-          .map((d) => FeedPostData(id: d.id, data: d.data(), pending: d.metadata.hasPendingWrites))
+          .map((d) => FeedPostData(
+              id: d.id, data: d.data(), pending: d.metadata.hasPendingWrites))
           .where((p) =>
               p.data['status'] != 'deleted' &&
               p.data['groupId'] == null &&
@@ -60,7 +74,8 @@ final followingFeedProvider =
       .limit(60)
       .snapshots()
       .map((snap) => snap.docs
-          .map((d) => FeedPostData(id: d.id, data: d.data(), pending: d.metadata.hasPendingWrites))
+          .map((d) => FeedPostData(
+              id: d.id, data: d.data(), pending: d.metadata.hasPendingWrites))
           .where((p) =>
               p.data['status'] != 'deleted' &&
               p.data['groupId'] == null &&
@@ -83,7 +98,8 @@ final trendingFeedProvider =
       .limit(50)
       .snapshots()
       .map((snap) => snap.docs
-          .map((d) => FeedPostData(id: d.id, data: d.data(), pending: d.metadata.hasPendingWrites))
+          .map((d) => FeedPostData(
+              id: d.id, data: d.data(), pending: d.metadata.hasPendingWrites))
           .where((p) =>
               p.data['status'] != 'deleted' &&
               p.data['groupId'] == null &&
@@ -94,8 +110,7 @@ final trendingFeedProvider =
 });
 
 /// Post saya (My Posts) - termasuk soft-deleted disembunyikan di UI.
-final myPostsProvider =
-    StreamProvider.autoDispose<List<FeedPostData>>((ref) {
+final myPostsProvider = StreamProvider.autoDispose<List<FeedPostData>>((ref) {
   final uid = ref.watch(authRepositoryProvider).currentUser?.uid ?? '';
   if (!ref.watch(firebaseReadyProvider) || uid.isEmpty) {
     return Stream.value(const []);
@@ -107,7 +122,8 @@ final myPostsProvider =
       .limit(60)
       .snapshots()
       .map((snap) => snap.docs
-          .map((d) => FeedPostData(id: d.id, data: d.data(), pending: d.metadata.hasPendingWrites))
+          .map((d) => FeedPostData(
+              id: d.id, data: d.data(), pending: d.metadata.hasPendingWrites))
           .where((p) => p.data['status'] != 'deleted')
           .toList());
 });
@@ -129,12 +145,10 @@ final userPublicPostsProvider = StreamProvider.autoDispose
   final query = isOwnProfile
       ? base.where('groupId', isNull: true)
       : base.where('visibility', isEqualTo: 'public');
-  return query
-      .orderBy('createdAt', descending: true)
-      .limit(60)
-      .snapshots()
-      .map((snap) => snap.docs
-          .map((d) => FeedPostData(id: d.id, data: d.data(), pending: d.metadata.hasPendingWrites))
+  return query.orderBy('createdAt', descending: true).limit(60).snapshots().map(
+      (snap) => snap.docs
+          .map((d) => FeedPostData(
+              id: d.id, data: d.data(), pending: d.metadata.hasPendingWrites))
           .where((p) =>
               p.data['status'] != 'deleted' &&
               (isOwnProfile || p.data['groupId'] == null) &&
@@ -225,13 +239,13 @@ final groupFeedProvider = StreamProvider.autoDispose
       .limit(50)
       .snapshots()
       .map((snap) => snap.docs
-          .map((d) => FeedPostData(id: d.id, data: d.data(), pending: d.metadata.hasPendingWrites))
+          .map((d) => FeedPostData(
+              id: d.id, data: d.data(), pending: d.metadata.hasPendingWrites))
           .toList());
 });
 
 /// Semua grup komuniti (50 terbaru).
-final allGroupsProvider =
-    StreamProvider<List<FeedPostData>>((ref) {
+final allGroupsProvider = StreamProvider<List<FeedPostData>>((ref) {
   if (!ref.watch(firebaseReadyProvider)) return Stream.value(const []);
   return FirebaseFirestore.instance
       .collection('groups')
@@ -239,7 +253,8 @@ final allGroupsProvider =
       .limit(50)
       .snapshots()
       .map((snap) => snap.docs
-          .map((d) => FeedPostData(id: d.id, data: d.data(), pending: d.metadata.hasPendingWrites))
+          .map((d) => FeedPostData(
+              id: d.id, data: d.data(), pending: d.metadata.hasPendingWrites))
           .toList());
 });
 
@@ -271,7 +286,8 @@ final commentsProvider = StreamProvider.autoDispose
       .limit(100)
       .snapshots()
       .map((snap) => snap.docs
-          .map((d) => FeedPostData(id: d.id, data: d.data(), pending: d.metadata.hasPendingWrites))
+          .map((d) => FeedPostData(
+              id: d.id, data: d.data(), pending: d.metadata.hasPendingWrites))
           .where((c) => c.data['status'] != 'deleted')
           .toList());
 });
@@ -307,11 +323,30 @@ final myDisplayNameProvider = StreamProvider<String>((ref) {
   });
 });
 
+/// QA-DEV17: undi SENDIRI pengguna pada feed poll (feed_posts/{postId}/
+/// pollVotes/{uid}). Berkunci postId (bukan groupId/pollId). Rules benarkan
+/// baca undi sendiri sahaja. AutoDispose → dilupus bila kad poll tak ditonton;
+/// batal semula selepas undi/log keluar/padam melalui aliran Firestore.
+final feedPollVoteProvider =
+    StreamProvider.autoDispose.family<String?, String>((ref, postId) {
+  final uid = ref.watch(authRepositoryProvider).currentUser?.uid ?? '';
+  if (!ref.watch(firebaseReadyProvider) || uid.isEmpty || postId.isEmpty) {
+    return Stream.value(null);
+  }
+  return FirebaseFirestore.instance
+      .collection('feed_posts')
+      .doc(postId)
+      .collection('pollVotes')
+      .doc(uid)
+      .snapshots()
+      .map((snap) =>
+          snap.exists ? (snap.data()?['optionKey'] as String?) : null);
+});
+
 /// Social Prompt 3: "Tak berminat" — post yang pengguna sorok.
 /// Pilihan LOKAL sesi sahaja (tiada tulisan backend); kad runtuh kepada
 /// tile kecil dengan butang buat asal. Reset bila app dilancar semula.
-final hiddenPostIdsProvider =
-    StateProvider<Set<String>>((ref) => const {});
+final hiddenPostIdsProvider = StateProvider<Set<String>>((ref) => const {});
 
 /// Pembalut ringkas dokumen Firestore (id + data).
 ///

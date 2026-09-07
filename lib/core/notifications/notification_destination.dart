@@ -61,9 +61,15 @@ class NotificationDestinationResolver {
       case 'fitCoach':
         return RoutePaths.fitToday;
       case 'subscription_updated':
+      case 'subscription_started':
+      case 'subscription_renewed':
+      case 'subscription_cancelled':
       case 'trial_ending':
       case 'payment_issue':
       case 'subscriptionUpdated':
+      case 'subscriptionStarted':
+      case 'subscriptionRenewed':
+      case 'subscriptionCancelled':
       case 'trialEnding':
       case 'paymentIssue':
       case 'subscription':

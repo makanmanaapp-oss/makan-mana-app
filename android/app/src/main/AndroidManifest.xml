@@ -11,7 +11,7 @@
         tools:node="remove" />
 
     <application
-        android:label="MakanMana"
+        android:label="${appLabel}"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 
@@ -48,6 +48,17 @@
                     android:pathPrefix="/invite/" />
             </intent-filter>
         </activity>
+
+        <!-- PROMPT 3.1 (Parts 4-5): FCM notification-message defaults. Routes
+             tray display to the branded makanmana_activity channel (created in
+             MainActivity) and uses a white monochrome small icon so the status
+             bar never shows a solid white square from the colour launcher icon. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="makanmana_activity" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_makanmana" />
 
         <meta-data
             android:name="flutterEmbedding"
