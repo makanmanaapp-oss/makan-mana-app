@@ -1,0 +1,10 @@
+A = ops/wave4-wave5/rules-current-live-safeoff/live-baseline.rules: 93 match blocks, 275 helper lines
+B = ops/wave4-wave5/baseline/deployed-fetchback.rules: 96 match blocks, 300 helper lines
+
+NEW MATCH BLOCKS   = 3
+   + /restaurant_promotions/{promotionId}
+   + /cms_content/{contentId}
+   + /cms_collections/{collectionId}
+REMOVED            = 0
+MODIFIED EXISTING  = 0
+HELPER/FUNCTION BODY CHANGED = NO

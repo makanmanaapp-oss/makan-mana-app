@@ -1,0 +1,29 @@
+  PASS  promotions get denied
+  PASS  promotions list denied
+  PASS  promotions create denied
+  PASS  promotions update denied
+  PASS  promotions delete denied
+  PASS  cms_content get denied
+  PASS  cms_content list denied
+  PASS  cms_content create denied
+  PASS  cms_content update denied
+  PASS  cms_content delete denied
+  PASS  cms_collections get denied
+  PASS  cms_collections list denied
+  PASS  cms_collections create denied
+  PASS  cms_collections update denied
+  PASS  cms_collections delete denied
+  PASS  promotions get denied (anon)
+  PASS  cms_content get denied (anon)
+  PASS  G6 restaurant_public read ALLOWED
+  PASS  G6 own follow read ALLOWED
+  PASS  G6 other follow read DENIED
+  PASS  G6 visible menu comment ALLOWED
+  PASS  G6 hidden menu comment DENIED
+  PASS  G6 restaurant_public write DENIED
+  PASS  admin_audit_events read DENIED
+  PASS  admin_bridge_requests read DENIED
+  PASS  unknown collection DENIED
+ruleset = 24ac23e9-3646-4626-9878-d83e165cc7a4
+production Rules API tests: 26/26
+PHASE 7 PRODUCTION RULES VERIFICATION = PASS
