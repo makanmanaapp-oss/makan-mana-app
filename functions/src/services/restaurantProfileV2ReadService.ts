@@ -6,6 +6,7 @@ import {
 import {
   MAX_PLACE_ID_LENGTH,
   resolveCanonicalPlaceIdWith,
+  resolveProvenCanonicalPlaceIdWith,
   type CanonicalResolutionDeps,
 } from "../domain/restaurantEngagement/canonicalResolution";
 
@@ -40,6 +41,22 @@ export async function resolveCanonicalRestaurantPlaceId(placeId: string): Promis
   const clean = typeof placeId === "string" ? placeId.trim() : "";
   if (!clean || clean.length > MAX_PLACE_ID_LENGTH) return null;
   return resolveCanonicalPlaceIdWith(clean, resolutionDeps);
+}
+
+/**
+ * GATE 3F — STRICT canonical identity for PUBLIC surfaces.
+ *
+ * Unlike [resolveCanonicalRestaurantPlaceId], this never falls back to the
+ * caller's own id, so a raw provider/Google place id can never be presented as
+ * a canonical restaurant identity. Used to decide whether the Follow button may
+ * mount, INDEPENDENTLY of whether an active publication exists.
+ */
+export async function resolveProvenCanonicalRestaurantPlaceId(
+  placeId: string,
+): Promise<string | null> {
+  const clean = typeof placeId === "string" ? placeId.trim() : "";
+  if (!clean || clean.length > MAX_PLACE_ID_LENGTH) return null;
+  return resolveProvenCanonicalPlaceIdWith(clean, resolutionDeps);
 }
 
 /**

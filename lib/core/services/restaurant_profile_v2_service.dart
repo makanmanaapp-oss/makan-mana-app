@@ -13,24 +13,74 @@ class RestaurantProfileV2Service {
     return <String, dynamic>{};
   }
 
-  Future<PublicRestaurantProfileV2?> getPublishedProfile(String placeId) async {
+  /// GATE 3F — resolve restaurant IDENTITY and profile CONTENT together but
+  /// independently.
+  ///
+  /// The server proves `canonicalPlaceId` without requiring a publication, so a
+  /// restaurant can have a real identity (Follow may mount) while its detail
+  /// content still falls back to legacy. Identity is never inferred client-side
+  /// and the requested place id is never promoted to canonical locally.
+  ///
+  /// Any failure (network, function error, malformed payload) yields an empty
+  /// result, so engagement stays hidden rather than mounting on a guess.
+  Future<RestaurantProfileLookupResult> lookup(String placeId) async {
     final clean = placeId.trim();
-    if (clean.isEmpty) return null;
+    if (clean.isEmpty) return const RestaurantProfileLookupResult();
 
     try {
       final result = await _functions
           .httpsCallable('getRestaurantProfileV2')
           .call<Map<dynamic, dynamic>>({'placeId': clean});
       final root = _map(result.data);
+
+      final rawCanonical = root['canonicalPlaceId'];
+      final canonicalPlaceId =
+          rawCanonical is String && rawCanonical.trim().isNotEmpty
+              ? rawCanonical.trim()
+              : null;
+
+      PublicRestaurantProfileV2? profile;
       final rawProfile = root['profile'];
-      if (rawProfile is! Map) return null;
-      return PublicRestaurantProfileV2.fromMap(_map(rawProfile));
+      if (rawProfile is Map) {
+        try {
+          profile = PublicRestaurantProfileV2.fromMap(_map(rawProfile));
+        } on FormatException {
+          profile = null;
+        }
+      }
+      return RestaurantProfileLookupResult(
+        canonicalPlaceId: canonicalPlaceId ?? profile?.canonicalPlaceId,
+        profile: profile,
+      );
     } on FirebaseFunctionsException {
-      return null;
+      return const RestaurantProfileLookupResult();
     } catch (_) {
-      return null;
+      return const RestaurantProfileLookupResult();
     }
   }
+
+  /// Backward-compatible convenience for callers that only need the profile.
+  Future<PublicRestaurantProfileV2?> getPublishedProfile(String placeId) async {
+    return (await lookup(placeId)).profile;
+  }
+}
+
+/// GATE 3F — the two answers a restaurant lookup can give, kept separate.
+///
+/// `profile == null` means "no published content", NOT "identity unknown".
+/// Overloading one null for both is exactly what hid the Follow button.
+class RestaurantProfileLookupResult {
+  const RestaurantProfileLookupResult({this.canonicalPlaceId, this.profile});
+
+  /// Server-proven canonical restaurant identity, or null when it could not be
+  /// proven. Never the raw requested/provider place id.
+  final String? canonicalPlaceId;
+
+  /// The ACTIVE published profile, or null when the restaurant has none.
+  final PublicRestaurantProfileV2? profile;
+
+  bool get hasCanonicalIdentity =>
+      canonicalPlaceId != null && canonicalPlaceId!.trim().isNotEmpty;
 }
 
 class PublicRestaurantProfileV2 {

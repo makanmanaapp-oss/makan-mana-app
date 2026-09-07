@@ -539,11 +539,16 @@ void main() {
   // ── ENTRY POINTS + PURE-WIDGET SAFETY ───────────────────────────────────
 
   group('entry points anchor to the existing canonical Restaurant Detail', () {
-    test('engagement mounts only after the canonical publication resolved', () {
+    test('engagement mounts on PROVEN canonical identity, not on publication', () {
+      // GATE 3F: identity resolution is decoupled from profile publication.
+      // Engagement used to be gated on `publishedVm != null`, which hid Follow
+      // for a restaurant that had a real canonical identity but no published
+      // profile. The gate is now the server-proven identity itself.
       expect(route, contains('String? _resolvedCanonicalPlaceId;'));
-      expect(route, contains('_resolvedCanonicalPlaceId = profile.canonicalPlaceId;'));
-      expect(route,
-          contains('publishedVm != null ? _resolvedCanonicalPlaceId : null'));
+      expect(route, contains('lookup.hasCanonicalIdentity'));
+      expect(route.contains('publishedVm != null ? _resolvedCanonicalPlaceId : null'),
+          isFalse,
+          reason: 'the publication gate on engagement must be gone');
       // an alias/provider id never reaches an engagement action
       expect(route, contains('canonicalId == null || canonicalId.isEmpty'));
     });

@@ -59,12 +59,19 @@ class _RestaurantDetailScreenState
   /// server-side and we keep what it actually returned.
   String? _resolvedCanonicalPlaceId;
 
+  /// GATE 3F — resolve IDENTITY and CONTENT independently.
+  ///
+  /// The canonical id is recorded whenever the SERVER proves it, even when the
+  /// restaurant has no published profile. Previously the id was only kept when
+  /// a profile came back, so a restaurant with a real canonical identity but no
+  /// publication lost its Follow button.
   Future<RestaurantDetailViewModel?> _loadCanonicalProfile(
       String requestedPlaceId) async {
-    final profile = await RestaurantProfileV2Service()
-        .getPublishedProfile(requestedPlaceId);
+    final lookup = await RestaurantProfileV2Service().lookup(requestedPlaceId);
+    _resolvedCanonicalPlaceId =
+        lookup.hasCanonicalIdentity ? lookup.canonicalPlaceId : null;
+    final profile = lookup.profile;
     if (profile == null) return null;
-    _resolvedCanonicalPlaceId = profile.canonicalPlaceId;
     return restaurantDetailFromPublicProfile(profile);
   }
 
@@ -244,10 +251,15 @@ class _RestaurantDetailScreenState
             return RestaurantDetailNotFound(onBack: () => context.pop());
           }
 
-          // Engagement is anchored to the CANONICAL restaurant identity and is
-          // only available once the canonical publication resolved.
-          final canonicalId =
-              publishedVm != null ? _resolvedCanonicalPlaceId : null;
+          // Engagement is anchored to the CANONICAL restaurant identity, which
+          // the server proves INDEPENDENTLY of whether a publication exists.
+          // It is deliberately NOT gated on publishedVm: a restaurant with a
+          // proven identity but no published profile still shows Follow, while
+          // its content falls back to legacy. Unproven identity stays null and
+          // engagement stays hidden.
+          final canonicalId = snapshot.connectionState == ConnectionState.done
+              ? _resolvedCanonicalPlaceId
+              : null;
 
           return diag(
             CanonicalRestaurantDetailScreen(
