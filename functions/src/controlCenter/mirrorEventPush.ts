@@ -1,4 +1,5 @@
 import {defineSecret} from "firebase-functions/params";
+import type {AnalyticsMirrorRecord} from "../domain/analytics/analyticsDocument";
 
 import type {MenuCommentMirrorRecord, SocialPostMirrorRecord} from "../domain/restaurantEngagement/mirrorPayload";
 import type {MirrorEntityType} from "../domain/restaurantEngagement/mirrorEvents";
@@ -25,7 +26,8 @@ export type MirrorRecord =
   | MenuCommentMirrorRecord
   | PromotionMirrorRecord
   | CmsMirrorRecord
-  | CollectionMirrorRecord;
+  | CollectionMirrorRecord
+  | AnalyticsMirrorRecord;
 
 /**
  * POST one idempotent mirror batch. `eventId` is the idempotency key enforced by
@@ -34,7 +36,8 @@ export type MirrorRecord =
  * server-side rather than silently overwriting an unrelated event.
  */
 export async function pushMirrorBatch(params: {
-  entityType: MirrorEntityType | "restaurant_promotion" | "cms_content" | "cms_collection";
+  entityType: MirrorEntityType | "restaurant_promotion" | "cms_content" | "cms_collection"
+    | "merchant_analytics_daily";
   records: MirrorRecord[];
   secret: string;
   eventId: string;

@@ -25,6 +25,8 @@ class RestaurantDetailCallbacks {
     this.onAccept,
     this.onReject,
     this.onReportIncorrectInformation,
+    this.onMenuTabOpened,
+    this.onPromotionsShown,
   });
 
   final VoidCallback? onBack;
@@ -38,6 +40,15 @@ class RestaurantDetailCallbacks {
   final VoidCallback? onAccept;
   final VoidCallback? onReject;
   final VoidCallback? onReportIncorrectInformation;
+
+  /// WAVE 6 — the customer actually switched to the Menu tab. Fired on the
+  /// user's tap, not on build: a TabBarView constructs its children eagerly,
+  /// so counting a build would report menu interest that never happened.
+  final ValueChanged<int>? onMenuTabOpened;
+
+  /// WAVE 6 — the offer strip was rendered on the tab the customer is looking
+  /// at. Anything built off-screen is not an impression.
+  final VoidCallback? onPromotionsShown;
 }
 
 /// GATE 3F — REAL MakanMana community review data for the Ulasan tab.
@@ -198,6 +209,7 @@ class _CanonicalRestaurantDetailBodyState
               background: mm.appBackground,
               child: TabBar(
                 key: const Key('restaurant-detail-tabs'),
+                onTap: (index) => widget.callbacks.onMenuTabOpened?.call(index),
                 labelColor: MMColors.danger,
                 unselectedLabelColor: mm.onCardMuted,
                 indicatorColor: MMColors.danger,
@@ -268,7 +280,15 @@ class _CanonicalRestaurantDetailBodyState
             // WAVE 4 — live offers sit above the static summary because they
             // are the most perishable thing on the page. Renders nothing when
             // there is no offer.
-            PromotionSection(promotions: widget.promotions),
+            // WAVE 6 — an impression is reported only when the strip is
+            // genuinely built with content, on the tab in front of the
+            // customer. The widget itself renders nothing when the list is
+            // empty, so this mirrors exactly what was on screen.
+            _PromotionImpression(
+              promotions: widget.promotions,
+              onShown: widget.callbacks.onPromotionsShown,
+              child: PromotionSection(promotions: widget.promotions),
+            ),
             // WAVE 5 — editorial CMS sits BELOW the merchant's own offer: the
             // restaurant's promotion is the more relevant thing on its page.
             // Scoped to this restaurant, so an unrelated banner cannot appear.
@@ -1470,4 +1490,54 @@ class _TabBarHeader extends SliverPersistentHeaderDelegate {
   @override
   bool shouldRebuild(_TabBarHeader oldDelegate) =>
       oldDelegate.child != child || oldDelegate.background != background;
+}
+
+
+/// WAVE 6 — reports a promotion impression once per screen visit.
+///
+/// Deliberately not a scroll/visibility observer: the strip sits inside the
+/// Profil tab, which is the tab the screen opens on, and a single honest signal
+/// per visit is worth more than a stream of half-visible fractions nobody can
+/// audit later.
+class _PromotionImpression extends StatefulWidget {
+  const _PromotionImpression({
+    required this.promotions,
+    required this.child,
+    this.onShown,
+  });
+
+  final List<Promotion> promotions;
+  final Widget child;
+  final VoidCallback? onShown;
+
+  @override
+  State<_PromotionImpression> createState() => _PromotionImpressionState();
+}
+
+class _PromotionImpressionState extends State<_PromotionImpression> {
+  bool _reported = false;
+
+  @override
+  void didUpdateWidget(covariant _PromotionImpression oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _maybeReport();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _maybeReport();
+  }
+
+  void _maybeReport() {
+    if (_reported || widget.promotions.isEmpty) return;
+    _reported = true;
+    // After the frame, so this counts something that was actually painted.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) widget.onShown?.call();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

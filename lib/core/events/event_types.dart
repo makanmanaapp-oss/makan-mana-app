@@ -140,6 +140,27 @@ class EventType {
   static const dmReportTapped = 'dm_report_tapped';
   static const dmMuteToggled = 'dm_mute_toggled';
 
+  // O. WAVE 6: isyarat penglibatan kedai untuk analitik peniaga.
+  //
+  // Ditambah HANYA untuk tindakan yang benar-benar wujud dalam UI. Tiada
+  // metrik direka: kalau produk tiada butang untuk sesuatu, tiada event
+  // untuknya, dan dashboard peniaga akan kata "tidak dijejaki" dengan jujur.
+  static const menuOpened = 'menu_opened';
+  static const menuItemViewed = 'menu_item_viewed';
+  static const directionsTapped = 'directions_tapped';
+  static const callTapped = 'call_tapped';
+  static const websiteTapped = 'website_tapped';
+
+  /// Impression promosi. HANYA dihantar apabila kad benar-benar dirender dan
+  /// kelihatan kepada pengguna; metadata mesti membawa visible: true. Bacaan
+  /// backend atau kad yang dibina di luar skrin BUKAN impression.
+  static const promotionImpression = 'promotion_impression';
+  static const promotionCtaTapped = 'promotion_cta_tapped';
+
+  /// Impression/ketukan CMS. Sama syarat: mesti benar-benar kelihatan.
+  static const cmsImpression = 'cms_impression';
+  static const cmsCtaTapped = 'cms_cta_tapped';
+
   // N. Social Prompt 8: repost + quote + multi-gambar
   static const repostSheetOpened = 'repost_sheet_opened';
   static const postReposted = 'post_reposted';

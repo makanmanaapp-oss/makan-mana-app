@@ -13,6 +13,7 @@ import '../../core/constants/app_constants.dart';
 import '../../core/mood/availability_label.dart';
 import '../../core/entitlement/entitlement.dart';
 import '../../core/entitlement/plan_tier.dart';
+import '../../core/events/event_types.dart';
 import '../../core/providers.dart';
 import '../../core/providers/makanmana_user_context_provider.dart';
 import '../../core/services/restaurant_profile_v2_service.dart';
@@ -303,12 +304,22 @@ class _RestaurantDetailScreenState
               onOpenMenuItemComments:
                   canonicalId == null || canonicalId.isEmpty
                       ? null
-                      : (item) => showMenuCommentSheet(
+                      : (item) {
+                          // WAVE 6 — opening an item's comments is a real,
+                          // deliberate interaction with that dish.
+                          ref.read(eventLoggerProvider).logEvent(
+                                EventType.menuItemViewed,
+                                placeId: canonicalId,
+                                sourceScreen: SourceScreen.restaurantDetail,
+                                metadata: {'menuItemId': item.id},
+                              );
+                          showMenuCommentSheet(
                             context,
                             canonicalPlaceId: canonicalId,
                             menuItemId: item.id,
                             menuItemName: item.name,
-                          ),
+                          );
+                        },
               // GATE 3F — the Ulasan tab shows MakanMana community reviews ONLY,
               // reusing the EXISTING placeReviewsProvider (place_reviews,
               // approved only). The average is derived from those real reviews
@@ -318,6 +329,29 @@ class _RestaurantDetailScreenState
                   place == null ? null : _communityReviews(ref, place.placeId),
               callbacks: RestaurantDetailCallbacks(
                 onBack: () => context.pop(),
+                // WAVE 6 — index 2 is the Menu tab. Fired from the customer's
+                // tap, never from a build, so an eagerly-constructed TabBarView
+                // child cannot be mistaken for menu interest.
+                onMenuTabOpened: canonicalId == null || canonicalId.isEmpty
+                    ? null
+                    : (index) {
+                        if (index != 2) return;
+                        ref.read(eventLoggerProvider).logEvent(
+                              EventType.menuOpened,
+                              placeId: canonicalId,
+                              sourceScreen: SourceScreen.restaurantDetail,
+                            );
+                      },
+                // WAVE 6 — `visible: true` is the assertion the aggregator
+                // requires before it will count an impression at all.
+                onPromotionsShown: canonicalId == null || canonicalId.isEmpty
+                    ? null
+                    : () => ref.read(eventLoggerProvider).logEvent(
+                          EventType.promotionImpression,
+                          placeId: canonicalId,
+                          sourceScreen: SourceScreen.restaurantDetail,
+                          metadata: const {'visible': true},
+                        ),
                 onOpenMaps: place == null
                     ? null
                     : () => openPlaceInMaps(

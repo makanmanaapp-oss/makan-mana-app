@@ -200,3 +200,20 @@ export {
   syncSocialEngagementToControlCenterEvery5Hours,
 } from "./controlCenter/socialEngagementMirrorSync";
 export {controlCenterSocialModerationBridge} from "./controlCenter/socialModerationBridge";
+
+// Wave 6 — Merchant Analytics. Aggregates are derived SERVER-SIDE from the
+// existing `events/` stream plus the server-authoritative follow and menu
+// comment collections; a client can append a raw event but can never write a
+// counter. The read plane reuses the Wave 1 merchant authorization unchanged.
+export {getMerchantAnalytics} from "./callable/getMerchantAnalytics";
+export {
+  aggregateAnalyticsEventOnCreate,
+  aggregateRestaurantFollowOnCreate,
+  aggregateRestaurantUnfollowOnDelete,
+  aggregateMenuCommentOnCreate,
+  reconcileAnalyticsDaily,
+} from "./analytics/analyticsJobs";
+export {
+  mirrorAnalyticsDailyOnWrite,
+  reconcileAnalyticsMirrorDaily,
+} from "./controlCenter/analyticsMirrorSync";

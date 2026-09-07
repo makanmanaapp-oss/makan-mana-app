@@ -7,6 +7,8 @@ import '../home/home_palette.dart';
 import 'merchant_promotions_card.dart';
 import 'restaurant_engagement_card.dart';
 import 'restaurant_profile_editor_card.dart';
+import 'merchant_analytics_card.dart';
+import 'merchant_error_mapper.dart';
 
 final merchantServiceProvider = Provider<MerchantService>((ref) {
   return MerchantService();
@@ -159,7 +161,13 @@ class _MerchantCenterScreenState extends ConsumerState<MerchantCenterScreen> {
         value.contains('restaurant_profile_field_not_allowed')) {
       return 'Medan ini tidak boleh diubah sendiri. Hantar hanya maklumat profil yang dibenarkan.';
     }
-    return raw.replaceAll('_', ' ');
+    // WAVE 6 — dahulu baris ini ialah `raw.replaceAll('_', ' ')`, yang
+    // mengemakan apa sahaja kod yang tidak dipetakan terus ke skrin. Itulah
+    // sebabnya tuan kedai nampak "UNAVAILABLE" dan kemudian
+    // "RESOURCE EXHAUSTED" semasa kuota CPU projek habis. Kod teknikal kekal
+    // dalam log; pengguna dapat ayat.
+    MerchantErrorMapper.logForDebug('merchant_center', raw);
+    return MerchantErrorMapper.message(raw);
   }
 
   Future<void> _register() async {
@@ -327,6 +335,9 @@ class _MerchantCenterScreenState extends ConsumerState<MerchantCenterScreen> {
                     // WAVE 4 — Commercial Tools: promotions for a restaurant
                     // this merchant is authorized for.
                     MerchantPromotionsCard(state: _state!),
+                    // WAVE 6 — Prestasi duduk selepas promosi: peniaga buat
+                    // tawaran dahulu, kemudian lihat kesannya.
+                    MerchantAnalyticsCard(state: _state!),
                     const SizedBox(height: 18),
                     _historyCard(palette, _state!),
                   ],
