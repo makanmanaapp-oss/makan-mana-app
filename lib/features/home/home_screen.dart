@@ -29,6 +29,15 @@ import '../fit/fit_widgets.dart';
 import '../reviews/rating_page.dart';
 import '../suggestions/suggestion_repository.dart';
 
+/// Jam dinding yang menentukan sapaan Home.
+///
+/// Sapaan membaca `DateTime.now()` terus, jadi setiap golden Home mengunci
+/// perkataan sapaan pada baldi jam ketika ia dijana — 16 golden itu hanya
+/// lulus antara 19:00 dan 23:59 dan gagal sepanjang baki hari. Jam yang
+/// boleh ditimpa membuatkan ujian deterministik; pengeluaran kekal
+/// menggunakan masa sebenar.
+final homeClockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
@@ -151,7 +160,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   String _greetingKey() {
-    final hour = DateTime.now().hour;
+    final hour = ref.read(homeClockProvider)().hour;
     if (hour < 12) return 'greetingMorning';
     if (hour < 15) return 'greetingAfternoon';
     if (hour < 19) return 'greetingEvening';

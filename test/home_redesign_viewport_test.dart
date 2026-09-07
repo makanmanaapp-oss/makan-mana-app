@@ -93,6 +93,10 @@ Widget _harness({
           spinUsed: 1,
           spinLimit: 3)),
       unreadNotificationCountProvider.overrideWithValue(3),
+      // Jam tetap: golden mengunci perkataan sapaan, jadi ia mesti tidak
+      // bergantung pada bila suite dijalankan. 20:00 = baldi 'malam' yang
+      // sama seperti ketika golden ini diluluskan.
+      homeClockProvider.overrideWithValue(() => DateTime(2026, 9, 7, 20, 30)),
     ],
     child: MaterialApp(
       theme: dark ? AppTheme.dark() : AppTheme.light(),
