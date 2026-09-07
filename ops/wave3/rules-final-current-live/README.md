@@ -125,6 +125,15 @@ swallows the error in a `debugPrint`. N1 widens the clause to *"if you touch
 security boundary — unchanged. Test D2 proves a forged status, an out-of-allowlist
 field, `isRead:false`, create, delete and cross-user read are all still denied.
 
+**One N1 semantic worth stating,** found by testing rather than reading: N1
+also admits a write that re-states the *same* status value (e.g. writing
+`status: 'unread'` on a document already `'unread'`). `affectedKeys()` does not
+report an unchanged field, so the first branch applies. The resulting document
+is byte-identical to leaving `status` untouched, so this grants nothing new — a
+status that actually *changes* must still become `'read'`, and `'archived'`,
+`'forged'`, `'deleted'` and `''` are all rejected. Proven by `clientCompat`
+test 6.
+
 **Alternatives, for the owner to choose between:**
 
 - **Keep N1** (recommended). Fixes every already-installed client immediately,
@@ -137,7 +146,12 @@ field, `isRead:false`, create, delete and cross-user read are all still denied.
   alongside `status: 'unread'`, which is functionally fine — the UI reads
   `isRead` — but leaves `status` unreliable as a read-state indicator).
 
-A client fix is **out of scope** for this preparation audit and has not been made.
+**Both were chosen.** N1 stays in this artifact (it unblocks every already
+installed build), and the client fix landed in the Gate 3G release candidate:
+`markRead` / `markAllRead` now write `status: kNotificationStatusRead` alongside
+`isRead` / `readAt`, with the write set unchanged. `clientCompat` test 4 proves
+that payload is accepted by **both** current live and this artifact, which is
+why the client can ship before the rules change.
 
 ---
 
@@ -157,14 +171,20 @@ and C7B re-run after it, before this ruleset may be deployed.
 
 ### 5.2 The status-aware client must be released
 
-The released production build is **0.1.8 (13) from 2026-08-22**; the
-status-aware consumer queries landed in source on **2026-09-05**. Under this
-ruleset a list query that could return a non-active document is rejected **in
-its entirety**, so today's Play build would lose its feed and comment threads
+The build on Play is **0.1.8 (13) from 2026-08-22**; the status-aware consumer
+queries landed in source on **2026-09-05**. Under this ruleset a list query that
+could return a non-active document is rejected **in its entirety**, so today's
+Play build would lose its feed and comment threads
 outright — not degrade gracefully.
 
 **Deploying this before a status-aware client release is a user-visible
 production outage.**
+
+**Status:** the release candidate is built — `0.1.9 (14)`, prepared under Gate
+3G — and `clientCompat` test 3 demonstrates the break directly: the old build's
+queries are DENIED by this ruleset while working under current live. The
+remaining step is the owner uploading that AAB and adoption reaching the
+owner's threshold.
 
 ---
 
@@ -197,7 +217,27 @@ NODE_PATH="../../../functions/node_modules" \
     "node --test finalRules.test.cjs"
 ```
 
-### 6.2 Existing repo suite — **220 / 220 passing**
+### 6.2 `clientCompat.test.cjs` — **8/8 passing**
+
+Proves the *client* is compatible, not just that the ruleset is correct. It
+replays the exact queries and payloads the release-candidate app issues.
+
+| # | Proves |
+|---|---|
+| 1 | **every** release-candidate query is ALLOWED by the final rules — all 9 providers |
+| 2 | those queries return only lifecycle-visible documents, and the author still sees their own hidden post |
+| 3 | **the OLD shipped client's unconstrained queries are DENIED** by the final rules while working under current live — this is the release gate, demonstrated rather than asserted |
+| 4 | the new mark-read payload is accepted by the final rules **and by current live**, so the client is safe to release BEFORE the rules change |
+| 5 | the `markAllRead` batch payload is accepted under both |
+| 6 | a status that changes can only become `'read'` (see §4) |
+| 7 | mark-read is idempotent and preserves untouched fields |
+| 8 | out-of-allowlist fields and cross-user reads still rejected |
+
+Test 4 is the one that makes the cutover ordering work: because the new payload
+is valid under **both** rulesets, the client release and the rules deploy do not
+have to be simultaneous.
+
+### 6.3 Existing repo suite — **220 / 220 passing**
 
 Run by temporarily substituting the repository root `firestore.rules`, which was
 restored and verified byte-identical

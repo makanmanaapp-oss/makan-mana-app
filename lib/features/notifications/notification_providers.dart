@@ -14,6 +14,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/providers.dart';
 import 'notification_model.dart';
 
+/// WAVE 3 GATE 3G — keadaan kitaran hayat notifikasi yang DITULIS oleh klien.
+///
+/// Rules hanya menerima `status == 'read'` apabila medan itu disentuh, dan
+/// hanya membenarkan set medan `['isRead','readAt','openedAt','status']`.
+/// Klien lama menulis `isRead`+`readAt` SAHAJA, jadi bagi dokumen yang
+/// tersimpan `status: 'unread'` hasil gabungan kekal 'unread' dan rules
+/// MENOLAK tulisan itu — tanda-baca gagal senyap di produksi. Menulis status
+/// sebenar di sini menjadikan permintaan itu jujur dan diterima.
+const kNotificationStatusRead = 'read';
+
 /// Strim notifikasi pengguna semasa (users/{uid}/notifications, terbaru dulu).
 /// Kosong bila belum log masuk / Firebase belum sedia (fail-safe).
 final notificationsStreamProvider =
@@ -72,13 +82,18 @@ class NotificationRepository {
         .collection('notifications');
   }
 
-  /// Tanda satu notifikasi dibaca (isRead + readAt sahaja).
+  /// Tanda satu notifikasi dibaca (isRead + readAt + status).
   Future<void> markRead(String id) async {
     final col = _col;
     if (col == null || id.isEmpty) return;
     try {
       await col.doc(id).set(
-        {'isRead': true, 'readAt': FieldValue.serverTimestamp()},
+        {
+          'isRead': true,
+          'readAt': FieldValue.serverTimestamp(),
+          // Keadaan kitaran hayat sebenar — bukan hanya bendera UI.
+          'status': kNotificationStatusRead,
+        },
         SetOptions(merge: true),
       );
     } catch (e) {
@@ -87,6 +102,7 @@ class NotificationRepository {
   }
 
   /// Tanda semua belum-baca sebagai dibaca (batch, medan keadaan-baca sahaja).
+  /// Set medan sama seperti [markRead] — tiada medan lain disentuh.
   Future<void> markAllRead(Iterable<String> unreadIds) async {
     final col = _col;
     if (col == null) return;
@@ -97,7 +113,11 @@ class NotificationRepository {
         if (id.isEmpty) continue;
         batch.set(
           col.doc(id),
-          {'isRead': true, 'readAt': FieldValue.serverTimestamp()},
+          {
+            'isRead': true,
+            'readAt': FieldValue.serverTimestamp(),
+            'status': kNotificationStatusRead,
+          },
           SetOptions(merge: true),
         );
         n++;
