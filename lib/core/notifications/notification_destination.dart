@@ -50,7 +50,7 @@ class NotificationDestinationResolver {
       case 'group_update':
       case 'groupInviteAccepted':
       case 'groupUpdate':
-        return id.isNotEmpty ? '/groups/$id' : RoutePaths.group;
+        return id.isNotEmpty ? '/groups/$id' : '/social?tab=groups';
       case 'weekly_report_ready':
       case 'weeklyReportReady':
       case 'fit_reminder':
@@ -76,7 +76,7 @@ class NotificationDestinationResolver {
       case 'social':
         return id.isNotEmpty ? '/u/$id' : RoutePaths.social;
       case 'group':
-        return id.isNotEmpty ? '/groups/$id' : RoutePaths.group;
+        return id.isNotEmpty ? '/groups/$id' : '/social?tab=groups';
       case 'coupon':
         return '/coupon';
       case 'support':

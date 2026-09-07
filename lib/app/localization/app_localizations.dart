@@ -238,6 +238,7 @@ class AppLocalizations {
       // Social Prompt 7: DM V1
       'dmTitle': 'Mesej',
       'dmEmpty': 'Belum ada mesej. Buka profil seseorang dan tekan DM.',
+      'dmLoadError': 'Gagal memuat mesej.',
       'dmStartHint': 'Mulakan perbualan tentang makan mana hari ni.',
       'dmInputHint': 'Taip mesej...',
       'dmSendFailed': 'Mesej tak dapat dihantar. Cuba lagi.',
@@ -1519,6 +1520,7 @@ class AppLocalizations {
       // Social Prompt 7: DM V1
       'dmTitle': 'Messages',
       'dmEmpty': "No messages yet. Open someone's profile and tap DM.",
+      'dmLoadError': 'Couldn’t load your messages.',
       'dmStartHint': "Start a conversation about today's makan spot.",
       'dmInputHint': 'Type a message...',
       'dmSendFailed': 'Message could not be sent. Try again.',
@@ -2767,6 +2769,7 @@ class AppLocalizations {
       // Social Prompt 7: DM V1
       'dmTitle': '私信',
       'dmEmpty': '还没有消息。打开某人的主页并点按 DM。',
+      'dmLoadError': '无法加载消息。',
       'dmStartHint': '开始聊聊今天吃什么吧。',
       'dmInputHint': '输入消息…',
       'dmSendFailed': '消息发送失败，请重试。',
@@ -3957,6 +3960,7 @@ class AppLocalizations {
       // Social Prompt 7: DM V1
       'dmTitle': 'செய்திகள்',
       'dmEmpty': 'இன்னும் செய்திகள் இல்லை. ஒருவரின் சுயவிவரத்தில் DM தட்டவும்.',
+      'dmLoadError': 'செய்திகளை ஏற்ற முடியவில்லை.',
       'dmStartHint': 'இன்று எங்கே சாப்பிடலாம் என பேசத் தொடங்குங்கள்.',
       'dmInputHint': 'செய்தி எழுதவும்...',
       'dmSendFailed': 'செய்தி அனுப்ப முடியவில்லை. மீண்டும் முயற்சி.',

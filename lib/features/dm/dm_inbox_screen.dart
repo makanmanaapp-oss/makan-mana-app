@@ -43,7 +43,11 @@ class _DmInboxScreenState extends ConsumerState<DmInboxScreen> {
     final l = AppLocalizations.of(context);
     final myUid = ref.watch(authRepositoryProvider).currentUser?.uid ?? '';
     final threadsAsync = ref.watch(myDmThreadsProvider);
+    // Ralat BUKAN keadaan kosong: merapikannya kepada [] akan
+    // memberitahu pengguna mereka tiada mesej sedangkan senarai
+    // sebenarnya gagal dimuat.
     final threads = threadsAsync.value ?? const [];
+    final loadFailed = threadsAsync.hasError && threads.isEmpty;
 
     return Scaffold(
       backgroundColor: AppColors.threadsBg,
@@ -57,7 +61,35 @@ class _DmInboxScreenState extends ConsumerState<DmInboxScreen> {
       ),
       body: threadsAsync.isLoading && threads.isEmpty
           ? const Center(child: CircularProgressIndicator())
-          : threads.isEmpty
+          : loadFailed
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(32),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.cloud_off_outlined,
+                            size: 44, color: AppColors.threadsMuted),
+                        const SizedBox(height: 14),
+                        Text(
+                          l.t('dmLoadError'),
+                          key: const Key('dm-load-error'),
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              color: AppColors.threadsMuted,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14),
+                        ),
+                        const SizedBox(height: 12),
+                        TextButton(
+                          onPressed: () => ref.invalidate(myDmThreadsProvider),
+                          child: Text(l.t('retry')),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+              : threads.isEmpty
               ? Center(
                   child: Padding(
                     padding: const EdgeInsets.all(32),

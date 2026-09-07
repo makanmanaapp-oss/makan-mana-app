@@ -132,7 +132,9 @@ void main() {
     // Tunggu pendengar reset + refetch selesai (deterministik, poll pendek).
     for (var i = 0; i < 100; i++) {
       if (rec.exploreLat == 5.4141 &&
-          c.read(explorePaginationProvider).places.length == 12) break;
+          c.read(explorePaginationProvider).places.length == 12) {
+        break;
+      }
       await Future<void>.delayed(Duration.zero);
     }
 

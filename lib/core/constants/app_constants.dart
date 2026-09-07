@@ -50,7 +50,6 @@ class RoutePaths {
   static const pmSpice = '/pm/spice';
   static const pmMealTime = '/pm/meal-time';
   // Placeholder masa depan
-  static const nutrition = '/nutrition';
   // PART 1 Phase 1.11 — sejarah laporan/pembetulan pelapor.
   static const placeReports = '/profile/place-reports';
   static const social = '/social';

@@ -18,7 +18,6 @@ void main() {
       .replaceAll(RegExp(r'^[ \t]*//.*$', multiLine: true), ' ');
 
   const canonicalId = 'PLC-c5e469d3efed12ef3a51089d';
-  const requestedId = 'ChIJ-ZWQPQBbzDERA66eorjB-3w';
 
   group('lookup result contract', () {
     test('1. published profile + canonical id -> Follow may mount', () {

@@ -91,7 +91,7 @@ String? notificationRoute(MakanNotification n) {
     case MakanNotificationType.social:
       return id.isNotEmpty ? '/u/$id' : RoutePaths.social;
     case MakanNotificationType.group:
-      return id.isNotEmpty ? '/groups/$id' : RoutePaths.group;
+      return id.isNotEmpty ? '/groups/$id' : '/social?tab=groups';
     case MakanNotificationType.fitCoach:
       return RoutePaths.fitToday;
     case MakanNotificationType.subscription:

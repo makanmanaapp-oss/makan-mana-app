@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import '../core/constants/app_constants.dart';
 import '../core/entitlement/entitlement.dart';
 import '../core/events/event_types.dart';
-import '../core/widgets/placeholder_screen.dart';
 import '../features/admin/admin_screen.dart';
 import '../features/auth/login_screen.dart';
 import '../features/auth/phone_login_screen.dart';
@@ -231,12 +230,6 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
         ),
       ),
-      // Laluan placeholder masa depan - jangan bina penuh dalam V1 awal.
-      GoRoute(
-        path: RoutePaths.nutrition,
-        builder: (context, state) =>
-            const PlaceholderScreen(title: 'Nutrition'),
-      ),
       GoRoute(
         path: RoutePaths.social,
         // ?tab=groups → buka terus tab Grup (inbox jemputan) untuk group_invite.
@@ -377,10 +370,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) =>
             GroupVoteScreen(sessionId: state.extra! as String),
       ),
+      // Deep link lama /group: hala ke inbox tab Groups sebenar dan bukan
+      // skrin "akan datang". Tiada apa-apa dalam app menjana laluan ini lagi,
+      // tetapi pautan luaran lama masih patut mendarat di tempat berguna.
       GoRoute(
         path: RoutePaths.group,
-        builder: (context, state) =>
-            const PlaceholderScreen(title: 'Group Makan'),
+        redirect: (context, state) => '/social?tab=groups',
       ),
       // ---------- V4 Social: profil makanan awam + follow ----------
       GoRoute(
