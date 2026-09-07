@@ -374,3 +374,36 @@ class FeedPostData {
   final Map<String, dynamic> data;
   final bool pending;
 }
+
+/// One shared, lightweight clock for all live social timestamps.
+///
+/// Riverpod keeps one subscription while any social surface watches it, so a
+/// feed of hundreds of cards never creates hundreds of timers. The immediate
+/// value still comes from DateTime.now() at render time; this stream only asks
+/// active labels to recalculate roughly once per minute.
+final socialClockProvider = StreamProvider.autoDispose<DateTime>((ref) {
+  return Stream<DateTime>.periodic(
+    const Duration(minutes: 1),
+    (_) => DateTime.now(),
+  );
+});
+
+/// QA-DEV17: undi SENDIRI pengguna pada feed poll (feed_posts/{postId}/
+/// pollVotes/{uid}). Berkunci postId (bukan groupId/pollId). Rules benarkan
+/// baca undi sendiri sahaja. AutoDispose → dilupus bila kad poll tak ditonton;
+/// batal semula selepas undi/log keluar/padam melalui aliran Firestore.
+final feedPollVoteProvider =
+    StreamProvider.autoDispose.family<String?, String>((ref, postId) {
+  final uid = ref.watch(authRepositoryProvider).currentUser?.uid ?? '';
+  if (!ref.watch(firebaseReadyProvider) || uid.isEmpty || postId.isEmpty) {
+    return Stream.value(null);
+  }
+  return FirebaseFirestore.instance
+      .collection('feed_posts')
+      .doc(postId)
+      .collection('pollVotes')
+      .doc(uid)
+      .snapshots()
+      .map((snap) =>
+          snap.exists ? (snap.data()?['optionKey'] as String?) : null);
+});
