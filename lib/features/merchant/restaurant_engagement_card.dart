@@ -350,7 +350,10 @@ class _RestaurantEngagementCardState
                 final name = (item['name']?.toString() ?? '').trim();
                 return DropdownMenuItem(
                   value: id,
-                  child: Text(name.isNotEmpty ? name : id),
+                  // PRIVASI: id item menu ialah nilai dalaman sahaja. Item
+                  // tanpa nama diterbitkan mendapat label sandaran yang jujur,
+                  // bukan kunci pangkalan data.
+                  child: Text(name.isNotEmpty ? name : 'Item menu tanpa nama'),
                 );
               }).toList(growable: false),
               onChanged: _busy

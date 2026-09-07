@@ -405,7 +405,10 @@ class _MerchantCenterScreenState extends ConsumerState<MerchantCenterScreen> {
         children: [
           _statusRow('Akaun', state.accountStatus),
           _statusRow('Pengesahan', state.verificationStatus),
-          _statusRow('ID akaun', (account['id'] ?? '—').toString()),
+          // PRIVASI: pengecam akaun dalaman TIDAK PERNAH dipapar. Ia tidak
+          // boleh ditindak oleh peniaga dan membocorkan kunci pangkalan data
+          // ke permukaan pengguna. Status + tarikh pengesahan ialah maklumat
+          // perniagaan yang benar-benar berguna.
           if (account['verified_at'] != null)
             _statusRow('Disahkan', _date(account['verified_at'])),
         ],
