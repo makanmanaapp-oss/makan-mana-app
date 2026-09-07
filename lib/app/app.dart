@@ -7,6 +7,7 @@ import '../core/constants/app_constants.dart';
 import '../core/providers.dart';
 import '../core/providers/makanmana_user_context_provider.dart';
 import '../core/services/notification_service.dart';
+import '../features/account/account_status_guard.dart';
 import '../features/dev_qa/canonical_qa_harness.dart';
 import 'localization/app_localizations.dart';
 import 'router.dart';
@@ -50,6 +51,13 @@ class MakanManaApp extends ConsumerWidget {
     // SP10: Appearance — System/Light/Dark, persist & apply serta-merta.
     final themeMode = ref.watch(appearanceProvider);
 
+    // PHASE 1C-A1.3 — GLOBAL account suspension gate.
+    // AppShell masih menyimpan defense-in-depth guard, tetapi gate akar ini
+    // memastikan route luar shell, deep-link dan push navigation turut terkunci.
+    // Hanya explicit accountStatus == 'suspended' menyekat; loading/error
+    // kekal fail-open dan mutation tetap dibackstop oleh backend.
+    final accountSuspended = ref.watch(accountSuspendedProvider);
+
     return MaterialApp.router(
       title: AppConstants.appName,
       debugShowCheckedModeBanner: false,
@@ -69,8 +77,15 @@ class MakanManaApp extends ConsumerWidget {
       // Mode (previously hardcoded dark). Central — no per-widget brightness
       // scatter; updates live on theme switch (full rebuild re-runs this).
       builder: (context, child) {
-        AppColors.threadsDark =
-            Theme.of(context).brightness == Brightness.dark;
+        AppColors.threadsDark = Theme.of(context).brightness == Brightness.dark;
+
+        // GLOBAL_SUSPENSION_UI_GATE
+        // Covers every route rendered by MaterialApp.router, including
+        // authenticated routes outside AppShell and deep-link destinations.
+        if (accountSuspended) {
+          return const SuspendedAccountScreen();
+        }
+
         return child ?? const SizedBox.shrink();
       },
       routerConfig: router,
