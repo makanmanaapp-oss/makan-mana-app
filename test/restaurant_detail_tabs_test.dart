@@ -9,7 +9,7 @@ import 'package:makan_mana/features/restaurant/canonical/canonical_restaurant_de
 import 'package:makan_mana/features/restaurant/canonical/restaurant_detail_flags.dart';
 import 'package:makan_mana/features/restaurant/canonical/restaurant_detail_view_model.dart';
 
-/// WAVE 3 GATE 3F — two-tab Restaurant Detail (Profil & Ulasan | Menu).
+/// WAVE 3 GATE 3F — three-tab Restaurant Detail (Profil | Ulasan | Menu).
 void main() {
   String read(String path) =>
       File(path).readAsStringSync().replaceAll('\r\n', '\n');
@@ -86,17 +86,18 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  group('two-tab structure', () {
-    testWidgets('1. exactly two tabs exist, labelled Profil & Ulasan and Menu',
+  group('three-tab structure', () {
+    testWidgets('1. exactly three tabs exist: Profil, Ulasan, Menu',
         (tester) async {
       await pump(tester, CanonicalRestaurantDetailScreen(vm: vm()));
       expect(find.byKey(const Key('restaurant-detail-tabs')), findsOneWidget);
-      expect(find.byType(Tab), findsNWidgets(2));
-      expect(find.text(ms('profileReviewsTab')), findsOneWidget);
+      expect(find.byType(Tab), findsNWidgets(3));
+      expect(find.text(ms('profileTab')), findsOneWidget);
+      expect(find.text(ms('reviewsTab')), findsOneWidget);
       expect(find.text(ms('menuTab')), findsOneWidget);
     });
 
-    testWidgets('2. default selected tab is Profil & Ulasan', (tester) async {
+    testWidgets('2. default selected tab is Profil', (tester) async {
       await pump(tester, CanonicalRestaurantDetailScreen(vm: vm()));
       final controller = DefaultTabController.of(
           tester.element(find.byKey(const Key('restaurant-detail-tabs'))));
@@ -104,31 +105,50 @@ void main() {
       expect(find.byKey(const Key('restaurant-profile-tab')), findsOneWidget);
     });
 
-    testWidgets('3. tapping Menu switches to the menu tab', (tester) async {
+    testWidgets('3. tapping Ulasan opens the reviews tab', (tester) async {
+      await pump(tester, CanonicalRestaurantDetailScreen(vm: vm()));
+      await tester.tap(find.text(ms('reviewsTab')));
+      await tester.pumpAndSettle();
+      final controller = DefaultTabController.of(
+          tester.element(find.byKey(const Key('restaurant-detail-tabs'))));
+      expect(controller.index, 1);
+      expect(find.byKey(const Key('restaurant-reviews-tab')), findsOneWidget);
+    });
+
+    testWidgets('4. tapping Menu opens the menu tab', (tester) async {
       await pump(tester, CanonicalRestaurantDetailScreen(vm: vm()));
       await tester.tap(find.text(ms('menuTab')));
       await tester.pumpAndSettle();
       final controller = DefaultTabController.of(
           tester.element(find.byKey(const Key('restaurant-detail-tabs'))));
-      expect(controller.index, 1);
+      expect(controller.index, 2);
       expect(find.byKey(const Key('restaurant-menu-tab')), findsOneWidget);
     });
 
-    testWidgets('4. horizontal swipe changes tab and keeps the indicator in sync',
+    testWidgets('5. swipe walks Profil -> Ulasan -> Menu and back in sync',
         (tester) async {
       await pump(tester, CanonicalRestaurantDetailScreen(vm: vm()));
-      await tester.fling(
-          find.byKey(const Key('restaurant-detail-tabviews')), const Offset(-400, 0), 1200);
-      await tester.pumpAndSettle();
+      final views = find.byKey(const Key('restaurant-detail-tabviews'));
       final controller = DefaultTabController.of(
           tester.element(find.byKey(const Key('restaurant-detail-tabs'))));
-      expect(controller.index, 1, reason: 'swipe left must select Menu');
+
+      await tester.fling(views, const Offset(-400, 0), 1200);
+      await tester.pumpAndSettle();
+      expect(controller.index, 1, reason: 'Profil -> Ulasan');
+      expect(find.byKey(const Key('restaurant-reviews-tab')), findsOneWidget);
+
+      await tester.fling(views, const Offset(-400, 0), 1200);
+      await tester.pumpAndSettle();
+      expect(controller.index, 2, reason: 'Ulasan -> Menu');
       expect(find.byKey(const Key('restaurant-menu-tab')), findsOneWidget);
 
-      await tester.fling(
-          find.byKey(const Key('restaurant-detail-tabviews')), const Offset(400, 0), 1200);
+      await tester.fling(views, const Offset(400, 0), 1200);
       await tester.pumpAndSettle();
-      expect(controller.index, 0, reason: 'swipe right must return to Profile');
+      expect(controller.index, 1, reason: 'Menu -> Ulasan');
+
+      await tester.fling(views, const Offset(400, 0), 1200);
+      await tester.pumpAndSettle();
+      expect(controller.index, 0, reason: 'Ulasan -> Profil');
     });
   });
 
@@ -231,7 +251,12 @@ void main() {
     });
   });
 
-  group('header, follow and reviews', () {
+  group('header, follow and reviews tab', () {
+    Future<void> openReviews(WidgetTester tester) async {
+      await tester.tap(find.text(ms('reviewsTab')));
+      await tester.pumpAndSettle();
+    }
+
     testWidgets('9. Follow renders in the header when engagement is supplied',
         (tester) async {
       await pump(
@@ -251,42 +276,92 @@ void main() {
       expect(find.byKey(const Key('restaurant-engagement-strip')), findsNothing);
     });
 
-    testWidgets('11. general rating is NOT labelled as MakanMana community reviews',
+    testWidgets('6. Profile tab holds NO community review list', (tester) async {
+      await pump(
+        tester,
+        CanonicalRestaurantDetailScreen(
+          vm: vm(reviewCount: 2300),
+          communityReviews: const CommunityReviewsData(
+            count: 2,
+            average: 4.5,
+            list: Text('ULASAN-SEBENAR'),
+          ),
+        ),
+      );
+      // Default tab is Profil: the review list and its summary must not be here.
+      expect(find.byKey(const Key('restaurant-profile-tab')), findsOneWidget);
+      expect(find.text('ULASAN-SEBENAR'), findsNothing);
+      expect(find.byKey(const Key('restaurant-community-summary')), findsNothing);
+      expect(find.text(ms('communityReviewsTitle')), findsNothing);
+    });
+
+    testWidgets('8 + 10b. external rating is separate from MakanMana reviews',
         (tester) async {
       await pump(
         tester,
         CanonicalRestaurantDetailScreen(
           vm: vm(rating: const CardRatingModel(rating: 4.1), reviewCount: 2300),
+          communityReviews: const CommunityReviewsData(
+            count: 2,
+            average: 4.5,
+            list: Text('ULASAN-SEBENAR'),
+          ),
         ),
       );
-      // The count sits under the GENERAL rating heading with a source note...
-      await scrollProfileTo(tester, find.text(ms('generalRatingTitle')));
+      await openReviews(tester);
+      // External metadata: labelled and counted as EXTERNAL.
       expect(find.text(ms('generalRatingTitle')), findsOneWidget);
       expect(find.text('2300 ${ms('generalRatingCountSuffix')}'), findsOneWidget);
       expect(find.text(ms('generalRatingSourceNote')), findsOneWidget);
-      // ...and the community section is separate and honestly empty.
-      await scrollProfileTo(tester, find.text(ms('communityReviewsTitle')));
+      // MakanMana community block uses its OWN count and average.
       expect(find.text(ms('communityReviewsTitle')), findsOneWidget);
-      expect(find.byKey(const Key('restaurant-community-reviews-empty')), findsOneWidget);
-      expect(find.text(ms('noCommunityReviews')), findsOneWidget);
+      expect(find.text('2 ${ms('communityReviewsCountSuffix')}'), findsOneWidget);
+      expect(find.text('4.5'), findsOneWidget);
+      // The external 2300 is never presented as a community review count.
+      expect(find.text('2300 ${ms('communityReviewsCountSuffix')}'), findsNothing);
+      expect(find.byKey(const Key('restaurant-community-reviews')), findsOneWidget);
+      expect(find.text('ULASAN-SEBENAR'), findsOneWidget);
     });
 
-    testWidgets('community reviews render when the route supplies them',
+    testWidgets('9b. empty MakanMana reviews show the honest empty state',
         (tester) async {
       await pump(
         tester,
         CanonicalRestaurantDetailScreen(
           vm: vm(reviewCount: 2300),
-          communityReviews: const Text('ULASAN-SEBENAR'),
+          communityReviews: const CommunityReviewsData(count: 0),
         ),
       );
-      await scrollProfileTo(tester, find.text('ULASAN-SEBENAR'));
-      expect(find.byKey(const Key('restaurant-community-reviews')), findsOneWidget);
-      expect(find.text('ULASAN-SEBENAR'), findsOneWidget);
-      expect(find.byKey(const Key('restaurant-community-reviews-empty')), findsNothing);
+      await openReviews(tester);
+      expect(find.byKey(const Key('restaurant-community-reviews-empty')), findsOneWidget);
+      expect(find.text(ms('noMakanManaReviews')), findsOneWidget);
+      expect(find.text(ms('beFirstReviewer')), findsOneWidget);
+      expect(find.byKey(const Key('restaurant-community-reviews')), findsNothing);
     });
 
-    testWidgets('12. "Log makan" appears at most once', (tester) async {
+    testWidgets('7. write-review CTA lives in the Ulasan tab and reuses onRate',
+        (tester) async {
+      var rated = 0;
+      await pump(
+        tester,
+        CanonicalRestaurantDetailScreen(
+          vm: vm(actions: const DetailActionConfig(canRate: true)),
+          callbacks: RestaurantDetailCallbacks(onRate: () => rated++),
+        ),
+      );
+      // Not in Profile...
+      expect(find.byKey(const Key('restaurant-write-review')), findsNothing);
+      await openReviews(tester);
+      // ...but present in Ulasan, wired to the EXISTING rating callback.
+      expect(find.byKey(const Key('restaurant-write-review')), findsOneWidget);
+      expect(find.text(ms('writeReview')), findsOneWidget);
+      await tester.tap(find.byKey(const Key('restaurant-write-review')));
+      await tester.pumpAndSettle();
+      expect(rated, 1);
+    });
+
+    testWidgets('11 + 12. profile actions keep one Log makan and no rating',
+        (tester) async {
       await pump(
         tester,
         CanonicalRestaurantDetailScreen(
@@ -295,26 +370,75 @@ void main() {
               canRate: true,
               canLogMeal: true,
               canOpenMaps: true,
+              canSave: true,
+              canShare: true,
             ),
           ),
           callbacks: RestaurantDetailCallbacks(
             onRate: () {},
             onLogMeal: () {},
             onOpenMaps: () {},
+            onSave: () {},
+            onShare: () {},
           ),
         ),
       );
       await scrollProfileTo(tester, find.text(ms('logMealAction')));
       expect(find.text(ms('logMealAction')), findsNWidgets(1));
-      // The rating action is its own label, not a second "Log makan".
+      // "Bagi rating" no longer belongs to the Profile tab.
+      expect(find.text(ms('rateAction')), findsNothing);
+
       final source = read(
           'lib/features/restaurant/canonical/canonical_restaurant_detail_screen.dart');
       final actions = source.substring(source.indexOf('Widget _actions('));
-      // Count real USAGES, not prose: the explanatory comment in _actions also
-      // mentions the key, which would otherwise fail this very assertion.
-      expect("t.t('logMealAction')".allMatches(actions).length, 1,
-          reason: 'exactly one logMealAction button may exist');
-      expect(actions, contains("t.t('rateAction')"));
+      expect("t.t('logMealAction')".allMatches(actions).length, 1);
+      expect(actions.contains("t.t('rateAction')"), isFalse,
+          reason: 'the rating action moved to the Ulasan tab');
+    });
+  });
+
+  group('menu comment sheet', () {
+    late String sheet;
+    setUp(() => sheet =
+        read('lib/features/restaurant/engagement/menu_comment_sheet.dart'));
+
+    String code(String src) => src
+        .replaceAll(RegExp(r'/\*[\s\S]*?\*/'), ' ')
+        .replaceAll(RegExp(r'^[ 	]*//.*\$', multiLine: true), ' ');
+
+    test('16. empty state is the two-line honest message, not a giant card', () {
+      expect(sheet, contains("Key('menu-comment-empty')"));
+      expect(sheet, contains("t.t('menuCommentEmptyTitle')"));
+      expect(sheet, contains("t.t('menuCommentEmptySubtitle')"));
+      expect(ms('menuCommentEmptyTitle'), 'Belum ada komen untuk menu ini.');
+      expect(ms('menuCommentEmptySubtitle'),
+          'Jadi orang pertama berkongsi pendapat.');
+    });
+
+    test('17. official restaurant reply is identified as "Kedai rasmi"', () {
+      expect(sheet, contains("Key('menu-comment-official-badge')"));
+      expect(sheet, contains("t.t('restaurantOfficialBadge')"));
+      expect(ms('restaurantOfficialBadge'), 'Kedai rasmi');
+      // Identity comes from authorType, never from a merchant account.
+      expect(sheet, contains('isRestaurantReply'));
+    });
+
+    test('18. a blank/whitespace comment cannot be submitted', () {
+      expect(sheet, contains('_controller.text.trim().isNotEmpty'));
+      expect(sheet, contains('onPressed: _canSend ? _send : null'));
+      // Double submit is still prevented while sending.
+      expect(sheet, contains('!_sending'));
+    });
+
+    test('19. no merchant/Firebase UID is displayed, and no direct writes', () {
+      final body = code(sheet);
+      expect(RegExp(r'uid', caseSensitive: false).hasMatch(body), isFalse,
+          reason: 'the sheet must never surface a UID');
+      expect(body.contains('authorUid'), isFalse);
+      // Writes stay server-mediated through the existing callable.
+      expect(sheet, contains('createMenuComment'));
+      expect(body.contains('FirebaseFirestore'), isFalse);
+      expect(body.contains("collection('menu_comments')"), isFalse);
     });
   });
 

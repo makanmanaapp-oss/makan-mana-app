@@ -217,7 +217,7 @@ void main() {
       expect(find.text('Tidak tersedia'), findsOneWidget);
 
       // Weekly hours belong to the Profile tab.
-      await tester.tap(find.text('Profil & Ulasan'));
+      await tester.tap(find.text('Profil'));
       await tester.pumpAndSettle();
 
       final weekly = find.text('Jadual mingguan');

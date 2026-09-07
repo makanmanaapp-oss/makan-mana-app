@@ -424,7 +424,7 @@ void main() {
         vm: vm,
         callbacks: RestaurantDetailCallbacks(onOpenMaps: () => count++),
       ));
-      final maps = find.widgetWithText(FilledButton, _en('openMap')).first;
+      final maps = find.byKey(const ValueKey('detail-action-maps'));
       await t.ensureVisible(maps);
       await t.tap(maps);
       await t.pump();
@@ -438,7 +438,7 @@ void main() {
         vm: _vm(),
         callbacks: RestaurantDetailCallbacks(onSave: () => count++),
       ));
-      final save = find.widgetWithText(OutlinedButton, _en('save')).first;
+      final save = find.byKey(const ValueKey('detail-action-save'));
       await t.ensureVisible(save);
       await t.tap(save);
       await t.tap(save);

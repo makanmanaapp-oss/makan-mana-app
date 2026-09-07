@@ -4,12 +4,21 @@
 library;
 
 const Map<String, String> kRestaurantDetailStringsMs = {
+  'profileTab': 'Profil',
+  'reviewsTab': 'Ulasan',
+  'communityReviewsCountSuffix': 'ulasan komuniti',
+  'noMakanManaReviews': 'Belum ada ulasan MakanMana.',
+  'beFirstReviewer': 'Jadi orang pertama berkongsi pengalaman.',
+  'writeReview': 'Tulis ulasan',
+  'menuCommentEmptyTitle': 'Belum ada komen untuk menu ini.',
+  'menuCommentEmptySubtitle': 'Jadi orang pertama berkongsi pendapat.',
+  'menuAvailable': 'Tersedia',
   // WAVE 3 GATE 3F — two-tab restaurant detail.
   'profileReviewsTab': 'Profil & Ulasan',
   'menuTab': 'Menu',
   'restaurantSummaryTitle': 'Ringkasan kedai',
   'generalRatingTitle': 'Penilaian umum',
-  'generalRatingCountSuffix': 'penilaian',
+  'generalRatingCountSuffix': 'penilaian luar',
   'generalRatingSourceNote': 'Penilaian umum dari sumber luar, bukan ulasan komuniti MakanMana.',
   'communityReviewsTitle': 'Ulasan komuniti MakanMana',
   'noCommunityReviews': 'Belum ada ulasan komuniti.',
@@ -89,12 +98,21 @@ const Map<String, String> kRestaurantDetailStringsMs = {
 };
 
 const Map<String, String> kRestaurantDetailStringsEn = {
+  'profileTab': 'Profile',
+  'reviewsTab': 'Reviews',
+  'communityReviewsCountSuffix': 'community reviews',
+  'noMakanManaReviews': 'No MakanMana reviews yet.',
+  'beFirstReviewer': 'Be the first to share your experience.',
+  'writeReview': 'Write a review',
+  'menuCommentEmptyTitle': 'No comments for this item yet.',
+  'menuCommentEmptySubtitle': 'Be the first to share your thoughts.',
+  'menuAvailable': 'Available',
   // WAVE 3 GATE 3F — two-tab restaurant detail.
   'profileReviewsTab': 'Profile & Reviews',
   'menuTab': 'Menu',
   'restaurantSummaryTitle': 'Restaurant summary',
   'generalRatingTitle': 'General rating',
-  'generalRatingCountSuffix': 'ratings',
+  'generalRatingCountSuffix': 'external ratings',
   'generalRatingSourceNote': 'General rating from an external source, not MakanMana community reviews.',
   'communityReviewsTitle': 'MakanMana community reviews',
   'noCommunityReviews': 'No community reviews yet.',
@@ -174,12 +192,21 @@ const Map<String, String> kRestaurantDetailStringsEn = {
 };
 
 const Map<String, String> kRestaurantDetailStringsZh = {
+  'profileTab': '简介',
+  'reviewsTab': '评价',
+  'communityReviewsCountSuffix': '条社区评价',
+  'noMakanManaReviews': '尚无 MakanMana 评价。',
+  'beFirstReviewer': '成为第一个分享体验的人。',
+  'writeReview': '撰写评价',
+  'menuCommentEmptyTitle': '此菜品暂无评论。',
+  'menuCommentEmptySubtitle': '成为第一个分享看法的人。',
+  'menuAvailable': '供应中',
   // WAVE 3 GATE 3F — two-tab restaurant detail.
   'profileReviewsTab': '简介与评价',
   'menuTab': '菜单',
   'restaurantSummaryTitle': '餐厅概览',
   'generalRatingTitle': '综合评分',
-  'generalRatingCountSuffix': '个评分',
+  'generalRatingCountSuffix': '个外部评分',
   'generalRatingSourceNote': '综合评分来自外部来源，并非 MakanMana 社区评价。',
   'communityReviewsTitle': 'MakanMana 社区评价',
   'noCommunityReviews': '尚无社区评价。',
@@ -259,12 +286,21 @@ const Map<String, String> kRestaurantDetailStringsZh = {
 };
 
 const Map<String, String> kRestaurantDetailStringsTa = {
+  'profileTab': 'சுயவிவரம்',
+  'reviewsTab': 'மதிப்புரைகள்',
+  'communityReviewsCountSuffix': 'சமூக மதிப்புரைகள்',
+  'noMakanManaReviews': 'இன்னும் MakanMana மதிப்புரைகள் இல்லை.',
+  'beFirstReviewer': 'உங்கள் அனுபவத்தை முதலில் பகிருங்கள்.',
+  'writeReview': 'மதிப்புரை எழுது',
+  'menuCommentEmptyTitle': 'இந்த உணவுக்கு இன்னும் கருத்துகள் இல்லை.',
+  'menuCommentEmptySubtitle': 'உங்கள் கருத்தை முதலில் பகிருங்கள்.',
+  'menuAvailable': 'கிடைக்கிறது',
   // WAVE 3 GATE 3F — two-tab restaurant detail.
   'profileReviewsTab': 'சுயவிவரம் & மதிப்புரைகள்',
   'menuTab': 'மெனு',
   'restaurantSummaryTitle': 'உணவக சுருக்கம்',
   'generalRatingTitle': 'பொது மதிப்பீடு',
-  'generalRatingCountSuffix': 'மதிப்பீடுகள்',
+  'generalRatingCountSuffix': 'வெளி மதிப்பீடுகள்',
   'generalRatingSourceNote': 'பொது மதிப்பீடு வெளி மூலத்திலிருந்து; MakanMana சமூக மதிப்புரைகள் அல்ல.',
   'communityReviewsTitle': 'MakanMana சமூக மதிப்புரைகள்',
   'noCommunityReviews': 'இன்னும் சமூக மதிப்புரைகள் இல்லை.',

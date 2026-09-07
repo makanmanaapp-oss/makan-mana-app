@@ -230,7 +230,9 @@ void main() {
     test('official restaurant reply is visually distinct from a user comment',
         () {
       expect(sheet, contains("Key('menu-comment-official-badge')"));
-      expect(sheet, contains("t.t('officialReplyBadge')"));
+      // GATE 3F: the badge now names the RESTAURANT ("Kedai rasmi") rather
+      // than a generic "Rasmi".
+      expect(sheet, contains("t.t('restaurantOfficialBadge')"));
       // and the model distinguishes them by authorType, not by uid
       const reply = MenuCommentData(id: 'r1', data: {
         'authorType': 'restaurant',

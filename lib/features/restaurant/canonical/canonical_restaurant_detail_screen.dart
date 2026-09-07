@@ -36,6 +36,26 @@ class RestaurantDetailCallbacks {
   final VoidCallback? onReportIncorrectInformation;
 }
 
+/// GATE 3F — REAL MakanMana community review data for the Ulasan tab.
+///
+/// Built by the live route from the EXISTING `placeReviewsProvider`
+/// (`place_reviews`, approved only). [average] is null whenever it cannot be
+/// derived honestly from the approved reviews — it is never invented, and the
+/// external/general rating is never reused here.
+class CommunityReviewsData {
+  const CommunityReviewsData({
+    required this.count,
+    this.average,
+    this.list,
+  });
+
+  final int count;
+  final double? average;
+  final Widget? list;
+
+  bool get hasReviews => count > 0 && list != null;
+}
+
 class CanonicalRestaurantDetailScreen extends StatelessWidget {
   const CanonicalRestaurantDetailScreen({
     super.key,
@@ -61,13 +81,9 @@ class CanonicalRestaurantDetailScreen extends StatelessWidget {
   /// nothing, so the menu is unchanged wherever engagement is not wired.
   final void Function(DetailMenuItem item)? onOpenMenuItemComments;
 
-  /// GATE 3F — optional MakanMana community reviews block.
-  ///
-  /// Injected by the live route from the EXISTING `placeReviewsProvider`
-  /// (`place_reviews`, approved only). This screen stays presentational and
-  /// never queries reviews itself. Null renders the honest empty state — it is
-  /// never used to imply that the general rating count is community reviews.
-  final Widget? communityReviews;
+  /// GATE 3F — real MakanMana community review data for the Ulasan tab.
+  /// This screen stays presentational and never queries reviews itself.
+  final CommunityReviewsData? communityReviews;
 
   @override
   Widget build(BuildContext context) {
@@ -104,7 +120,7 @@ class CanonicalRestaurantDetailBody extends StatefulWidget {
   final void Function(DetailMenuItem item)? onOpenMenuItemComments;
 
   /// See [CanonicalRestaurantDetailScreen.communityReviews].
-  final Widget? communityReviews;
+  final CommunityReviewsData? communityReviews;
 
   @override
   State<CanonicalRestaurantDetailBody> createState() =>
@@ -134,8 +150,8 @@ class _CanonicalRestaurantDetailBodyState
     };
   }
 
-  /// GATE 3F — Restaurant Detail is a shared identity header plus TWO tabs:
-  /// "Profil & Ulasan" and "Menu". The header scrolls away while the tab bar
+  /// GATE 3F — Restaurant Detail is a shared identity header plus THREE tabs:
+  /// "Profil", "Ulasan" and "Menu". The header scrolls away while the tab bar
   /// pins, so both tabs keep their own vertical scroll without nesting
   /// conflicts, and horizontal swipe stays in sync with the indicator.
   ///
@@ -146,7 +162,7 @@ class _CanonicalRestaurantDetailBodyState
     final t = AppLocalizations.of(context);
     final mm = context.mm;
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: NestedScrollView(
         headerSliverBuilder: (context, innerScrolled) => [
           SliverToBoxAdapter(child: _header(t, mm)),
@@ -165,7 +181,8 @@ class _CanonicalRestaurantDetailBodyState
                 unselectedLabelStyle:
                     const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
                 tabs: [
-                  Tab(key: const Key('tab-profile'), text: t.t('profileReviewsTab')),
+                  Tab(key: const Key('tab-profile'), text: t.t('profileTab')),
+                  Tab(key: const Key('tab-reviews'), text: t.t('reviewsTab')),
                   Tab(key: const Key('tab-menu'), text: t.t('menuTab')),
                 ],
               ),
@@ -176,6 +193,7 @@ class _CanonicalRestaurantDetailBodyState
           key: const Key('restaurant-detail-tabviews'),
           children: [
             _profileTab(t, mm),
+            _reviewsTab(t, mm),
             _menuTab(t, mm),
           ],
         ),
@@ -221,11 +239,11 @@ class _CanonicalRestaurantDetailBodyState
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Restaurant INFORMATION only — community reviews live in their
+            // own tab so the two are never visually conflated.
             if (_hasSummary)
               _section(t.t('restaurantSummaryTitle'), _summary(t, mm)),
             _section(t.t('hoursTitle'), _hours(t, mm)),
-            _section(t.t('generalRatingTitle'), _generalRating(t, mm)),
-            _section(t.t('communityReviewsTitle'), _communityReviews(t, mm)),
             _section(t.t('halalInfo'), _halal(t, mm)),
             if (vm.dietaryStates.isNotEmpty)
               _section(t.t('dietaryInfo'), _dietary(t, mm)),
@@ -552,46 +570,152 @@ class _CanonicalRestaurantDetailBodyState
         crossAxisAlignment: CrossAxisAlignment.start, children: children));
   }
 
-  /// GATE 3F — the GENERAL rating and its count come from an external source.
-  /// It is labelled and footnoted as such so the count can never be misread as
-  /// "N MakanMana community reviews"; the community block is separate below.
-  Widget _generalRating(AppLocalizations t, MMColors mm) {
-    if (!vm.hasRating) return _card(_muted(t.t('ratingUnavailable')));
-    return _card(Column(
+  /// TAB 2 — ULASAN: MakanMana community reviews ONLY.
+  ///
+  /// The general/external rating stays as compact metadata at the top and is
+  /// explicitly labelled as external, so its count can never be read as a
+  /// MakanMana review count. Everything below it is real approved
+  /// `place_reviews` data supplied by the route — nothing is invented.
+  Widget _reviewsTab(AppLocalizations t, MMColors mm) {
+    final data = widget.communityReviews;
+    final canWrite = vm.actions.canRate && widget.callbacks.onRate != null;
+    return SingleChildScrollView(
+      key: const Key('restaurant-reviews-tab'),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _generalRatingStrip(t, mm),
+          const SizedBox(height: 18),
+          Text(t.t('communityReviewsTitle'),
+              style: TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w800, color: mm.onCard)),
+          const SizedBox(height: 10),
+          if (data != null && data.hasReviews) ...[
+            Row(
+              key: const Key('restaurant-community-summary'),
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                if (data.average != null) ...[
+                  const Icon(Icons.star_rounded,
+                      size: 22, color: MMColors.accentYellow),
+                  const SizedBox(width: 4),
+                  Text(data.average!.toStringAsFixed(1),
+                      style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: mm.onCard)),
+                  const SizedBox(width: 10),
+                ],
+                Text('${data.count} ${t.t('communityReviewsCountSuffix')}',
+                    style: TextStyle(color: mm.onCardMuted, fontSize: 13.5)),
+              ],
+            ),
+            const SizedBox(height: 14),
+            if (canWrite) _writeReviewButton(t),
+            if (canWrite) const SizedBox(height: 14),
+            KeyedSubtree(
+              key: const Key('restaurant-community-reviews'),
+              child: data.list!,
+            ),
+          ] else ...[
+            Column(
+              key: const Key('restaurant-community-reviews-empty'),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(t.t('noMakanManaReviews'),
+                    style: TextStyle(
+                        color: mm.onCard,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                Text(t.t('beFirstReviewer'),
+                    style: TextStyle(color: mm.onCardMuted, fontSize: 13.5)),
+                if (canWrite) ...[
+                  const SizedBox(height: 14),
+                  _writeReviewButton(t),
+                ],
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Reuses the EXISTING rating/review callback and route — no second submit
+  /// path and no change to place_reviews write semantics or eligibility.
+  Widget _writeReviewButton(AppLocalizations t) => Align(
+        alignment: Alignment.centerLeft,
+        child: FilledButton.icon(
+          key: const Key('restaurant-write-review'),
+          onPressed: _guard(widget.callbacks.onRate, allowed: vm.actions.canRate),
+          icon: const Icon(Icons.rate_review_outlined, size: 18),
+          label: Text(t.t('writeReview')),
+        ),
+      );
+
+  /// Compact EXTERNAL rating metadata. Labelled and counted as external.
+  Widget _generalRatingStrip(AppLocalizations t, MMColors mm) {
+    if (!vm.hasRating) {
+      return _infoRow(mm, t.t('generalRatingTitle'), t.t('ratingUnavailable'));
+    }
+    return Column(
       key: const Key('restaurant-general-rating'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        PlaceRatingLabel(model: vm.rating),
-        if (vm.hasReviewCount) ...[
-          const SizedBox(height: 4),
-          Text('${vm.reviewCount} ${t.t('generalRatingCountSuffix')}',
-              style: TextStyle(color: mm.onCardMuted, fontSize: 13.5)),
-        ] else ...[
-          const SizedBox(height: 4),
+        Text(t.t('generalRatingTitle'),
+            style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: mm.onCardMuted)),
+        const SizedBox(height: 4),
+        Row(children: [
+          PlaceRatingLabel(model: vm.rating),
+          if (vm.hasReviewCount) ...[
+            const SizedBox(width: 8),
+            Text('${vm.reviewCount} ${t.t('generalRatingCountSuffix')}',
+                style: TextStyle(color: mm.onCardMuted, fontSize: 13)),
+          ],
+        ]),
+        if (!vm.hasReviewCount) ...[
+          const SizedBox(height: 2),
           _muted(t.t('notEnoughReviews')),
         ],
-        const SizedBox(height: 6),
+        const SizedBox(height: 4),
         Text(t.t('generalRatingSourceNote'),
             style: TextStyle(color: mm.onCardMuted, fontSize: 11.5)),
       ],
-    ));
-  }
-
-  /// MakanMana community reviews come from the EXISTING place_reviews provider,
-  /// injected by the live route. Nothing is invented: with no data the honest
-  /// empty state is shown instead of borrowing the general rating count.
-  Widget _communityReviews(AppLocalizations t, MMColors mm) {
-    final reviews = widget.communityReviews;
-    if (reviews == null) {
-      return _card(Text(t.t('noCommunityReviews'),
-          key: const Key('restaurant-community-reviews-empty'),
-          style: TextStyle(color: mm.onCardMuted, fontSize: 13.5)));
-    }
-    return KeyedSubtree(
-      key: const Key('restaurant-community-reviews'),
-      child: reviews,
     );
   }
+
+  /// Minimalist "label ....... value" row — replaces a bordered card per field.
+  Widget _infoRow(MMColors mm, String label, String value, {IconData? icon}) =>
+      Padding(
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (icon != null) ...[
+              Icon(icon, size: 16, color: mm.iconMuted),
+              const SizedBox(width: 8),
+            ],
+            Expanded(
+              child: Text(label,
+                  style: TextStyle(color: mm.onCardMuted, fontSize: 13.5)),
+            ),
+            const SizedBox(width: 12),
+            Flexible(
+              child: Text(value,
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                      color: mm.onCard,
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w600)),
+            ),
+          ],
+        ),
+      );
 
   Widget _tags(AppLocalizations t) {
     final all = <String>{
@@ -750,17 +874,39 @@ class _CanonicalRestaurantDetailBodyState
     );
   }
 
+  /// Clean menu row: name, description, price + availability, and a plain
+  /// "Komen" affordance. Thin divider instead of a bordered card per item.
+  ///
+  /// The row key and the comment key both carry the STABLE DetailMenuItem.id —
+  /// the exact menuItemId the Wave 3 callable expects. It is never regenerated.
   Widget _menuItem(AppLocalizations t, MMColors mm, DetailMenuItem item) {
     final subtitle = [item.category, item.description]
         .whereType<String>()
         .where((value) => value.trim().isNotEmpty)
         .join(' · ');
-    return Padding(
+    final canComment = widget.onOpenMenuItemComments != null;
+    return Container(
       key: ValueKey('restaurant-menu-${item.id}'),
-      padding: const EdgeInsets.symmetric(vertical: 7),
+      padding: const EdgeInsets.symmetric(vertical: 11),
+      decoration: BoxDecoration(
+        border: Border(bottom: BorderSide(color: mm.border, width: 0.6)),
+      ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (item.imageUrl != null && item.imageUrl!.trim().isNotEmpty) ...[
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: PlaceCardImage(
+                model: CardImageModel(url: item.imageUrl),
+                title: item.name,
+                width: 56,
+                height: 56,
+                borderRadius: 10,
+              ),
+            ),
+            const SizedBox(width: 12),
+          ],
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -768,40 +914,63 @@ class _CanonicalRestaurantDetailBodyState
                 Text(item.name,
                     style: TextStyle(
                         color: item.available ? mm.onCard : mm.onCardMuted,
+                        fontSize: 14.5,
                         fontWeight: FontWeight.w700)),
                 if (subtitle.isNotEmpty) ...[
                   const SizedBox(height: 2),
                   Text(subtitle,
                       style: TextStyle(color: mm.onCardMuted, fontSize: 12.5)),
                 ],
-                if (!item.available) ...[
+                const SizedBox(height: 6),
+                Row(children: [
+                  if (item.priceLabel != null) ...[
+                    Text(item.priceLabel!,
+                        style: TextStyle(
+                            color: mm.onCard,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800)),
+                    const SizedBox(width: 10),
+                  ],
+                  Text(
+                    item.available
+                        ? t.t('menuAvailable')
+                        : t.t('menuUnavailable'),
+                    style: TextStyle(
+                        color: item.available
+                            ? MMColors.successGreen
+                            : mm.onCardMuted,
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w700),
+                  ),
+                ]),
+                // WAVE 3 — comments for THIS exact menu item. The canonical
+                // restaurant identity is supplied by the live route, so this
+                // widget never has to know or guess it. No real comment count
+                // is available cheaply, so the label stays a plain "Komen"
+                // rather than inventing a number.
+                if (canComment) ...[
                   const SizedBox(height: 2),
-                  Text(t.t('menuUnavailable'),
-                      style: TextStyle(color: mm.onCardMuted, fontSize: 12)),
+                  InkWell(
+                    key: ValueKey('restaurant-menu-comments-${item.id}'),
+                    onTap: () => widget.onOpenMenuItemComments!(item),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(Icons.mode_comment_outlined,
+                            size: 15, color: MMColors.danger),
+                        const SizedBox(width: 5),
+                        Text(t.t('menuCommentOpen'),
+                            style: const TextStyle(
+                                color: MMColors.danger,
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700)),
+                      ]),
+                    ),
+                  ),
                 ],
               ],
             ),
           ),
-          const SizedBox(width: 12),
-          if (item.priceLabel != null)
-            Text(item.priceLabel!,
-                style: TextStyle(color: mm.onCard, fontWeight: FontWeight.w700)),
-          // WAVE 3D Gate 2 — menu comments for THIS exact menu item. The
-          // canonical restaurant identity is supplied by the live route, so
-          // this widget never has to know or guess it.
-          if (widget.onOpenMenuItemComments != null) ...[
-            const SizedBox(width: 4),
-            IconButton(
-              key: ValueKey('restaurant-menu-comments-${item.id}'),
-              visualDensity: VisualDensity.compact,
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-              tooltip: t.t('menuCommentOpen'),
-              icon: Icon(Icons.mode_comment_outlined,
-                  size: 18, color: mm.iconMuted),
-              onPressed: () => widget.onOpenMenuItemComments!(item),
-            ),
-          ],
         ],
       ),
     );
@@ -842,7 +1011,9 @@ class _CanonicalRestaurantDetailBodyState
     ));
   }
 
-  Widget _dietary(AppLocalizations t, MMColors mm) => _card(Wrap(
+  Widget _dietary(AppLocalizations t, MMColors mm) => Align(
+        alignment: Alignment.centerLeft,
+        child: Wrap(
         spacing: 8,
         runSpacing: 6,
         children: [
@@ -1058,29 +1229,25 @@ class _CanonicalRestaurantDetailBodyState
   Widget _actions(AppLocalizations t, MMColors mm) {
     final a = vm.actions;
     final buttons = <Widget>[
+      // GATE 3F: compact utility actions only. The RATING/REVIEW action moved
+      // to the Ulasan tab, so it no longer appears here at all.
       if (a.canOpenMaps)
-        _actionBtn(t.t('openMap'), Icons.map_outlined,
-            _guard(widget.callbacks.onOpenMaps, allowed: a.canOpenMaps),
-            primary: true),
-      // GATE 3F: this is the RATING action. It previously reused
-      // 'logMealAction', so "Log makan" rendered twice.
-      if (a.canRate)
-        _actionBtn(t.t('rateAction'), Icons.star_border_rounded,
-            _guard(widget.callbacks.onRate, allowed: a.canRate)),
+        _compactAction(mm, 'maps', t.t('openMap'), Icons.map_outlined,
+            _guard(widget.callbacks.onOpenMaps, allowed: a.canOpenMaps)),
       if (a.canSave)
-        _actionBtn(t.t('save'), Icons.bookmark_border_rounded,
+        _compactAction(mm, 'save', t.t('save'), Icons.bookmark_border_rounded,
             _guard(widget.callbacks.onSave, allowed: a.canSave)),
       if (a.canShare)
-        _actionBtn(t.t('share'), Icons.share_outlined,
+        _compactAction(mm, 'share', t.t('share'), Icons.share_outlined,
             _submitting ? null : widget.callbacks.onShare),
       if (a.canLogMeal)
-        _actionBtn(t.t('logMealAction'), Icons.account_balance_wallet_outlined,
+        _compactAction(mm, 'logmeal', t.t('logMealAction'), Icons.restaurant_rounded,
             _guard(widget.callbacks.onLogMeal, allowed: a.canLogMeal)),
       if (a.canAccept)
-        _actionBtn(t.t('save'), Icons.check_rounded,
+        _compactAction(mm, 'accept', t.t('save'), Icons.check_rounded,
             _guard(widget.callbacks.onAccept, allowed: a.canAccept)),
       if (a.canReject)
-        _actionBtn(t.t('showLess'), Icons.close_rounded,
+        _compactAction(mm, 'reject', t.t('showLess'), Icons.close_rounded,
             _guard(widget.callbacks.onReject, allowed: a.canReject)),
     ];
     return Column(
@@ -1111,25 +1278,37 @@ class _CanonicalRestaurantDetailBodyState
       widget.callbacks.onReportIncorrectInformation != null &&
       !vm.isSample;
 
-  Widget _actionBtn(String label, IconData icon, VoidCallback? cb,
-      {bool primary = false}) {
-    if (primary) {
-      return FilledButton.icon(
-        onPressed: cb,
-        icon: Icon(icon, size: 18),
-        label: Text(label),
-        style: FilledButton.styleFrom(
-          backgroundColor: MMColors.danger,
-          foregroundColor: Colors.white,
-          minimumSize: const Size(0, 46),
+  /// Small icon+label tile. Replaces the oversized filled buttons that used to
+  /// dominate the profile.
+  Widget _compactAction(MMColors mm, String keyId, String label, IconData icon,
+      VoidCallback? cb) {
+    final enabled = cb != null;
+    return SizedBox(
+      width: 78,
+      child: InkWell(
+        key: ValueKey('detail-action-$keyId'),
+        onTap: cb,
+        borderRadius: BorderRadius.circular(14),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Column(
+            children: [
+              Icon(icon,
+                  size: 22,
+                  color: enabled ? MMColors.danger : mm.iconMuted),
+              const SizedBox(height: 6),
+              Text(label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: enabled ? mm.onCard : mm.onCardMuted)),
+            ],
+          ),
         ),
-      );
-    }
-    return OutlinedButton.icon(
-      onPressed: cb,
-      icon: Icon(icon, size: 18),
-      label: Text(label),
-      style: OutlinedButton.styleFrom(minimumSize: const Size(0, 46)),
+      ),
     );
   }
 }

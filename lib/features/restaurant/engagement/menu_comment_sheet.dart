@@ -55,6 +55,16 @@ class _MenuCommentSheetState extends ConsumerState<MenuCommentSheet> {
   bool _sending = false;
 
   @override
+  void initState() {
+    super.initState();
+    // Rebuild as the user types so Send can stay disabled while the field is
+    // blank or whitespace-only.
+    _controller.addListener(() => setState(() {}));
+  }
+
+  bool get _canSend => _controller.text.trim().isNotEmpty && !_sending;
+
+  @override
   void dispose() {
     _controller.dispose();
     super.dispose();
@@ -109,14 +119,14 @@ class _MenuCommentSheetState extends ConsumerState<MenuCommentSheet> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            t.t('menuCommentsTitle'),
+            widget.menuItemName,
+            key: const Key('menu-comment-item-name'),
             style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 2),
           Text(
-            widget.menuItemName,
-            key: const Key('menu-comment-item-name'),
-            style: TextStyle(fontSize: 13, color: mm.onCardMuted),
+            t.t('menuCommentsTitle'),
+            style: TextStyle(fontSize: 12.5, color: mm.onCardMuted),
           ),
           const SizedBox(height: 14),
           ConstrainedBox(
@@ -138,9 +148,21 @@ class _MenuCommentSheetState extends ConsumerState<MenuCommentSheet> {
               data: (comments) => comments.isEmpty
                   ? Padding(
                       key: const Key('menu-comment-empty'),
-                      padding: const EdgeInsets.symmetric(vertical: 24),
-                      child: Text(t.t('menuCommentsEmpty'),
-                          style: TextStyle(color: mm.onCardMuted)),
+                      padding: const EdgeInsets.symmetric(vertical: 22),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(t.t('menuCommentEmptyTitle'),
+                              style: TextStyle(
+                                  color: mm.onCard,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700)),
+                          const SizedBox(height: 4),
+                          Text(t.t('menuCommentEmptySubtitle'),
+                              style: TextStyle(
+                                  color: mm.onCardMuted, fontSize: 13)),
+                        ],
+                      ),
                     )
                   : ListView(
                       key: const Key('menu-comment-list'),
@@ -170,7 +192,7 @@ class _MenuCommentSheetState extends ConsumerState<MenuCommentSheet> {
               const SizedBox(width: 8),
               IconButton(
                 key: const Key('menu-comment-send'),
-                onPressed: _sending ? null : _send,
+                onPressed: _canSend ? _send : null,
                 icon: _sending
                     ? const SizedBox(
                         width: 18,
@@ -256,7 +278,7 @@ class _MenuCommentSheetState extends ConsumerState<MenuCommentSheet> {
                       const Icon(Icons.verified_rounded, size: 12),
                       const SizedBox(width: 3),
                       Text(
-                        t.t('officialReplyBadge'),
+                        t.t('restaurantOfficialBadge'),
                         style: const TextStyle(
                             fontSize: 11, fontWeight: FontWeight.w700),
                       ),

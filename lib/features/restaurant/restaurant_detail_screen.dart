@@ -272,24 +272,13 @@ class _RestaurantDetailScreenState
                             menuItemId: item.id,
                             menuItemName: item.name,
                           ),
-              // GATE 3F — MakanMana community reviews reuse the EXISTING
-              // placeReviewsProvider (place_reviews, approved only). Passing
-              // null when there are none makes the canonical screen render its
-              // honest "no community reviews" state instead of implying that
-              // the general rating count is community reviews.
-              communityReviews: place == null
-                  ? null
-                  : ref.watch(placeReviewsProvider(place.placeId)).maybeWhen(
-                        data: (reviews) => reviews.isEmpty
-                            ? null
-                            : Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: reviews
-                                    .map((r) => _ReviewTile(review: r))
-                                    .toList(),
-                              ),
-                        orElse: () => null,
-                      ),
+              // GATE 3F — the Ulasan tab shows MakanMana community reviews ONLY,
+              // reusing the EXISTING placeReviewsProvider (place_reviews,
+              // approved only). The average is derived from those real reviews
+              // and is null when none of them carry a usable rating — it is
+              // never borrowed from the external/general rating.
+              communityReviews:
+                  place == null ? null : _communityReviews(ref, place.placeId),
               callbacks: RestaurantDetailCallbacks(
                 onBack: () => context.pop(),
                 onOpenMaps: place == null
@@ -840,6 +829,35 @@ class _IconAction extends StatelessWidget {
       ),
     );
   }
+}
+
+/// GATE 3F — build the Ulasan tab payload from the EXISTING approved
+/// `place_reviews` stream. Count and average both come from real data; when no
+/// review carries a usable rating the average stays null rather than invented.
+CommunityReviewsData? _communityReviews(WidgetRef ref, String placeId) {
+  return ref.watch(placeReviewsProvider(placeId)).maybeWhen(
+        data: (reviews) {
+          if (reviews.isEmpty) return const CommunityReviewsData(count: 0);
+          final ratings = reviews
+              .map((r) => (r['rating'] as num?)?.toDouble())
+              .whereType<double>()
+              .where((value) => value > 0)
+              .toList();
+          final average = ratings.isEmpty
+              ? null
+              : ratings.reduce((a, b) => a + b) / ratings.length;
+          return CommunityReviewsData(
+            count: reviews.length,
+            average: average,
+            list: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children:
+                  reviews.map((r) => _ReviewTile(review: r)).toList(growable: false),
+            ),
+          );
+        },
+        orElse: () => null,
+      );
 }
 
 class _ReviewTile extends StatelessWidget {
