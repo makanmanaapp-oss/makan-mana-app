@@ -35,9 +35,16 @@ import 'engagement/menu_comment_sheet.dart';
 import 'engagement/restaurant_follow_button.dart';
 
 class RestaurantDetailScreen extends ConsumerStatefulWidget {
-  const RestaurantDetailScreen({super.key, required this.placeId});
+  const RestaurantDetailScreen(
+      {super.key, required this.placeId, this.initialPlace});
 
   final String placeId;
+
+  /// Ringkasan legasi pilihan yang dihantar oleh pemanggil (cth. cip check-in
+  /// dalam suapan) supaya pengepala boleh dilukis serta-merta. Ia HANYA
+  /// menyemai fallback legasi; resolusi kanonikal Restaurant Profile V2 di
+  /// bawah tetap berjalan pada [placeId] dan kekal sumber kebenaran identiti.
+  final PlaceSummary? initialPlace;
 
   @override
   ConsumerState<RestaurantDetailScreen> createState() =>
@@ -224,9 +231,11 @@ class _RestaurantDetailScreenState
     final current = ref.watch(currentSuggestionProvider);
     // Utamakan tempat semasa jika ID sepadan (tempat Google sebenar);
     // jika tidak cuba senarai dummy.
-    final place = (current != null && current.placeId == placeId)
-        ? current
-        : ref.read(dummySuggestionServiceProvider).byId(placeId) ?? current;
+    final place = widget.initialPlace ??
+        ((current != null && current.placeId == placeId)
+            ? current
+            : ref.read(dummySuggestionServiceProvider).byId(placeId) ??
+                current);
 
     // WAVE 2 Restaurant Profile V2: hanya apabila flag canonical ON, cuba baca
     // ACTIVE published canonical profile melalui callable server-only. Flutter
