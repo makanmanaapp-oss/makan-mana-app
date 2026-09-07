@@ -203,13 +203,22 @@ void main() {
       await tester.pumpWidget(_detailHost(vm));
       await tester.pump();
 
+      // GATE 3F: the menu now lives in its own "Menu" tab, so the assertions
+      // below switch tabs instead of expecting one long scroll view.
       expect(find.text('Menu'), findsOneWidget);
+      await tester.tap(find.text('Menu'));
+      await tester.pumpAndSettle();
+
       expect(find.text('Makanan'), findsOneWidget);
       expect(find.text('Minuman'), findsOneWidget);
       expect(find.text('Mee Kolok'), findsOneWidget);
       expect(find.text('RM 7.50'), findsOneWidget);
       expect(find.text('Kopi O'), findsOneWidget);
       expect(find.text('Tidak tersedia'), findsOneWidget);
+
+      // Weekly hours belong to the Profile tab.
+      await tester.tap(find.text('Profil & Ulasan'));
+      await tester.pumpAndSettle();
 
       final weekly = find.text('Jadual mingguan');
       await tester.ensureVisible(weekly);

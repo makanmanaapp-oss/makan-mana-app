@@ -4,6 +4,18 @@
 library;
 
 const Map<String, String> kRestaurantDetailStringsMs = {
+  // WAVE 3 GATE 3F — two-tab restaurant detail.
+  'profileReviewsTab': 'Profil & Ulasan',
+  'menuTab': 'Menu',
+  'restaurantSummaryTitle': 'Ringkasan kedai',
+  'generalRatingTitle': 'Penilaian umum',
+  'generalRatingCountSuffix': 'penilaian',
+  'generalRatingSourceNote': 'Penilaian umum dari sumber luar, bukan ulasan komuniti MakanMana.',
+  'communityReviewsTitle': 'Ulasan komuniti MakanMana',
+  'noCommunityReviews': 'Belum ada ulasan komuniti.',
+  'emptyMenuTitle': 'Belum ada menu untuk kedai ini.',
+  'emptyMenuSubtitle': 'Menu akan dipaparkan apabila maklumat tersedia.',
+  'menuCategoryAll': 'Semua',
   // WAVE 3D Gate 2 — restaurant engagement (follow, menu comments,
   // official restaurant identity).
   'restaurantFollow': 'Ikut',
@@ -77,6 +89,18 @@ const Map<String, String> kRestaurantDetailStringsMs = {
 };
 
 const Map<String, String> kRestaurantDetailStringsEn = {
+  // WAVE 3 GATE 3F — two-tab restaurant detail.
+  'profileReviewsTab': 'Profile & Reviews',
+  'menuTab': 'Menu',
+  'restaurantSummaryTitle': 'Restaurant summary',
+  'generalRatingTitle': 'General rating',
+  'generalRatingCountSuffix': 'ratings',
+  'generalRatingSourceNote': 'General rating from an external source, not MakanMana community reviews.',
+  'communityReviewsTitle': 'MakanMana community reviews',
+  'noCommunityReviews': 'No community reviews yet.',
+  'emptyMenuTitle': 'No menu for this restaurant yet.',
+  'emptyMenuSubtitle': 'The menu will appear once the information is available.',
+  'menuCategoryAll': 'All',
   // WAVE 3D Gate 2 — restaurant engagement (follow, menu comments,
   // official restaurant identity).
   'restaurantFollow': 'Follow',
@@ -150,6 +174,18 @@ const Map<String, String> kRestaurantDetailStringsEn = {
 };
 
 const Map<String, String> kRestaurantDetailStringsZh = {
+  // WAVE 3 GATE 3F — two-tab restaurant detail.
+  'profileReviewsTab': '简介与评价',
+  'menuTab': '菜单',
+  'restaurantSummaryTitle': '餐厅概览',
+  'generalRatingTitle': '综合评分',
+  'generalRatingCountSuffix': '个评分',
+  'generalRatingSourceNote': '综合评分来自外部来源，并非 MakanMana 社区评价。',
+  'communityReviewsTitle': 'MakanMana 社区评价',
+  'noCommunityReviews': '尚无社区评价。',
+  'emptyMenuTitle': '此餐厅暂无菜单。',
+  'emptyMenuSubtitle': '菜单将在信息可用时显示。',
+  'menuCategoryAll': '全部',
   // WAVE 3D Gate 2 — restaurant engagement (follow, menu comments,
   // official restaurant identity).
   'restaurantFollow': '关注',
@@ -223,6 +259,18 @@ const Map<String, String> kRestaurantDetailStringsZh = {
 };
 
 const Map<String, String> kRestaurantDetailStringsTa = {
+  // WAVE 3 GATE 3F — two-tab restaurant detail.
+  'profileReviewsTab': 'சுயவிவரம் & மதிப்புரைகள்',
+  'menuTab': 'மெனு',
+  'restaurantSummaryTitle': 'உணவக சுருக்கம்',
+  'generalRatingTitle': 'பொது மதிப்பீடு',
+  'generalRatingCountSuffix': 'மதிப்பீடுகள்',
+  'generalRatingSourceNote': 'பொது மதிப்பீடு வெளி மூலத்திலிருந்து; MakanMana சமூக மதிப்புரைகள் அல்ல.',
+  'communityReviewsTitle': 'MakanMana சமூக மதிப்புரைகள்',
+  'noCommunityReviews': 'இன்னும் சமூக மதிப்புரைகள் இல்லை.',
+  'emptyMenuTitle': 'இந்த உணவகத்திற்கு இன்னும் மெனு இல்லை.',
+  'emptyMenuSubtitle': 'தகவல் கிடைத்ததும் மெனு காட்டப்படும்.',
+  'menuCategoryAll': 'அனைத்தும்',
   // WAVE 3D Gate 2 — restaurant engagement (follow, menu comments,
   // official restaurant identity).
   'restaurantFollow': 'பின்தொடர்',

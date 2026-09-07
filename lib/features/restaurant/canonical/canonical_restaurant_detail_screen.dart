@@ -43,6 +43,7 @@ class CanonicalRestaurantDetailScreen extends StatelessWidget {
     this.callbacks = const RestaurantDetailCallbacks(),
     this.engagement,
     this.onOpenMenuItemComments,
+    this.communityReviews,
   });
 
   final RestaurantDetailViewModel vm;
@@ -60,6 +61,14 @@ class CanonicalRestaurantDetailScreen extends StatelessWidget {
   /// nothing, so the menu is unchanged wherever engagement is not wired.
   final void Function(DetailMenuItem item)? onOpenMenuItemComments;
 
+  /// GATE 3F — optional MakanMana community reviews block.
+  ///
+  /// Injected by the live route from the EXISTING `placeReviewsProvider`
+  /// (`place_reviews`, approved only). This screen stays presentational and
+  /// never queries reviews itself. Null renders the honest empty state — it is
+  /// never used to imply that the general rating count is community reviews.
+  final Widget? communityReviews;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -69,6 +78,7 @@ class CanonicalRestaurantDetailScreen extends StatelessWidget {
         callbacks: callbacks,
         engagement: engagement,
         onOpenMenuItemComments: onOpenMenuItemComments,
+        communityReviews: communityReviews,
       ),
     );
   }
@@ -81,6 +91,7 @@ class CanonicalRestaurantDetailBody extends StatefulWidget {
     this.callbacks = const RestaurantDetailCallbacks(),
     this.engagement,
     this.onOpenMenuItemComments,
+    this.communityReviews,
   });
 
   final RestaurantDetailViewModel vm;
@@ -92,6 +103,9 @@ class CanonicalRestaurantDetailBody extends StatefulWidget {
   /// See [CanonicalRestaurantDetailScreen.onOpenMenuItemComments].
   final void Function(DetailMenuItem item)? onOpenMenuItemComments;
 
+  /// See [CanonicalRestaurantDetailScreen.communityReviews].
+  final Widget? communityReviews;
+
   @override
   State<CanonicalRestaurantDetailBody> createState() =>
       _CanonicalRestaurantDetailBodyState();
@@ -102,6 +116,9 @@ class _CanonicalRestaurantDetailBodyState
   bool _tagsExpanded = false;
   bool _weeklyExpanded = false;
   bool _submitting = false;
+
+  /// GATE 3F — selected menu category. Null == "Semua".
+  String? _menuCategory;
 
   RestaurantDetailViewModel get vm => widget.vm;
 
@@ -117,52 +134,153 @@ class _CanonicalRestaurantDetailBodyState
     };
   }
 
+  /// GATE 3F — Restaurant Detail is a shared identity header plus TWO tabs:
+  /// "Profil & Ulasan" and "Menu". The header scrolls away while the tab bar
+  /// pins, so both tabs keep their own vertical scroll without nesting
+  /// conflicts, and horizontal swipe stays in sync with the indicator.
+  ///
+  /// The Menu tab ALWAYS exists — an empty menu renders an honest empty state
+  /// instead of removing the tab.
   @override
   Widget build(BuildContext context) {
     final t = AppLocalizations.of(context);
     final mm = context.mm;
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (vm.isSample) _sampleBanner(t, mm),
-          _hero(t, mm),
-          const SizedBox(height: 14),
-          _identity(t, mm),
-          if (widget.engagement != null) ...[
-            const SizedBox(height: 10),
-            KeyedSubtree(
-              key: const Key('restaurant-engagement-strip'),
-              child: widget.engagement!,
+    return DefaultTabController(
+      length: 2,
+      child: NestedScrollView(
+        headerSliverBuilder: (context, innerScrolled) => [
+          SliverToBoxAdapter(child: _header(t, mm)),
+          SliverPersistentHeader(
+            pinned: true,
+            delegate: _TabBarHeader(
+              background: mm.appBackground,
+              child: TabBar(
+                key: const Key('restaurant-detail-tabs'),
+                labelColor: MMColors.danger,
+                unselectedLabelColor: mm.onCardMuted,
+                indicatorColor: MMColors.danger,
+                indicatorSize: TabBarIndicatorSize.tab,
+                labelStyle:
+                    const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800),
+                unselectedLabelStyle:
+                    const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+                tabs: [
+                  Tab(key: const Key('tab-profile'), text: t.t('profileReviewsTab')),
+                  Tab(key: const Key('tab-menu'), text: t.t('menuTab')),
+                ],
+              ),
             ),
-          ],
-          _businessBanner(t, mm),
-          const SizedBox(height: 12),
-          _quickFacts(),
-          const SizedBox(height: 16),
-          _section(t.t('hoursTitle'), _hours(t, mm)),
-          _section(t.t('priceTitle'), _price()),
-          _section(t.t('ratingReviewsTitle'), _ratingSummary(t)),
-          if (_hasAnyTag) _section(t.t('cuisineTypeTitle'), _tags(t)),
-          if (vm.dishHighlights.isNotEmpty)
-            _section(t.t('dishHighlights'), _dishes(mm)),
-          if (vm.hasMenu) _section(t.t('menuTitle'), _menu(t, mm)),
-          if (vm.serviceLabels.isNotEmpty || vm.ambienceLabels.isNotEmpty)
-            _section(t.t('servicesLabel'), _serviceAmbience()),
-          _section(t.t('halalInfo'), _halal(t, mm)),
-          if (vm.dietaryStates.isNotEmpty)
-            _section(t.t('dietaryInfo'), _dietary(t, mm)),
-          _section(t.t('allergenInfo'), _allergen(t, mm)),
-          _section(t.t('locationLabel'), _location(t, mm)),
-          _section(t.t('contactLabel'), _contact(t)),
-          _section(t.t('sourceInformation'), _provenance(t, mm)),
-          const SizedBox(height: 8),
-          _actions(t, mm),
+          ),
         ],
+        body: TabBarView(
+          key: const Key('restaurant-detail-tabviews'),
+          children: [
+            _profileTab(t, mm),
+            _menuTab(t, mm),
+          ],
+        ),
       ),
     );
   }
+
+  /// Shared header: identity, hero, follow and the compact key facts.
+  Widget _header(AppLocalizations t, MMColors mm) => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (vm.isSample) _sampleBanner(t, mm),
+            _hero(t, mm),
+            const SizedBox(height: 14),
+            _identity(t, mm),
+            if (widget.engagement != null) ...[
+              const SizedBox(height: 10),
+              KeyedSubtree(
+                key: const Key('restaurant-engagement-strip'),
+                child: widget.engagement!,
+              ),
+            ],
+            _businessBanner(t, mm),
+            const SizedBox(height: 12),
+            _quickFacts(),
+            const SizedBox(height: 4),
+          ],
+        ),
+      );
+
+  /// TAB 1 — Profil & Ulasan, ordered by what a diner actually needs first.
+  ///
+  /// Deliberately a SingleChildScrollView + Column rather than a lazy ListView:
+  /// the profile has a small, bounded set of sections, and building them all
+  /// keeps semantics/accessibility traversal (and screen-level assertions)
+  /// working for content below the fold. The MENU tab stays lazy, because it
+  /// can legitimately hold up to 200 items.
+  Widget _profileTab(AppLocalizations t, MMColors mm) => SingleChildScrollView(
+        key: const Key('restaurant-profile-tab'),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_hasSummary)
+              _section(t.t('restaurantSummaryTitle'), _summary(t, mm)),
+            _section(t.t('hoursTitle'), _hours(t, mm)),
+            _section(t.t('generalRatingTitle'), _generalRating(t, mm)),
+            _section(t.t('communityReviewsTitle'), _communityReviews(t, mm)),
+            _section(t.t('halalInfo'), _halal(t, mm)),
+            if (vm.dietaryStates.isNotEmpty)
+              _section(t.t('dietaryInfo'), _dietary(t, mm)),
+            _section(t.t('allergenInfo'), _allergen(t, mm)),
+            _section(t.t('locationLabel'), _location(t, mm)),
+            _section(t.t('contactLabel'), _contact(t)),
+            _section(t.t('sourceInformation'), _provenance(t, mm)),
+            const SizedBox(height: 8),
+            _actions(t, mm),
+          ],
+        ),
+      );
+
+  bool get _hasSummary =>
+      _hasAnyTag ||
+      vm.dishHighlights.isNotEmpty ||
+      vm.serviceLabels.isNotEmpty ||
+      vm.ambienceLabels.isNotEmpty ||
+      vm.price.state != CardPriceState.unknown;
+
+  /// Summary merges price, cuisine tags, dish highlights and service/ambience
+  /// into ONE block instead of four separately-carded sections.
+  Widget _summary(AppLocalizations t, MMColors mm) => _card(Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Raw label, not _price(): _price() self-cards and would nest cards.
+          Align(
+              alignment: Alignment.centerLeft,
+              child: PlacePriceLabel(model: vm.price)),
+          if (_hasAnyTag) ...[
+            const SizedBox(height: 10),
+            _tags(t),
+          ],
+          if (vm.dishHighlights.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(t.t('dishHighlights'),
+                style: TextStyle(
+                    color: mm.onCard,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800)),
+            const SizedBox(height: 6),
+            _dishes(mm),
+          ],
+          if (vm.serviceLabels.isNotEmpty || vm.ambienceLabels.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(t.t('servicesLabel'),
+                style: TextStyle(
+                    color: mm.onCard,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800)),
+            const SizedBox(height: 6),
+            _serviceAmbience(),
+          ],
+        ],
+      ));
 
   Widget _section(String title, Widget child) => Padding(
         padding: const EdgeInsets.only(bottom: 18),
@@ -227,14 +345,19 @@ class _CanonicalRestaurantDetailBodyState
 
   Widget _hero(AppLocalizations t, MMColors mm) {
     final hero = vm.gallery.hero;
+    final image = hero?.image ?? const CardImageModel();
+    // GATE 3F: a monogram fallback used to occupy the same 210dp as a real
+    // photo and dominated the screen. Only a REAL image earns the full height;
+    // no photo is ever invented to fill the space.
+    final height = image.hasApprovedImage ? 210.0 : 116.0;
     return Stack(children: [
       ClipRRect(
         borderRadius: BorderRadius.circular(20),
         child: PlaceCardImage(
-          model: hero?.image ?? const CardImageModel(),
+          model: image,
           title: vm.title,
           width: double.infinity,
-          height: 210,
+          height: height,
           borderRadius: 20,
         ),
       ),
@@ -429,21 +552,45 @@ class _CanonicalRestaurantDetailBodyState
         crossAxisAlignment: CrossAxisAlignment.start, children: children));
   }
 
-  Widget _price() =>
-      _card(Align(alignment: Alignment.centerLeft, child: PlacePriceLabel(model: vm.price)));
-
-  Widget _ratingSummary(AppLocalizations t) {
+  /// GATE 3F — the GENERAL rating and its count come from an external source.
+  /// It is labelled and footnoted as such so the count can never be misread as
+  /// "N MakanMana community reviews"; the community block is separate below.
+  Widget _generalRating(AppLocalizations t, MMColors mm) {
     if (!vm.hasRating) return _card(_muted(t.t('ratingUnavailable')));
     return _card(Column(
+      key: const Key('restaurant-general-rating'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         PlaceRatingLabel(model: vm.rating),
-        if (!vm.hasReviewCount) ...[
+        if (vm.hasReviewCount) ...[
+          const SizedBox(height: 4),
+          Text('${vm.reviewCount} ${t.t('generalRatingCountSuffix')}',
+              style: TextStyle(color: mm.onCardMuted, fontSize: 13.5)),
+        ] else ...[
           const SizedBox(height: 4),
           _muted(t.t('notEnoughReviews')),
         ],
+        const SizedBox(height: 6),
+        Text(t.t('generalRatingSourceNote'),
+            style: TextStyle(color: mm.onCardMuted, fontSize: 11.5)),
       ],
     ));
+  }
+
+  /// MakanMana community reviews come from the EXISTING place_reviews provider,
+  /// injected by the live route. Nothing is invented: with no data the honest
+  /// empty state is shown instead of borrowing the general rating count.
+  Widget _communityReviews(AppLocalizations t, MMColors mm) {
+    final reviews = widget.communityReviews;
+    if (reviews == null) {
+      return _card(Text(t.t('noCommunityReviews'),
+          key: const Key('restaurant-community-reviews-empty'),
+          style: TextStyle(color: mm.onCardMuted, fontSize: 13.5)));
+    }
+    return KeyedSubtree(
+      key: const Key('restaurant-community-reviews'),
+      child: reviews,
+    );
   }
 
   Widget _tags(AppLocalizations t) {
@@ -488,27 +635,119 @@ class _CanonicalRestaurantDetailBodyState
         ],
       );
 
-  Widget _menu(AppLocalizations t, MMColors mm) {
-    final foods = vm.menuItems.where((item) => item.isFood).toList();
-    final drinks = vm.menuItems.where((item) => item.isDrink).toList();
-    return _card(Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+  /// Categories derived from the ACTUAL menu data — never hard-coded.
+  List<String> get _menuCategories {
+    final seen = <String>[];
+    for (final item in vm.menuItems) {
+      final category = item.category?.trim();
+      if (category == null || category.isEmpty) continue;
+      if (!seen.contains(category)) seen.add(category);
+    }
+    return seen;
+  }
+
+  /// TAB 2 — always present. An empty menu shows an honest empty state rather
+  /// than removing the tab, and never manufactures an item or comment target.
+  Widget _menuTab(AppLocalizations t, MMColors mm) {
+    if (!vm.hasMenu) {
+      return ListView(
+        key: const Key('restaurant-menu-tab'),
+        padding: const EdgeInsets.fromLTRB(16, 28, 16, 32),
+        children: [
+          Column(
+            key: const Key('restaurant-menu-empty'),
+            children: [
+              Icon(Icons.restaurant_menu_outlined, size: 40, color: mm.iconMuted),
+              const SizedBox(height: 12),
+              Text(t.t('emptyMenuTitle'),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                      color: mm.onCard,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700)),
+              const SizedBox(height: 6),
+              Text(t.t('emptyMenuSubtitle'),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: mm.onCardMuted, fontSize: 13.5)),
+            ],
+          ),
+        ],
+      );
+    }
+
+    final categories = _menuCategories;
+    final selected = _menuCategory;
+    final visible = selected == null
+        ? vm.menuItems
+        : vm.menuItems
+            .where((item) => (item.category ?? '').trim() == selected)
+            .toList();
+    final foods = visible.where((item) => item.isFood).toList();
+    final drinks = visible.where((item) => item.isDrink).toList();
+
+    return ListView(
+      key: const Key('restaurant-menu-tab'),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 32),
       children: [
+        if (categories.length > 1) ...[
+          SizedBox(
+            height: 38,
+            child: ListView(
+              key: const Key('restaurant-menu-categories'),
+              scrollDirection: Axis.horizontal,
+              children: [
+                _categoryChip(t.t('menuCategoryAll'), selected == null,
+                    () => setState(() => _menuCategory = null), mm),
+                for (final category in categories)
+                  _categoryChip(category, selected == category,
+                      () => setState(() => _menuCategory = category), mm),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         if (foods.isNotEmpty) ...[
           Text(t.t('foodMenu'),
-              style: TextStyle(color: mm.onCard, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 6),
+              style: TextStyle(
+                  color: mm.onCard, fontSize: 15, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
           for (final item in foods) _menuItem(t, mm, item),
         ],
-        if (foods.isNotEmpty && drinks.isNotEmpty) const Divider(height: 24),
+        if (foods.isNotEmpty && drinks.isNotEmpty) const SizedBox(height: 18),
         if (drinks.isNotEmpty) ...[
           Text(t.t('drinkMenu'),
-              style: TextStyle(color: mm.onCard, fontWeight: FontWeight.w800)),
-          const SizedBox(height: 6),
+              style: TextStyle(
+                  color: mm.onCard, fontSize: 15, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 8),
           for (final item in drinks) _menuItem(t, mm, item),
         ],
       ],
-    ));
+    );
+  }
+
+  Widget _categoryChip(
+      String label, bool active, VoidCallback onTap, MMColors mm) {
+    return Padding(
+      key: ValueKey('menu-category-$label'),
+      padding: const EdgeInsets.only(right: 8),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          alignment: Alignment.center,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: BoxDecoration(
+            color: active ? MMColors.danger : mm.card,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: active ? MMColors.danger : mm.border),
+          ),
+          child: Text(label,
+              style: TextStyle(
+                  color: active ? Colors.white : mm.onCardMuted,
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700)),
+        ),
+      ),
+    );
   }
 
   Widget _menuItem(AppLocalizations t, MMColors mm, DetailMenuItem item) {
@@ -553,7 +792,7 @@ class _CanonicalRestaurantDetailBodyState
           if (widget.onOpenMenuItemComments != null) ...[
             const SizedBox(width: 4),
             IconButton(
-              key: ValueKey('restaurant-menu-comments-\${item.id}'),
+              key: ValueKey('restaurant-menu-comments-${item.id}'),
               visualDensity: VisualDensity.compact,
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
@@ -823,8 +1062,10 @@ class _CanonicalRestaurantDetailBodyState
         _actionBtn(t.t('openMap'), Icons.map_outlined,
             _guard(widget.callbacks.onOpenMaps, allowed: a.canOpenMaps),
             primary: true),
+      // GATE 3F: this is the RATING action. It previously reused
+      // 'logMealAction', so "Log makan" rendered twice.
       if (a.canRate)
-        _actionBtn(t.t('logMealAction'), Icons.restaurant_rounded,
+        _actionBtn(t.t('rateAction'), Icons.star_border_rounded,
             _guard(widget.callbacks.onRate, allowed: a.canRate)),
       if (a.canSave)
         _actionBtn(t.t('save'), Icons.bookmark_border_rounded,
@@ -958,4 +1199,28 @@ Widget _stateScaffold(BuildContext context, String key, VoidCallback? onBack) {
       ),
     ),
   );
+}
+
+
+/// GATE 3F — pins the two-tab bar under the shared restaurant header.
+class _TabBarHeader extends SliverPersistentHeaderDelegate {
+  const _TabBarHeader({required this.child, required this.background});
+
+  final TabBar child;
+  final Color background;
+
+  @override
+  double get minExtent => child.preferredSize.height;
+
+  @override
+  double get maxExtent => child.preferredSize.height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return Container(color: background, child: child);
+  }
+
+  @override
+  bool shouldRebuild(_TabBarHeader oldDelegate) =>
+      oldDelegate.child != child || oldDelegate.background != background;
 }

@@ -272,6 +272,24 @@ class _RestaurantDetailScreenState
                             menuItemId: item.id,
                             menuItemName: item.name,
                           ),
+              // GATE 3F — MakanMana community reviews reuse the EXISTING
+              // placeReviewsProvider (place_reviews, approved only). Passing
+              // null when there are none makes the canonical screen render its
+              // honest "no community reviews" state instead of implying that
+              // the general rating count is community reviews.
+              communityReviews: place == null
+                  ? null
+                  : ref.watch(placeReviewsProvider(place.placeId)).maybeWhen(
+                        data: (reviews) => reviews.isEmpty
+                            ? null
+                            : Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: reviews
+                                    .map((r) => _ReviewTile(review: r))
+                                    .toList(),
+                              ),
+                        orElse: () => null,
+                      ),
               callbacks: RestaurantDetailCallbacks(
                 onBack: () => context.pop(),
                 onOpenMaps: place == null
