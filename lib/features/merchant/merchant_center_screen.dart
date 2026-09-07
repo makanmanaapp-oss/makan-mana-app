@@ -555,9 +555,13 @@ class _MerchantCenterScreenState extends ConsumerState<MerchantCenterScreen> {
                 style: TextStyle(
                     fontWeight: FontWeight.w800, color: palette.text)),
             const SizedBox(height: 8),
+            // PRIVASI: registry_id ialah kunci pangkalan data. Ia diterjemah ke
+            // NAMA kedai melalui unjuran engagement yang sudah dibenarkan; bila
+            // nama tidak dapat diselesaikan, label jujur digunakan — tidak
+            // pernah UUID mentah.
             ...state.memberships.take(12).map((membership) => _historyTile(
                   icon: Icons.badge_outlined,
-                  title: (membership['registry_id'] ?? 'Kedai').toString(),
+                  title: _membershipPlaceName(state, membership),
                   status: (membership['status'] ?? 'unknown').toString(),
                   subtitle: 'Peranan: ${membership['role'] ?? '—'}',
                 )),
@@ -565,6 +569,26 @@ class _MerchantCenterScreenState extends ConsumerState<MerchantCenterScreen> {
         ],
       ),
     );
+  }
+
+  /// Nama kedai yang boleh dibaca untuk satu keahlian.
+  ///
+  /// Keahlian dikunci pada `registry_id`, iaitu pengecam dalaman. Unjuran
+  /// engagement membawa registryId DAN displayName untuk kedai yang sama, jadi
+  /// nama diselesaikan di sana. Kedai yang belum diterbitkan tiada unjuran —
+  /// ia mendapat label generik, bukan kuncinya.
+  static String _membershipPlaceName(
+      MerchantState state, Map<String, dynamic> membership) {
+    final registryId = (membership['registry_id'] ?? '').toString().trim();
+    if (registryId.isNotEmpty) {
+      for (final restaurant in state.engagementRestaurants) {
+        if (restaurant.registryId == registryId &&
+            restaurant.displayName.isNotEmpty) {
+          return restaurant.displayName;
+        }
+      }
+    }
+    return 'Kedai diluluskan';
   }
 
   Widget _section(

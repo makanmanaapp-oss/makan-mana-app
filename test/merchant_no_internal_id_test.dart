@@ -76,6 +76,33 @@ void main() {
       }
     });
 
+    test('3b. keahlian dipapar sebagai NAMA kedai, bukan registry_id', () {
+      // Ditemui pada peranti selepas pembetulan pertama: senarai "Akses kedai
+      // diluluskan" merender registry_id mentah sebagai tajuk tile.
+      final src = _read(center);
+      expect(src.contains("(membership['registry_id'] ?? 'Kedai').toString()"),
+          isFalse,
+          reason: 'registry_id ialah kunci pangkalan data, bukan nama kedai');
+      expect(src, contains('_membershipPlaceName(state, membership)'));
+      expect(src, contains("return 'Kedai diluluskan';"),
+          reason: 'nama tak dapat diselesaikan mesti jadi label jujur, '
+              'bukan sandaran kepada id');
+    });
+
+    test('3c. tiada medan bernama *_id sampai ke tajuk tile sejarah', () {
+      final src = _read(center);
+      final tileTitles = RegExp(r'title:\s*([^\n]*)')
+          .allMatches(src)
+          .map((m) => m.group(1)!)
+          .toList(growable: false);
+      for (final title in tileTitles) {
+        for (final leak in const ['registry_id', 'account_id', 'place_id', "['id']"]) {
+          expect(title.contains(leak), isFalse,
+              reason: 'tajuk merender pengecam dalaman: $title');
+        }
+      }
+    });
+
     test('4. item menu tanpa nama mendapat label jujur, bukan id', () {
       final src = _read(engagement);
       expect(src.contains('name.isNotEmpty ? name : id'), isFalse,
