@@ -154,6 +154,16 @@ export {followRestaurant, unfollowRestaurant} from "./callable/restaurantFollowC
 export {createMenuComment} from "./callable/menuCommentControl";
 export {replyToRestaurantMenuComment} from "./callable/restaurantReplyControl";
 
+// Wave 4 — the ONE trusted Control Center -> Firebase commercial bridge, and
+// the narrow Firebase -> Control Center promotion mirror. Both reuse the
+// existing Wave 3C transports (bearer secret + /api/internal/sync/mirror).
+// NOT DEPLOYED.
+export {controlCenterPromotionAdminBridge} from "./controlCenter/promotionAdminBridge";
+export {
+  mirrorPromotionOnWrite,
+  reconcilePromotionMirrorDaily,
+} from "./controlCenter/promotionMirrorSync";
+
 // Wave 4 — Commercial Tools: merchant promotion write plane. Reuses the Wave 3
 // merchant bridge authorization unchanged; `restaurant_promotions` stays
 // server-write-only under rules, so these are the entire write surface.

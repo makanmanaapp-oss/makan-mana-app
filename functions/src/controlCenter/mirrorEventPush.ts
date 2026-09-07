@@ -2,6 +2,7 @@ import {defineSecret} from "firebase-functions/params";
 
 import type {MenuCommentMirrorRecord, SocialPostMirrorRecord} from "../domain/restaurantEngagement/mirrorPayload";
 import type {MirrorEntityType} from "../domain/restaurantEngagement/mirrorEvents";
+import type {PromotionMirrorRecord} from "../domain/promotions/promotionMirrorPayload";
 
 /**
  * Wave 3C corrective — the ONE shared Firebase → Control Center mirror transport.
@@ -17,7 +18,10 @@ export const CONTROL_CENTER_SYNC_SECRET = defineSecret("CONTROL_CENTER_SYNC_SECR
 export const CONTROL_CENTER_MIRROR_URL =
   "https://makanmana-control-center.vercel.app/api/internal/sync/mirror";
 
-export type MirrorRecord = SocialPostMirrorRecord | MenuCommentMirrorRecord;
+export type MirrorRecord =
+  | SocialPostMirrorRecord
+  | MenuCommentMirrorRecord
+  | PromotionMirrorRecord;
 
 /**
  * POST one idempotent mirror batch. `eventId` is the idempotency key enforced by
@@ -26,7 +30,7 @@ export type MirrorRecord = SocialPostMirrorRecord | MenuCommentMirrorRecord;
  * server-side rather than silently overwriting an unrelated event.
  */
 export async function pushMirrorBatch(params: {
-  entityType: MirrorEntityType;
+  entityType: MirrorEntityType | "restaurant_promotion";
   records: MirrorRecord[];
   secret: string;
   eventId: string;
