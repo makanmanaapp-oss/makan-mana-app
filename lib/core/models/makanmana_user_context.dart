@@ -48,6 +48,8 @@ class ContextDefaults {
 
 /// Konteks pengguna global — objek keadaan tidak boleh ubah (immutable).
 class MakanManaUserContext {
+  static const Object _unsetLocationState = Object();
+
   const MakanManaUserContext({
     this.loadStatus = ContextLoadStatus.idle,
     this.loadedUid,
@@ -66,10 +68,10 @@ class MakanManaUserContext {
     this.currentLng,
     this.locationName,
     this.locationGrid,
+    this.locationState,
     this.selectedRadiusKm = ContextDefaults.radiusKm,
     this.defaultRadiusKm = ContextDefaults.defaultRadiusKm,
-    this.preferredNearbyDistanceKm =
-        ContextDefaults.preferredNearbyDistanceKm,
+    this.preferredNearbyDistanceKm = ContextDefaults.preferredNearbyDistanceKm,
     this.maxTravelDistanceKm = ContextDefaults.maxTravelDistanceKm,
     this.locationPermissionStatus = 'unknown',
     this.lastLocationUpdatedAt,
@@ -170,6 +172,10 @@ class MakanManaUserContext {
   final double? currentLng;
   final String? locationName;
   final String? locationGrid;
+
+  /// Negeri/territory Malaysia yang kasar, runtime sahaja untuk persembahan.
+  /// Ia tidak dimasukkan dalam payload cadangan atau disimpan ke Firestore.
+  final String? locationState;
   final double selectedRadiusKm;
   final double defaultRadiusKm;
   final double preferredNearbyDistanceKm;
@@ -337,6 +343,7 @@ class MakanManaUserContext {
     double? currentLng,
     String? locationName,
     String? locationGrid,
+    Object? locationState = _unsetLocationState,
     double? selectedRadiusKm,
     double? defaultRadiusKm,
     double? preferredNearbyDistanceKm,
@@ -426,6 +433,9 @@ class MakanManaUserContext {
       currentLng: currentLng ?? this.currentLng,
       locationName: locationName ?? this.locationName,
       locationGrid: locationGrid ?? this.locationGrid,
+      locationState: identical(locationState, _unsetLocationState)
+          ? this.locationState
+          : locationState as String?,
       selectedRadiusKm: selectedRadiusKm ?? this.selectedRadiusKm,
       defaultRadiusKm: defaultRadiusKm ?? this.defaultRadiusKm,
       preferredNearbyDistanceKm:

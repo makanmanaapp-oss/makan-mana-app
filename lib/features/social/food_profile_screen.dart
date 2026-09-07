@@ -69,8 +69,7 @@ class _FoodProfileScreenState extends ConsumerState<FoodProfileScreen> {
       sourceScreen: 'public_profile',
       metadata: {'viewedUserId': widget.uid, 'kind': 'profile_share'},
     );
-    final handle =
-        (p.username?.isNotEmpty ?? false) ? ' (@${p.username})' : '';
+    final handle = (p.username?.isNotEmpty ?? false) ? ' (@${p.username})' : '';
     // Tiada deep link dikonfigurasi lagi - teks jenama selamat sahaja
     // (tiada e-mel/telefon/UID/keutamaan peribadi).
     final text = '${p.displayName}$handle — ${l.t('shareProfileText')}';
@@ -127,8 +126,8 @@ class _FoodProfileScreenState extends ConsumerState<FoodProfileScreen> {
                 right: 12,
                 child: IconButton(
                   onPressed: () => Navigator.of(ctx).pop(),
-                  icon: Icon(Icons.close,
-                      color: AppColors.threadsText, size: 26),
+                  icon:
+                      Icon(Icons.close, color: AppColors.threadsText, size: 26),
                   tooltip: l.t('cancelAction'),
                 ),
               ),
@@ -260,8 +259,7 @@ class _FoodProfileScreenState extends ConsumerState<FoodProfileScreen> {
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                                color: AppColors.threadsMuted,
-                                fontSize: 15)),
+                                color: AppColors.threadsMuted, fontSize: 15)),
                       ),
                   ],
                 ),
@@ -275,8 +273,8 @@ class _FoodProfileScreenState extends ConsumerState<FoodProfileScreen> {
                   child: Container(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      border: Border.all(
-                          color: AppColors.threadsBorder, width: 1),
+                      border:
+                          Border.all(color: AppColors.threadsBorder, width: 1),
                     ),
                     child: MakanAvatar(
                       radius: 38,
@@ -337,9 +335,7 @@ class _FoodProfileScreenState extends ConsumerState<FoodProfileScreen> {
     return onTap == null
         ? child
         : InkWell(
-            onTap: onTap,
-            borderRadius: BorderRadius.circular(6),
-            child: child);
+            onTap: onTap, borderRadius: BorderRadius.circular(6), child: child);
   }
 
   Widget _actionRow(AppLocalizations l, FoodProfile p, bool isMe) {
@@ -406,8 +402,7 @@ class _FoodProfileScreenState extends ConsumerState<FoodProfileScreen> {
         minimumSize: const Size(0, 48),
         foregroundColor: AppColors.threadsText,
         side: BorderSide(color: AppColors.threadsBorder),
-        textStyle:
-            const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+        textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
       );
 
   /// Identiti makanan padat: teks + ikon MakanMana (tiada emoji sistem,
@@ -421,8 +416,10 @@ class _FoodProfileScreenState extends ConsumerState<FoodProfileScreen> {
       if (p.favouriteFood.isNotEmpty) (Icons.favorite_outline, p.favouriteFood),
       if (p.foodMood.isNotEmpty) (Icons.whatshot_outlined, p.foodMood),
       if (p.showBudget && budget != null)
-        (Icons.account_balance_wallet_outlined,
-            '${l.t('budgetLabelShort')} $budget'),
+        (
+          Icons.account_balance_wallet_outlined,
+          '${l.t('budgetLabelShort')} $budget'
+        ),
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -449,8 +446,7 @@ class _FoodProfileScreenState extends ConsumerState<FoodProfileScreen> {
           )
         else
           Text(l.t('foodTagsEmpty'),
-              style: TextStyle(
-                  color: AppColors.threadsMuted, fontSize: 12.5)),
+              style: TextStyle(color: AppColors.threadsMuted, fontSize: 12.5)),
         const SizedBox(height: 8),
         Row(
           children: [
@@ -483,8 +479,7 @@ class _FoodProfileScreenState extends ConsumerState<FoodProfileScreen> {
           color: selected ? AppColors.primaryRed : Colors.transparent,
           borderRadius: BorderRadius.circular(9),
           border: Border.all(
-              color:
-                  selected ? AppColors.primaryRed : AppColors.threadsBorder),
+              color: selected ? AppColors.primaryRed : AppColors.threadsBorder),
         ),
         child: Text(label,
             style: TextStyle(
@@ -517,8 +512,7 @@ class _FoodProfileScreenState extends ConsumerState<FoodProfileScreen> {
                       fontSize: 16,
                       fontWeight: FontWeight.w800)),
               const SizedBox(height: 12),
-              if (p.bio.isNotEmpty)
-                _aboutLine(Icons.notes_outlined, p.bio),
+              if (p.bio.isNotEmpty) _aboutLine(Icons.notes_outlined, p.bio),
               if (p.favouriteCuisine.isNotEmpty)
                 _aboutLine(Icons.restaurant_menu,
                     '${l.t('bioPickPrefix')} ${p.favouriteCuisine}'),
@@ -585,8 +579,7 @@ class _FoodProfileScreenState extends ConsumerState<FoodProfileScreen> {
       data: (posts) {
         var visible = posts.where((p) => !_isRepost(p)).toList();
         if (_checkinFilter) {
-          visible =
-              visible.where((p) => p.data['type'] == 'checkin').toList();
+          visible = visible.where((p) => p.data['type'] == 'checkin').toList();
         }
         if (visible.isEmpty) {
           return _sliverMessage(_checkinFilter
@@ -618,8 +611,7 @@ class _FoodProfileScreenState extends ConsumerState<FoodProfileScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 20),
         child: Column(children: [
           PostCard(post: posts[i], key: ValueKey(posts[i].id)),
-          Divider(
-              height: 1, thickness: 0.6, color: AppColors.threadsBorder),
+          Divider(height: 1, thickness: 0.6, color: AppColors.threadsBorder),
         ]),
       ),
     );
@@ -744,8 +736,7 @@ class _FoodProfileScreenState extends ConsumerState<FoodProfileScreen> {
           padding: const EdgeInsets.all(28),
           child: Text(msg,
               textAlign: TextAlign.center,
-              style: TextStyle(
-                  color: AppColors.threadsMuted, fontSize: 14)),
+              style: TextStyle(color: AppColors.threadsMuted, fontSize: 14)),
         ),
       );
 
@@ -755,13 +746,12 @@ class _FoodProfileScreenState extends ConsumerState<FoodProfileScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.block,
-                  color: AppColors.threadsMuted, size: 40),
+              Icon(Icons.block, color: AppColors.threadsMuted, size: 40),
               const SizedBox(height: 12),
               Text(l.t('blockedProfileNote'),
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                      color: AppColors.threadsText, fontSize: 14.5)),
+                  style:
+                      TextStyle(color: AppColors.threadsText, fontSize: 14.5)),
               const SizedBox(height: 14),
               OutlinedButton(
                 onPressed: () async {
@@ -782,8 +772,7 @@ class _FoodProfileScreenState extends ConsumerState<FoodProfileScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(l.t('profileError'),
-                style: TextStyle(
-                    color: AppColors.threadsText, fontSize: 14)),
+                style: TextStyle(color: AppColors.threadsText, fontSize: 14)),
             const SizedBox(height: 14),
             OutlinedButton.icon(
               onPressed: () =>
@@ -858,11 +847,10 @@ class _FoodProfileScreenState extends ConsumerState<FoodProfileScreen> {
                   sourceScreen: 'public_profile',
                   metadata: {'viewedUserId': targetUid},
                 );
-                service.reportContent(
-                    targetType: 'user', targetUid: targetUid);
+                service.reportContent(targetType: 'user', targetUid: targetUid);
                 Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(l.t('reportSent'))));
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(SnackBar(content: Text(l.t('reportSent'))));
               },
             ),
             const SizedBox(height: 8),
@@ -914,8 +902,8 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
                             Padding(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 2),
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 2),
                               child: Text(
                                 labels[i],
                                 maxLines: 1,
@@ -948,8 +936,7 @@ class _TabBarDelegate extends SliverPersistentHeaderDelegate {
               ],
             ),
           ),
-          Divider(
-              height: 1, thickness: 0.6, color: AppColors.threadsBorder),
+          Divider(height: 1, thickness: 0.6, color: AppColors.threadsBorder),
         ],
       ),
     );
@@ -972,9 +959,10 @@ class _ReplyTile extends ConsumerWidget {
   /// peribadi). Profil sendiri kekal papar keadaan tidak tersedia.
   final bool hideWhenParentGone;
 
-  String _timeAgo(AppLocalizations l, dynamic ts, {bool pending = false}) {
-    // Threads Fix 1: penghurai jujur bersama (komen lama kekal lama).
-    return relativePostTime(l, ts, pending: pending);
+  String _timeAgo(AppLocalizations l, dynamic ts, WidgetRef ref,
+      {bool pending = false}) {
+    final clock = ref.watch(socialClockProvider).valueOrNull;
+    return relativePostTime(l, ts, pending: pending, now: clock);
   }
 
   @override
@@ -989,9 +977,7 @@ class _ReplyTile extends ConsumerWidget {
     if (parentGone && hideWhenParentGone) return const SizedBox.shrink();
 
     return InkWell(
-      onTap: parent == null
-          ? null
-          : () => showCommentsSheet(context, postId),
+      onTap: parent == null ? null : () => showCommentsSheet(context, postId),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
         child: Column(
@@ -1011,10 +997,11 @@ class _ReplyTile extends ConsumerWidget {
                         color: AppColors.threadsMuted, fontSize: 12.5),
                   ),
                 ),
-                Text(_timeAgo(l, comment.data['createdAt'],
+                Text(
+                    _timeAgo(l, resolvePostCreatedAt(comment.data).value, ref,
                         pending: comment.pending),
-                    style: TextStyle(
-                        color: AppColors.threadsMuted, fontSize: 12)),
+                    style:
+                        TextStyle(color: AppColors.threadsMuted, fontSize: 12)),
               ],
             ),
             const SizedBox(height: 4),
@@ -1047,8 +1034,7 @@ class _ReplyTile extends ConsumerWidget {
               ),
             ],
             const SizedBox(height: 12),
-            Divider(
-                height: 1, thickness: 0.6, color: AppColors.threadsBorder),
+            Divider(height: 1, thickness: 0.6, color: AppColors.threadsBorder),
           ],
         ),
       ),
@@ -1079,8 +1065,7 @@ class _FollowButtonState extends ConsumerState<FollowButton> {
       sourceScreen: 'public_profile',
       metadata: {
         'viewedUserId': widget.uid,
-        'relationshipStatus':
-            currentlyFollowing ? 'unfollowing' : 'following',
+        'relationshipStatus': currentlyFollowing ? 'unfollowing' : 'following',
       },
     );
     try {
@@ -1104,8 +1089,7 @@ class _FollowButtonState extends ConsumerState<FollowButton> {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     if (widget.isMe) return const SizedBox.shrink();
-    final following =
-        ref.watch(isFollowingProvider(widget.uid)).value ?? false;
+    final following = ref.watch(isFollowingProvider(widget.uid)).value ?? false;
     final child = _busy
         ? const SizedBox(
             height: 18,

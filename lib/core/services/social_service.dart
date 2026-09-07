@@ -71,6 +71,9 @@ class SocialService {
     Map<String, dynamic>? payload,
     String? placeId,
     String? placeName,
+
+    /// Binding tempat check-in; pelayan mengesahkan semula semua data ini.
+    Map<String, dynamic>? checkinPlace,
     // Medan check-in (Social Prompt 4) — hanya dihantar bila diberi.
     String? areaLabel,
     String? menuName,
@@ -88,10 +91,9 @@ class SocialService {
     final imageUrl = imageUrls.isNotEmpty ? imageUrls.first : '';
     final res = await _functions
         .httpsCallable(
-          'createFeedPost',
-          options:
-              HttpsCallableOptions(timeout: const Duration(seconds: 20)),
-        )
+      'createFeedPost',
+      options: HttpsCallableOptions(timeout: const Duration(seconds: 20)),
+    )
         .call<Map>({
       'text': text,
       'imageUrl': imageUrl,
@@ -102,6 +104,7 @@ class SocialService {
       if (payload != null) 'payload': payload,
       if (placeId != null) 'placeId': placeId,
       if (placeName != null) 'placeName': placeName,
+      if (checkinPlace != null) 'checkinPlace': checkinPlace,
       if (areaLabel != null) 'areaLabel': areaLabel,
       if (menuName != null) 'menuName': menuName,
       if (totalSpend != null) 'totalSpend': totalSpend,
@@ -200,7 +203,10 @@ class SocialService {
           {'groupId': groupId, 'targetUid': targetUid, 'role': role});
 
   Future<void> updateGroupSettings(String groupId,
-          {String? name, String? emoji, String? description, String? privacy}) =>
+          {String? name,
+          String? emoji,
+          String? description,
+          String? privacy}) =>
       _fn('updateGroupSettings', {
         'groupId': groupId,
         if (name != null) 'name': name,
@@ -313,7 +319,8 @@ class SocialService {
   /// keadaan (member/invited/invite) + isFollowing.
   Future<List<Map<String, dynamic>>> searchPeople(
       String groupId, String query) async {
-    final res = await _fn('searchPeopleV2', {'groupId': groupId, 'query': query});
+    final res =
+        await _fn('searchPeopleV2', {'groupId': groupId, 'query': query});
     final people = (res['people'] as List?) ?? const [];
     return people
         .whereType<Map>()
@@ -345,7 +352,8 @@ class SocialService {
 
   /// Senarai metadata pautan aktif (owner/admin) — untuk urus/revoke selepas
   /// mula semula app. TIDAK sekali-kali memulangkan token plaintext.
-  Future<List<Map<String, dynamic>>> listGroupInviteLinks(String groupId) async {
+  Future<List<Map<String, dynamic>>> listGroupInviteLinks(
+      String groupId) async {
     final res = await _fn('listGroupInviteLinksV2', {'groupId': groupId});
     final links = (res['links'] as List?) ?? const [];
     return links
@@ -381,12 +389,46 @@ class SocialService {
   Future<void> setGroupStatus(String groupId, Map<String, dynamic> status) =>
       _fn('setGroupStatus', {'groupId': groupId, 'status': status});
 
+  // ---------------- QA-DEV17 Feed/Status Poll ----------------
+  // Poll sebagai post feed biasa (postType:"poll") — TIADA keperluan grup.
+  // Server-authoritative: identiti pengarang, kiraan undi & satu-undi-per-
+  // pengguna semua dikuatkuasa di pelayan (callable feedPoll.ts).
+
+  /// Cipta poll sebagai post feed. [options] 2-8 pilihan; [visibility] ikut
+  /// pilihan composer (public/private). Pulangkan postId.
+  Future<String?> createFeedPoll({
+    required String question,
+    required List<String> options,
+    String text = '',
+    String visibility = 'public',
+    String? type,
+    String? groupId,
+  }) async {
+    final res = await _fn('createFeedPoll', {
+      'question': question,
+      'options': options,
+      'text': text,
+      'visibility': visibility,
+      if (type != null) 'type': type,
+      if (groupId != null && groupId.isNotEmpty) 'groupId': groupId,
+    });
+    return res['postId'] as String?;
+  }
+
+  /// Undi satu pilihan pada feed poll (satu undi per pengguna; boleh tukar).
+  Future<void> voteFeedPoll(String postId, String optionKey) =>
+      _fn('voteFeedPoll', {'postId': postId, 'optionKey': optionKey});
+
+  /// Tutup feed poll (pengarang/admin). Poll tertutup tolak undi baharu.
+  Future<void> closeFeedPoll(String postId) =>
+      _fn('closeFeedPoll', {'postId': postId});
+
   /// Pemanggil generik ringkas untuk fungsi V4 (timeout 20s).
-  Future<Map<String, dynamic>> _fn(String name, Map<String, dynamic> data) async {
+  Future<Map<String, dynamic>> _fn(
+      String name, Map<String, dynamic> data) async {
     final res = await _functions
         .httpsCallable(name,
-            options:
-                HttpsCallableOptions(timeout: const Duration(seconds: 20)))
+            options: HttpsCallableOptions(timeout: const Duration(seconds: 20)))
         .call<Map>(data);
     return (res.data).cast<String, dynamic>();
   }
@@ -394,10 +436,9 @@ class SocialService {
   Future<bool> toggleLike(String postId) async {
     final res = await _functions
         .httpsCallable(
-          'toggleLike',
-          options:
-              HttpsCallableOptions(timeout: const Duration(seconds: 15)),
-        )
+      'toggleLike',
+      options: HttpsCallableOptions(timeout: const Duration(seconds: 15)),
+    )
         .call<Map>({
       'postId': postId,
     });
@@ -405,9 +446,8 @@ class SocialService {
   }
 
   /// Soft delete post sendiri (server tanda status=deleted).
-  Future<void> deletePost(String postId) => _functions
-      .httpsCallable('deleteUserPost')
-      .call<Map>({'postId': postId});
+  Future<void> deletePost(String postId) =>
+      _functions.httpsCallable('deleteUserPost').call<Map>({'postId': postId});
 
   /// Edit kapsyen / keterlihatan / komen post sendiri.
   Future<void> editPost({
@@ -442,5 +482,4 @@ class SocialService {
         'postId': postId,
         'commentId': commentId,
       });
-
 }

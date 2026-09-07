@@ -1,8 +1,25 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../location/malaysia_state_resolver.dart';
 import '../providers.dart';
+import '../services/location_service.dart';
 import 'makanmana_user_context_provider.dart';
+
+final malaysiaAdministrativeGeocoderProvider =
+    Provider<MalaysiaAdministrativeGeocoder>(
+  (ref) => PlatformMalaysiaAdministrativeGeocoder(),
+);
+
+/// Satu resolver berskop aplikasi/session; cache grid 3dp hidup merentas
+/// invalidation lokasi/radius, tetapi tidak menulis data lokasi ke backend.
+final malaysiaStateResolverProvider = Provider<MalaysiaStateResolver>(
+  (ref) => MalaysiaStateResolver(
+    geocoder: ref.watch(malaysiaAdministrativeGeocoderProvider),
+  ),
+);
 
 /// LOCATION CONSISTENCY HOTFIX — satu konteks permintaan lokasi AUTHORITATIF
 /// yang dikongsi Home, Explore, Spin dan Restaurant Detail.
@@ -83,9 +100,30 @@ final locationContextProvider =
   final radiusM = ref.watch(
       makanManaUserContextProvider.select((c) => c.effectiveRadiusMeters));
 
-  final pos = await ref.watch(locationServiceProvider).getPosition();
+  // Suntikan state hanya untuk matriks QA debug. Ia memintas GPS supaya
+  // empat dialek boleh diuji secara deterministik tanpa perjalanan; release
+  // sentiasa menerima null daripada getter ini dan meneruskan aliran biasa.
+  final qaState = MalaysiaStateResolver.debugStateForQa;
+  if (qaState != null) {
+    unawaited(_publishDebugStateForQa(ref, qaState));
+    final context = ref.read(makanManaUserContextProvider);
+    return LocationRequestContext(
+      lat: context.currentLat,
+      lng: context.currentLng,
+      radiusMeters: radiusM,
+      locationGrid: context.locationGrid,
+      locationUpdatedAt: context.lastLocationUpdatedAt,
+      source: 'debug_state_qa',
+    );
+  }
+
+  final locService = ref.watch(locationServiceProvider);
+  // Berskop-UID: lokasi tepat disimpan tidak bocor antara akaun (QA-DEV7).
+  final uid = ref.read(authRepositoryProvider).currentUser?.uid;
+  final pos = await locService.getPosition(uid: uid);
   if (pos != null) {
     final grid = LocationRequestContext.gridFor(pos.latitude, pos.longitude);
+    final previousGrid = ref.read(makanManaUserContextProvider).locationGrid;
     // Sebarkan ke konteks global (payload Spin + diagnostik membacanya).
     // updateLocation TIDAK menukar radius → tiada gelung rebuild.
     ref.read(makanManaUserContextProvider.notifier).updateLocation(
@@ -93,18 +131,49 @@ final locationContextProvider =
           pos.longitude,
           locationGrid: grid,
         );
+    if (previousGrid != grid) {
+      // Jangan paparkan dialek lokasi lama sementara grid baharu sedang
+      // diselesaikan secara async.
+      ref.read(makanManaUserContextProvider.notifier).updateLocationState(
+            locationGrid: grid,
+            resolvedState: null,
+          );
+    }
+    // Pengayaan berasingan daripada request lokasi/cadangan: state tidak
+    // menangguhkan Home, Spin atau Explore dan hanya geocode sekali per grid.
+    unawaited(_resolveStateForCurrentGrid(
+      ref,
+      latitude: pos.latitude,
+      longitude: pos.longitude,
+      locationGrid: grid,
+    ));
+    // AUTHORITY LOKASI (QA-DEV6): bezakan LIVE vs LAST_VALID (kegagalan GPS
+    // sementara guna lokasi sah TERAKHIR — BUKAN KL). Label jujur utk UI+QA.
+    final src = locService.lastSource == LocationSource.lastValid
+        ? 'last_valid'
+        : 'device_gps';
+    assert(() {
+      // QA-only (di-strip release): TIADA koordinat — sumber+grid(hash)+radius.
+      debugPrint('MM LOC: source=$src grid=${grid.hashCode} radiusM=$radiusM');
+      return true;
+    }());
     return LocationRequestContext(
       lat: pos.latitude,
       lng: pos.longitude,
       radiusMeters: radiusM,
       locationGrid: grid,
       locationUpdatedAt: DateTime.now(),
-      source: 'device_gps',
+      source: src,
     );
   }
 
-  // Tiada fix peranti — guna semula lokasi tersimpan (JANGAN suntik KL di sini).
+  // Tiada lokasi sah langsung (GPS gagal + tiada last-valid) — JANGAN suntik KL.
   final ctx = ref.read(makanManaUserContextProvider);
+  assert(() {
+    debugPrint('MM LOC: source=${ctx.currentLat != null ? 'stored' : 'unavailable'} '
+        'radiusM=$radiusM');
+    return true;
+  }());
   return LocationRequestContext(
     lat: ctx.currentLat,
     lng: ctx.currentLng,
@@ -114,3 +183,29 @@ final locationContextProvider =
     source: ctx.currentLat != null ? 'stored' : 'none',
   );
 });
+
+Future<void> _publishDebugStateForQa(Ref ref, String state) async {
+  // Riverpod melarang StateNotifier dikemas kini semasa provider sedang
+  // dibina. Tunggu penghidratan awal selesai; hanya laluan QA debug ini
+  // berbuat demikian dan ia tidak menangguhkan Home.
+  await Future<void>.delayed(const Duration(seconds: 7));
+  ref
+      .read(makanManaUserContextProvider.notifier)
+      .updateDebugLocationStateForQa(state);
+  debugPrint('MakanMana local Hero state: $state');
+}
+
+Future<void> _resolveStateForCurrentGrid(
+  Ref ref, {
+  required double latitude,
+  required double longitude,
+  required String locationGrid,
+}) async {
+  final resolved = await ref
+      .read(malaysiaStateResolverProvider)
+      .resolve(latitude, longitude);
+  ref.read(makanManaUserContextProvider.notifier).updateLocationState(
+        locationGrid: locationGrid,
+        resolvedState: resolved,
+      );
+}

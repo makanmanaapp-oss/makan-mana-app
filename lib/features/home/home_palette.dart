@@ -29,7 +29,7 @@ class HomePalette {
   final Color primaryDark; // #D63F32
   final Color softRed; // #DA6364 sorotan lembut
   final Color yellow; // #F59E14 logo / PRO
-  final Color background; // #FDF8F4 warm white
+  final Color background; // QA-DEV10: #FFFFFF putih tulen (bright) / mm.appBg (dark)
   final Color offWhite; // #F6E9E3 permukaan off-white
   final Color card; // #FFFFFF (bright) / mm.card (dark)
   final Color border; // #E8DAD3 (bright) / mm.border (dark)
@@ -49,7 +49,7 @@ class HomePalette {
     primaryDark: _primaryDark,
     softRed: _softRed,
     yellow: _yellow,
-    background: Color(0xFFFDF8F4),
+    background: Color(0xFFFFFFFF), // QA-DEV10: latar Bright Mode putih tulen
     offWhite: Color(0xFFF6E9E3),
     card: Color(0xFFFFFFFF),
     border: Color(0xFFE8DAD3),

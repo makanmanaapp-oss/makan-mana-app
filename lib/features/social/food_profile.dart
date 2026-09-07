@@ -8,6 +8,7 @@ class FoodProfile {
   const FoodProfile({
     required this.uid,
     required this.displayName,
+    this.hasDisplayName = true,
     this.username,
     this.photoUrl,
     this.avatarPreset,
@@ -28,6 +29,11 @@ class FoodProfile {
 
   final String uid;
   final String displayName;
+
+  /// Membezakan nama profil awam sebenar daripada nilai paparan lalai.
+  /// Ini membolehkan pengguna nama (`username`) digunakan dengan betul bila
+  /// dokumen profil wujud tetapi belum mempunyai `displayName`.
+  final bool hasDisplayName;
   final String? username;
   final String? photoUrl;
 
@@ -54,12 +60,14 @@ class FoodProfile {
   static FoodProfile fromMap(String uid, Map<String, dynamic>? m) {
     final docExists = m != null && m.isNotEmpty;
     m ??= const {};
+    final rawDisplayName = (m['displayName'] as String?)?.trim();
+    final hasDisplayName = rawDisplayName?.isNotEmpty == true;
+    final rawUsername = (m['username'] as String?)?.trim();
     return FoodProfile(
       uid: uid,
-      displayName: (m['displayName'] as String?)?.trim().isNotEmpty == true
-          ? m['displayName'] as String
-          : 'Foodie',
-      username: m['username'] as String?,
+      displayName: hasDisplayName ? rawDisplayName! : 'Foodie',
+      hasDisplayName: hasDisplayName,
+      username: rawUsername?.isNotEmpty == true ? rawUsername : null,
       photoUrl: m['photoUrl'] as String?,
       avatarPreset: m['avatarPreset'] as String?,
       bio: m['bio'] as String? ?? '',
@@ -80,8 +88,8 @@ class FoodProfile {
 }
 
 /// Profil awam seseorang (live).
-final publicProfileProvider = StreamProvider.autoDispose
-    .family<FoodProfile, String>((ref, uid) {
+final publicProfileProvider =
+    StreamProvider.autoDispose.family<FoodProfile, String>((ref, uid) {
   if (!ref.watch(firebaseReadyProvider) || uid.isEmpty) {
     return Stream.value(FoodProfile.fromMap(uid, null));
   }

@@ -45,9 +45,15 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     final l = AppLocalizations.of(context);
     final palette = HomePalette.of(context);
     final page = ref.watch(explorePaginationProvider);
-    final all = page.places.isNotEmpty
-        ? page.places
-        : ref.watch(dummySuggestionServiceProvider).nearby(limit: 12);
+    // QA-DEV14: sampel/dummy HANYA untuk mod demo eksplisit (Firebase tidak
+    // sedia — dev/no-firebase). Dalam mod SEBENAR, JANGAN papar restoran sampel
+    // semasa fetch pertama sedang berjalan; senarai kosong semasa fetch ≠
+    // offline. Keadaan jujur dikendali oleh _buildEmptyState (loading / kosong-
+    // benar / ralat-offline).
+    final isDemo = !ref.watch(firebaseReadyProvider);
+    final all = isDemo
+        ? ref.watch(dummySuggestionServiceProvider).nearby(limit: 12)
+        : page.places;
 
     final cuisines = all.map((p) => p.cuisine).toSet().toList()..sort();
     var places = _cuisineFilter == null
@@ -102,21 +108,24 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                 decoration: InputDecoration(
                   hintText: l.t('searchHint'),
                   hintStyle: TextStyle(color: palette.subtext),
-                  prefixIcon: Icon(Icons.search, color: palette.subtext),
+                  prefixIcon:
+                      Icon(Icons.search, size: 22, color: palette.subtext),
+                  prefixIconConstraints:
+                      const BoxConstraints(minWidth: 48, minHeight: 48),
                   filled: true,
                   fillColor: palette.card,
                   contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(22),
+                    borderRadius: BorderRadius.circular(20),
                     borderSide: BorderSide(color: palette.border),
                   ),
                   enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(22),
+                    borderRadius: BorderRadius.circular(20),
                     borderSide: BorderSide(color: palette.border),
                   ),
                   focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(22),
+                    borderRadius: BorderRadius.circular(20),
                     borderSide: BorderSide(color: palette.primary, width: 1.4),
                   ),
                 ),
@@ -143,29 +152,13 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                 },
               ),
             ),
-            if (page.loading && page.places.isEmpty)
-              const LinearProgressIndicator(minHeight: 2),
             // 6. Senarai kad premium (pagination/cursor KEKAL).
             Expanded(
               child: RefreshIndicator(
                 onRefresh: () =>
                     ref.read(explorePaginationProvider.notifier).refresh(),
                 child: places.isEmpty
-                    ? ListView(
-                        // ListView (bukan Center) supaya pull-to-refresh berfungsi.
-                        children: [
-                          const SizedBox(height: 120),
-                          Center(
-                            child: Text(
-                              l.t('noResults'),
-                              style: TextStyle(
-                                color: palette.subtext,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      )
+                    ? _buildEmptyState(context, l, page, isDemo, all.isEmpty)
                     : _buildPaginatedList(context, l, page, places),
               ),
             ),
@@ -182,9 +175,17 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     // Phase 2.8A — label lokasi JUJUR + notis fallback (sumber tunggal).
     final kind = LocationDisplay.resolve(
         lat: ctx.currentLat, manualName: ctx.locationName);
+    // QA-DEV13: sejajar dengan cip Home — bila lokasi peranti/tersimpan sah DAN
+    // negeri authoritative telah diselesaikan (ctx.locationState), papar negeri
+    // (mis. "Sekitar Selangor") bukan label generik "Sekitar lokasi anda".
+    // Konteks lokasi kekal SAMA (locationContextProvider); ini hanya label.
+    final resolvedState = ctx.locationState?.trim() ?? '';
     final area = kind == LocationDisplayKind.manual
         ? '${l.t('near')} ${ctx.locationName}'
-        : l.t(LocationDisplay.labelKey(kind));
+        : (kind == LocationDisplayKind.deviceOrStored &&
+                resolvedState.isNotEmpty
+            ? '${l.t('near')} $resolvedState'
+            : l.t(LocationDisplay.labelKey(kind)));
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 2, 20, 0),
       child: Column(
@@ -229,6 +230,37 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     );
   }
 
+  /// Keadaan senarai kosong yang JUJUR (QA-DEV14) — TIADA dummy dalam mod
+  /// sebenar. [noData] = sumber (all) kosong:
+  ///  * belum initialized / loading → LOADING (spinner), bukan restoran sampel.
+  ///  * ralat → RALAT/OFFLINE + retry (muat semula).
+  ///  * selesai + kosong → KOSONG-BENAR.
+  /// Jika ada data tapi tapis/carian → 0 → "tiada padanan". Semua guna ListView
+  /// supaya pull-to-refresh tetap berfungsi. Kanvas kekal #FFFFFF.
+  Widget _buildEmptyState(BuildContext context, AppLocalizations l,
+      ExplorePaginationState page, bool isDemo, bool noData) {
+    final palette = HomePalette.of(context);
+    Widget centered(Widget child) =>
+        ListView(children: [const SizedBox(height: 120), Center(child: child)]);
+    if (noData && !isDemo) {
+      if (!page.initialized || page.loading) {
+        return centered(const CircularProgressIndicator(strokeWidth: 2));
+      }
+      if (page.error) {
+        return centered(TextButton.icon(
+          onPressed: () =>
+              ref.read(explorePaginationProvider.notifier).refresh(),
+          icon: const Icon(Icons.refresh),
+          label: Text(l.t('retry')),
+        ));
+      }
+    }
+    return centered(Text(
+      l.t('noResults'),
+      style: TextStyle(color: palette.subtext, fontWeight: FontWeight.w600),
+    ));
+  }
+
   Widget _buildDiagnosticPanel(
       BuildContext context, ExplorePaginationState page) {
     final uid = ref.read(authRepositoryProvider).currentUser?.uid;
@@ -236,7 +268,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         ? (uid ?? 'none')
         : '${uid.substring(0, 4)}…${uid.substring(uid.length - 4)}';
     final diag = page.diagnostics;
-    final cohortEligible = diag.isNotEmpty; // pelayan hantar diag hanya utk kohort
+    final cohortEligible =
+        diag.isNotEmpty; // pelayan hantar diag hanya utk kohort
     final paginated = diag['paginated'] == true;
     final loc = page.location;
     final serverLoc = diag['requestLocation'];
@@ -318,8 +351,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
               padding: const EdgeInsets.symmetric(vertical: 12),
               child: Text(
                 l.t('endOfResults'),
-                style:
-                    TextStyle(color: context.mm.onCardMuted, fontSize: 12.5),
+                style: TextStyle(color: context.mm.onCardMuted, fontSize: 12.5),
               ),
             ),
           );
@@ -352,13 +384,12 @@ class _TrendingPill extends StatelessWidget {
             borderRadius: BorderRadius.circular(20),
             onTap: onTap,
             child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
               decoration: BoxDecoration(
                 color: palette.card,
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(
-                    color: palette.primary.withValues(alpha: 0.35)),
+                border:
+                    Border.all(color: palette.primary.withValues(alpha: 0.35)),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
