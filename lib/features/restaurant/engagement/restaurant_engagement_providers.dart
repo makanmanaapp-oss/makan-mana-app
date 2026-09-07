@@ -23,8 +23,13 @@ final restaurantEngagementServiceProvider =
 /// who follows a restaurant.
 final restaurantFollowerCountProvider =
     StreamProvider.autoDispose.family<int, String>((ref, canonicalPlaceId) {
+  // GATE 3F — UNRESOLVED is not ZERO. Emitting 0 here made an uninitialised
+  // Firebase (or an absent target) indistinguishable from a restaurant that
+  // genuinely has no followers, which is one of the ways the Follow surface
+  // came to state a confident falsehood. An empty stream never produces a
+  // value, so the provider stays in its loading state and the UI says so.
   if (!ref.watch(firebaseReadyProvider) || canonicalPlaceId.isEmpty) {
-    return Stream.value(0);
+    return const Stream<int>.empty();
   }
   return FirebaseFirestore.instance
       .collection('restaurant_public')
@@ -46,10 +51,17 @@ final restaurantFollowerCountProvider =
 /// duplicate the server-side follow document-id scheme.
 final myRestaurantFollowProvider = StreamProvider.autoDispose
     .family<bool, String>((ref, canonicalPlaceId) {
+  // GATE 3F — an uninitialised Firebase or an unresolved restaurant means
+  // nothing is known yet, so the provider must stay UNRESOLVED rather than
+  // assert "not following". Checked before the auth read so a not-ready app
+  // never touches FirebaseAuth at all.
+  if (!ref.watch(firebaseReadyProvider) || canonicalPlaceId.isEmpty) {
+    return const Stream<bool>.empty();
+  }
+  // A signed-OUT user, by contrast, genuinely follows nothing: `false` is a
+  // true answer, reached without touching Firestore.
   final uid = ref.watch(authRepositoryProvider).currentUser?.uid ?? '';
-  if (!ref.watch(firebaseReadyProvider) ||
-      uid.isEmpty ||
-      canonicalPlaceId.isEmpty) {
+  if (uid.isEmpty) {
     return Stream.value(false);
   }
   return FirebaseFirestore.instance

@@ -1,5 +1,21 @@
 # WAVE 3D GATE 3B — TEMPORARY POST-COMMENT WRITE FREEZE
 
+> ## ⚠ SUPERSEDED — DO NOT DEPLOY THIS ARTIFACT
+>
+> Gate 3F fetched the ruleset that is **actually live** and found that this
+> artifact's baseline commit (`759f650d`) had already drifted from production.
+> Deploying this file would **remove live protections**, including
+> `accountActive()` suspension enforcement (35 call sites), the `accountStatus*`
+> protected fields (making self-unsuspend possible), and the `feed_posts`
+> `pollVotes` read rule.
+>
+> Use **`../comment-write-freeze-rebased/`** instead — same one-clause freeze,
+> rebased onto the actual live ruleset, with the regression proven test-by-test.
+>
+> This directory is retained for provenance only. Everything below describes the
+> superseded artifact and remains accurate about *it*.
+
+
 > **This is NOT the final Wave 3 ruleset.**
 > It is a temporary, single-purpose production-closure ruleset used to reach
 > write-quiescence before step **C7B** of `WAVE3D_COMMENT_LIFECYCLE_ROLLOUT.md`.

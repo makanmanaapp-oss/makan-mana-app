@@ -81,16 +81,25 @@ class _RestaurantFollowButtonState
     final mm = context.mm;
     final target = widget.canonicalPlaceId;
 
-    final serverFollowing =
-        ref.watch(myRestaurantFollowProvider(target)).valueOrNull ?? false;
-    // Once the server agrees with the optimistic value, drop the override so
-    // the stream is authoritative again.
-    if (_override != null && _override == serverFollowing) {
+    final followAsync = ref.watch(myRestaurantFollowProvider(target));
+    final countAsync = ref.watch(restaurantFollowerCountProvider(target));
+
+    // GATE 3F — an ERRORED read is not the same as "not following / 0
+    // followers". Previously both providers were flattened with
+    // `valueOrNull ?? false` / `?? 0`, so a Firestore permission or network
+    // failure was rendered as an authoritative negative: the button said "Ikut"
+    // and the count said 0 even after a follow had really been stored. Errors
+    // are now surfaced as UNAVAILABLE instead of being answered with a lie.
+    final serverFollowing = followAsync.valueOrNull;
+    // Only drop the optimistic override once the server actually AGREES; a
+    // failed read can no longer "confirm" anything.
+    if (_override != null &&
+        followAsync.hasValue &&
+        _override == serverFollowing) {
       _override = null;
     }
-    final following = _override ?? serverFollowing;
-    final followers =
-        ref.watch(restaurantFollowerCountProvider(target)).valueOrNull ?? 0;
+    final following = _override ?? serverFollowing ?? false;
+    final stateUnavailable = followAsync.hasError && _override == null;
 
     return Row(
       children: [
@@ -99,10 +108,16 @@ class _RestaurantFollowButtonState
           child: FilledButton.tonalIcon(
             key: const Key('restaurant-follow-button'),
             onPressed: _busy ? null : () => _toggle(following),
-            icon: Icon(
-              following ? Icons.check_rounded : Icons.add_rounded,
-              size: 18,
-            ),
+            icon: _busy
+                ? const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(
+                    following ? Icons.check_rounded : Icons.add_rounded,
+                    size: 18,
+                  ),
             label: Text(
               following
                   ? t.t('restaurantFollowing')
@@ -112,12 +127,44 @@ class _RestaurantFollowButtonState
           ),
         ),
         const SizedBox(width: 12),
-        Text(
-          '$followers ${t.t('restaurantFollowers')}',
-          key: const Key('restaurant-follower-count'),
-          style: TextStyle(fontSize: 13, color: mm.onCardMuted),
-        ),
+        _followerLabel(t, mm, countAsync, stateUnavailable),
       ],
+    );
+  }
+
+  /// The follower slot carries the truth about readability: a real count when
+  /// one was read, an explicit unavailable notice when the read failed, and
+  /// nothing at all while it is still resolving. It never renders a fabricated
+  /// 0, and never shows raw Firebase error text.
+  Widget _followerLabel(
+    AppLocalizations t,
+    MMColors mm,
+    AsyncValue<int> countAsync,
+    bool stateUnavailable,
+  ) {
+    final style = TextStyle(fontSize: 13, color: mm.onCardMuted);
+    if (countAsync.hasError || stateUnavailable) {
+      return Flexible(
+        child: Text(
+          t.t('restaurantFollowersUnavailable'),
+          key: const Key('restaurant-followers-unavailable'),
+          overflow: TextOverflow.ellipsis,
+          style: style,
+        ),
+      );
+    }
+    if (!countAsync.hasValue) {
+      return const SizedBox(
+        key: Key('restaurant-followers-loading'),
+        width: 14,
+        height: 14,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
+    }
+    return Text(
+      '${countAsync.requireValue} ${t.t('restaurantFollowers')}',
+      key: const Key('restaurant-follower-count'),
+      style: style,
     );
   }
 }

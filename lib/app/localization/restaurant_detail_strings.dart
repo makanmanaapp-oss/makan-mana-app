@@ -4,6 +4,7 @@
 library;
 
 const Map<String, String> kRestaurantDetailStringsMs = {
+  'restaurantFollowersUnavailable': 'Pengikut tidak tersedia',
   'profileTab': 'Profil',
   'reviewsTab': 'Ulasan',
   'communityReviewsCountSuffix': 'ulasan komuniti',
@@ -98,6 +99,7 @@ const Map<String, String> kRestaurantDetailStringsMs = {
 };
 
 const Map<String, String> kRestaurantDetailStringsEn = {
+  'restaurantFollowersUnavailable': 'Followers unavailable',
   'profileTab': 'Profile',
   'reviewsTab': 'Reviews',
   'communityReviewsCountSuffix': 'community reviews',
@@ -192,6 +194,7 @@ const Map<String, String> kRestaurantDetailStringsEn = {
 };
 
 const Map<String, String> kRestaurantDetailStringsZh = {
+  'restaurantFollowersUnavailable': '粉丝数暂不可用',
   'profileTab': '简介',
   'reviewsTab': '评价',
   'communityReviewsCountSuffix': '条社区评价',
@@ -286,6 +289,7 @@ const Map<String, String> kRestaurantDetailStringsZh = {
 };
 
 const Map<String, String> kRestaurantDetailStringsTa = {
+  'restaurantFollowersUnavailable': 'பின்தொடர்பவர் எண்ணிக்கை கிடைக்கவில்லை',
   'profileTab': 'சுயவிவரம்',
   'reviewsTab': 'மதிப்புரைகள்',
   'communityReviewsCountSuffix': 'சமூக மதிப்புரைகள்',

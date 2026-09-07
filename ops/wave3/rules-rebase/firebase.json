@@ -1,0 +1,11 @@
+{
+  "//": "WAVE 3 GATE 3F - LOCAL-ONLY emulator config for the live-derived Wave 3 rules artifact. It exists ONLY so the rebased ruleset can be loaded into the Firestore emulator WITHOUT touching the repository root firebase.json or the root firestore.rules. It is NOT a deploy target: it declares no project alias, no hosting, no functions, no storage, and no indexes.",
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "emulators": {
+    "firestore": { "port": 8182 },
+    "ui": { "enabled": false },
+    "singleProjectMode": false
+  }
+}
