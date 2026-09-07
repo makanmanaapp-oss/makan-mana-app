@@ -1,0 +1,6 @@
+{
+  "//": "WAVE 3 GATE 3G - DEPLOY SOURCE for the owner-approved engagement-only (G6) Firestore rules. This config exists so the deployed source is provably this artifact and nothing else. It declares ONLY firestore.rules: no indexes, no hosting, no functions, no storage, no emulators, no project alias. Deploy with: firebase deploy --only firestore:rules --config firebase.deploy.json --project makanmana-c59f3",
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}

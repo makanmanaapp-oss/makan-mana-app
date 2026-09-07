@@ -1,0 +1,6 @@
+{
+  "//": "WAVE 3 GATE 3G - ROLLBACK SOURCE. live-baseline.rules is a byte-exact copy of ruleset 56e55c24-d82d-4a73-9c11-dee45d018c2b, the ruleset that was live immediately before the G6 deploy (sha256 9a61b0476a6dd2e817f148e73c36abb3dfd373b8d59cc8c326570fe685712bb6). Deploying this config restores production exactly. Rollback with: firebase deploy --only firestore:rules --config firebase.rollback.json --project makanmana-c59f3",
+  "firestore": {
+    "rules": "live-baseline.rules"
+  }
+}

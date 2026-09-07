@@ -1,0 +1,11 @@
+{
+  "//": "WAVE 3 GATE 3G - LOCAL-ONLY EMULATOR config for the engagement-only (G6) rules artifact. Used by engagementG6Rules.test.cjs. This file is NOT the deploy source; deployment uses firebase.deploy.json. It declares no project alias, no hosting, no functions, no storage and no indexes.",
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "emulators": {
+    "firestore": { "port": 8184 },
+    "ui": { "enabled": false },
+    "singleProjectMode": false
+  }
+}

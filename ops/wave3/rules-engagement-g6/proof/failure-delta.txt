@@ -1,0 +1,10 @@
+# Failure-set delta, computed by set difference over the two runs above.
+
+## NEW failures introduced by G6 (gate requires EMPTY):
+count = 0
+
+## Failures REPAIRED by G6 (fail on live, pass on G6):
+✖ a user may read ONLY their own restaurant_follows (not another user's)
+✖ follower COUNT aggregate is signed-in readable but server-write only
+✖ visible menu comments are readable; removed ones + writes are denied
+count = 3

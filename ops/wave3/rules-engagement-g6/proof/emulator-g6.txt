@@ -1,0 +1,18 @@
+✔ 1. signed-in user CAN read the restaurant_public aggregate (live DENIES) (2043.6273ms)
+✔ 2. a SIGNED-OUT caller is denied the aggregate (signedIn contract holds) (108.7636ms)
+✔ 3. user CAN read their OWN follow state — get AND the client's exact query (223.7351ms)
+✔ 7. a VISIBLE menu comment is readable under the client's exact query (140.7009ms)
+✔ 4. the follower UID list is NOT enumerable (202.6303ms)
+✔ 5. direct create/update/delete of restaurant_follows is DENIED (106.5954ms)
+✔ 6. direct writes to restaurant_public are DENIED (count stays server-owned) (93.3628ms)
+✔ 8+9. HIDDEN and REMOVED menu comments are denied; status-less fails closed (192.5925ms)
+✔ 10. direct writes to menu_comments are DENIED (no author spoofing possible) (103.4016ms)
+✔ 11+12. accountActive(): suspended-account protections are UNCHANGED (272.5932ms)
+✔ 13. accountStatus self-unsuspend remains DENIED, identically (264.8662ms)
+✔ 14. feed pollVotes behaviour is UNCHANGED (220.6838ms)
+✔ 15. the default-deny catch-all still governs undeclared collections (826.9289ms)
+✔ 16. G1-G5 lifecycle rules are NOT active — legacy reads still behave as live (166.189ms)
+✔ 17. post visibility and moderation boundaries are UNCHANGED (243.8917ms)
+ℹ tests 15
+ℹ pass 15
+ℹ fail 0
