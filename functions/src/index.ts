@@ -154,6 +154,16 @@ export {followRestaurant, unfollowRestaurant} from "./callable/restaurantFollowC
 export {createMenuComment} from "./callable/menuCommentControl";
 export {replyToRestaurantMenuComment} from "./callable/restaurantReplyControl";
 
+// Wave 4 — Commercial Tools: merchant promotion write plane. Reuses the Wave 3
+// merchant bridge authorization unchanged; `restaurant_promotions` stays
+// server-write-only under rules, so these are the entire write surface.
+export {
+  listMerchantPromotions,
+  createPromotion,
+  updatePromotion,
+  setPromotionStatus,
+} from "./callable/merchantPromotionControl";
+
 // Wave 3C — narrow read-only engagement mirror (Firebase -> Control Center) and
 // the Firebase-authoritative menu-comment moderation receiver. NOT DEPLOYED.
 // Primary freshness path: event-driven Firestore triggers (restaurant posts +

@@ -4,6 +4,7 @@ import {
   readPublishedRestaurantProfileV2,
   resolveProvenCanonicalRestaurantPlaceId,
 } from "../services/restaurantProfileV2ReadService";
+import {readPublicPromotions} from "../services/promotionReadService";
 
 type Input = {
   placeId?: unknown;
@@ -54,10 +55,20 @@ export const getRestaurantProfileV2 = onCall(
       const canonicalPlaceId =
         await resolveProvenCanonicalRestaurantPlaceId(placeId);
       const profile = await readPublishedRestaurantProfileV2(placeId);
+
+      // WAVE 4 — active commercial offers, keyed on the PROVEN canonical
+      // identity only. A restaurant without proven identity gets an empty
+      // list rather than a guess, and this stays additive: existing clients
+      // that read only `profile` are untouched.
+      const promotions = canonicalPlaceId
+        ? await readPublicPromotions(canonicalPlaceId, request.auth.uid)
+        : [];
+
       return {
         ok: true,
         canonicalPlaceId,
         profile,
+        promotions,
         dataSource: profile ? "canonical_publication" : "legacy_fallback",
       };
     } catch (error) {
@@ -71,6 +82,7 @@ export const getRestaurantProfileV2 = onCall(
         ok: true,
         canonicalPlaceId: null,
         profile: null,
+        promotions: [],
         dataSource: "legacy_fallback",
       };
     }

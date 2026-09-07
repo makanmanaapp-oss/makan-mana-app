@@ -965,6 +965,22 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // WAVE 4 — Commercial Tools: restaurant promotions.
+    //
+    // SERVER-WRITE ONLY, like every other merchant-authored surface. The whole
+    // write plane is merchantPromotionControl, which resolves the canonical
+    // identity and checks membership through the merchant bridge first.
+    //
+    // Reads stay closed to the client on purpose. Public visibility is not a
+    // property of the stored row: it also depends on the server clock (a window
+    // may have closed) and on the viewer's plan (eligibility). A rule cannot
+    // express either honestly, and a client-side query would let a device with
+    // a wrong clock, or a user asserting their own plan, surface an offer they
+    // must not see. getRestaurantProfileV2 is the single read path.
+    match /restaurant_promotions/{promotionId} {
+      allow read, write: if false;
+    }
+
     // Tutup semua yang lain secara lalai.
     match /{document=**} {
       allow read, write: if false;
