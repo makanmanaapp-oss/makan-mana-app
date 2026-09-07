@@ -268,14 +268,17 @@ void main() {
   //
   // Sejarah pertumbuhan (ringkas): 919 asal -> 1504 (Sport Mood, kad kedai,
   // laporan Phase 1.11) -> 1580 (Algo2 2.2A-2.16A, Notification Center,
-  // hero Home) -> 1687 (Wave 3: Restaurant Detail kanonikal + tab
+  // hero Home) -> 1714 (Wave 3: Restaurant Detail kanonikal + tab
   // Profil/Ulasan/Menu, Follow restoran, komen menu, keadaan
   // tidak-tersedia pengikut, dan blok engagement berkaitan; +1 purchaseUnavailable, mesej ralat
   // pembelian yang jujur menggantikan dua mesej 'akan datang' warisan;
-  // +1 dmLoadError, keadaan ralat sebenar untuk inbox DM).
+  // +1 dmLoadError, keadaan ralat sebenar untuk inbox DM;
+  // +27 kunci Notification V2 — penerbit pelayan menghantar titleKey/bodyKey
+  // dan SETIAP satu tiada dalam peta l10n, jadi setiap kad notifikasi
+  // dirender kosong pada peranti sebenar).
   test('l10n: ledger kunci + parity + parameter sepadan', () {
     final msKeys = AppLocalizations.keysForTesting(const Locale('ms'));
-    expect(msKeys, hasLength(1687),
+    expect(msKeys, hasLength(1714),
         reason: 'kiraan kunci berubah — kemas kini ledger DENGAN SENGAJA '
             'selepas mengesahkan parity keempat-empat bahasa masih lulus');
     final placeholder = RegExp(r'\{[^}]+\}');

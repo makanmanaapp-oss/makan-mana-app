@@ -124,6 +124,35 @@ void main() {
     });
   });
 
+  // ── G. SALINAN TETAPAN (ditemui pada peranti sebenar) ─────────────────────
+
+  group('G. Tetapan memaparkan fakta yang benar', () {
+    test('15. label versi sepadan dengan pubspec', () {
+      // Label ini pernah tersangkut pada "v0.1.0" selama sembilan keluaran.
+      final pub =
+          RegExp(r'^version:\s*(\d+\.\d+\.\d+)\+(\d+)', multiLine: true)
+              .firstMatch(read('pubspec.yaml'))!;
+      final name = pub.group(1)!;
+      final label = RegExp(r"kAppVersionLabel = '([^']+)'")
+          .firstMatch(read('lib/core/constants/app_constants.dart'))!
+          .group(1)!;
+      expect(label, contains(name),
+          reason: 'Tetapan memaparkan "$label" tetapi pubspec ialah $name');
+      final settings = code(read('lib/features/settings/settings_screen.dart'));
+      expect(settings, contains('Text(kAppVersionLabel)'));
+      expect(RegExp(r'MakanMana v\d').hasMatch(settings), isFalse,
+          reason: 'tiada versi berkod-keras dalam skrin');
+    });
+
+    test('16. diagnostik Firebase tidak dipapar dalam pengeluaran', () {
+      final settings = code(read('lib/features/settings/settings_screen.dart'));
+      final i = settings.indexOf("const Text('Firebase')");
+      expect(i, greaterThan(-1));
+      expect(settings.substring(0, i), contains('if (kDebugMode)'),
+          reason: 'baris diagnostik mesti digating kepada binaan debug');
+    });
+  });
+
   // ── F. KONTRAK APP <-> CONTROL CENTER ─────────────────────────────────────
 
   group('F. kontrak data menu sejajar dengan Control Center', () {

@@ -138,22 +138,35 @@ class _NotificationTile extends ConsumerWidget {
   const _NotificationTile({required this.notification});
   final MakanNotification notification;
 
+  /// Isi ruang letak {name} dengan snapshot nama pelaku. Bila tiada pelaku
+  /// (peringatan makan, langganan, sistem) ruang letak itu tidak sepatutnya
+  /// wujud; jika ia wujud kita gugurkannya dan bersihkan ruang berlebihan,
+  /// supaya "{name}" mentah tidak pernah dipapar kepada pengguna.
+  String _fill(String text) {
+    if (!text.contains('{name}')) return text;
+    final name = notification.actorName;
+    if (name != null && name.isNotEmpty) {
+      return text.replaceAll('{name}', name);
+    }
+    return text.replaceAll('{name}', '').replaceAll('  ', ' ').trim();
+  }
+
   String _title(AppLocalizations l) {
     final k = notification.titleKey;
     if (k != null && k.isNotEmpty) {
       final t = l.t(k);
-      if (t != k) return t;
+      if (t != k) return _fill(t);
     }
-    return notification.title;
+    return _fill(notification.title);
   }
 
   String _body(AppLocalizations l) {
     final k = notification.bodyKey;
     if (k != null && k.isNotEmpty) {
       final t = l.t(k);
-      if (t != k) return t;
+      if (t != k) return _fill(t);
     }
-    return notification.body;
+    return _fill(notification.body);
   }
 
   String _timeLabel() {

@@ -8,6 +8,13 @@ class AppConstants {
   static const functionsRegion = 'asia-southeast1';
 }
 
+/// Label versi yang DIPAPAR dalam Tetapan.
+///
+/// Mesti sepadan dengan `version:` dalam pubspec.yaml — dikunci oleh ujian
+/// supaya ia tidak boleh menyimpang lagi (ia pernah tersangkut pada v0.1.0
+/// sembilan keluaran selepas fakta).
+const String kAppVersionLabel = 'MakanMana v0.1.9';
+
 class RoutePaths {
   RoutePaths._();
 

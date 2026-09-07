@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -217,25 +218,30 @@ class SettingsScreen extends ConsumerWidget {
           ),
 
           const SizedBox(height: 18),
-          ListTile(
-            tileColor: context.tCard,
-            shape: tileShape(),
-            leading: Icon(Icons.cloud_outlined, color: context.mm.iconMuted),
-            title: const Text('Firebase'),
-            trailing: Text(
-              firebaseReady ? 'OK' : 'DEV',
-              style: TextStyle(
-                fontWeight: FontWeight.w800,
-                color: firebaseReady
-                    ? AppColors.openGreen
-                    : AppColors.warningOrange,
+          // Baris diagnostik Firebase ialah alat DALAMAN: pengguna akhir tidak
+          // boleh bertindak atasnya, dan keadaan 'DEV' ialah perkataan debug
+          // pada permukaan pengeluaran. Kekalkan untuk binaan QA sahaja.
+          if (kDebugMode) ...[
+            ListTile(
+              tileColor: context.tCard,
+              shape: tileShape(),
+              leading: Icon(Icons.cloud_outlined, color: context.mm.iconMuted),
+              title: const Text('Firebase'),
+              trailing: Text(
+                firebaseReady ? 'OK' : 'DEV',
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: firebaseReady
+                      ? AppColors.openGreen
+                      : AppColors.warningOrange,
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 10),
+            const SizedBox(height: 10),
+          ],
           const ListTile(
             leading: Icon(Icons.info_outline),
-            title: Text('MakanMana v0.1.0'),
+            title: Text(kAppVersionLabel),
           ),
         ],
       ),

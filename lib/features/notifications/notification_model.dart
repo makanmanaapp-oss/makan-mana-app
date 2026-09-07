@@ -58,6 +58,7 @@ class MakanNotification {
     required this.isRead,
     this.titleKey,
     this.bodyKey,
+    this.actorName,
     this.destinationType,
     this.destinationId,
     this.imageUrl,
@@ -76,6 +77,12 @@ class MakanNotification {
   /// Kunci l10n pilihan (backend boleh hantar kunci, klien terjemah).
   final String? titleKey;
   final String? bodyKey;
+
+  /// Nama paparan pelaku pada masa peristiwa (`actorDisplaySnapshot`).
+  /// Digunakan untuk mengisi ruang letak {name} dalam salinan yang
+  /// dilokalkan. Ini adalah snapshot pelayan — klien tidak pernah mencari
+  /// profil pelaku, jadi tiada UID terdedah.
+  final String? actorName;
 
   final DateTime createdAt;
   final bool isRead;
@@ -116,6 +123,9 @@ class MakanNotification {
       body: (m['body'] as String?)?.trim() ?? '',
       titleKey: m['titleKey'] as String?,
       bodyKey: m['bodyKey'] as String?,
+      actorName: (m['actorDisplaySnapshot'] as String?)?.trim().isNotEmpty == true
+          ? (m['actorDisplaySnapshot'] as String).trim()
+          : null,
       createdAt: _ts(m['createdAt']),
       isRead: isRead,
       destinationType: m['destinationType'] as String?,
