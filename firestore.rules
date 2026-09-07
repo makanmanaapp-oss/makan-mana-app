@@ -981,6 +981,19 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // WAVE 5 — CMS & Discovery. SERVER-ONLY for the same reason promotions are:
+    // whether a banner is live depends on the server clock AND on viewer
+    // targeting (language, region, plan), and a rule can express neither
+    // honestly. A client-side query would let a device with a wrong clock, or a
+    // user asserting their own plan, surface content they must not see.
+    // getCmsContent is the single read path.
+    match /cms_content/{contentId} {
+      allow read, write: if false;
+    }
+    match /cms_collections/{collectionId} {
+      allow read, write: if false;
+    }
+
     // Tutup semua yang lain secara lalai.
     match /{document=**} {
       allow read, write: if false;

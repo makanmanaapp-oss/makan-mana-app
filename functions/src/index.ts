@@ -154,6 +154,16 @@ export {followRestaurant, unfollowRestaurant} from "./callable/restaurantFollowC
 export {createMenuComment} from "./callable/menuCommentControl";
 export {replyToRestaurantMenuComment} from "./callable/restaurantReplyControl";
 
+// Wave 5 — CMS & Discovery. Runtime projection for mobile, the ONE trusted
+// Control Center -> Firebase CMS bridge, and the narrow CMS mirror. All reuse
+// the existing Wave 3C/4 transports. NOT DEPLOYED.
+export {getCmsContent} from "./callable/getCmsContent";
+export {controlCenterCmsAdminBridge} from "./controlCenter/cmsAdminBridge";
+export {
+  mirrorCmsContentOnWrite,
+  reconcileCmsMirrorDaily,
+} from "./controlCenter/cmsMirrorSync";
+
 // Wave 4 — the ONE trusted Control Center -> Firebase commercial bridge, and
 // the narrow Firebase -> Control Center promotion mirror. Both reuse the
 // existing Wave 3C transports (bearer secret + /api/internal/sync/mirror).

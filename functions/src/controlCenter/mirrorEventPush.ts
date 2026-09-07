@@ -3,6 +3,7 @@ import {defineSecret} from "firebase-functions/params";
 import type {MenuCommentMirrorRecord, SocialPostMirrorRecord} from "../domain/restaurantEngagement/mirrorPayload";
 import type {MirrorEntityType} from "../domain/restaurantEngagement/mirrorEvents";
 import type {PromotionMirrorRecord} from "../domain/promotions/promotionMirrorPayload";
+import type {CmsMirrorRecord} from "../domain/cms/cmsDocument";
 
 /**
  * Wave 3C corrective — the ONE shared Firebase → Control Center mirror transport.
@@ -21,7 +22,8 @@ export const CONTROL_CENTER_MIRROR_URL =
 export type MirrorRecord =
   | SocialPostMirrorRecord
   | MenuCommentMirrorRecord
-  | PromotionMirrorRecord;
+  | PromotionMirrorRecord
+  | CmsMirrorRecord;
 
 /**
  * POST one idempotent mirror batch. `eventId` is the idempotency key enforced by
@@ -30,7 +32,7 @@ export type MirrorRecord =
  * server-side rather than silently overwriting an unrelated event.
  */
 export async function pushMirrorBatch(params: {
-  entityType: MirrorEntityType | "restaurant_promotion";
+  entityType: MirrorEntityType | "restaurant_promotion" | "cms_content";
   records: MirrorRecord[];
   secret: string;
   eventId: string;
