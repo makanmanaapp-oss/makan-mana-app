@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app/app.dart';
 import 'core/providers.dart';
 import 'core/security/app_check_bootstrap.dart';
+import 'features/place_migration/qa_canonical_activation.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
@@ -43,6 +44,12 @@ Future<void> main() async {
   }
 
   final prefs = await SharedPreferences.getInstance();
+
+  // GATE 3F-A: aktifkan Butiran Kedai kanonikal untuk binaan QA SAHAJA
+  // (kDebugMode && appFlavor == "qa"). Dinilai di sini, bukan pada peristiwa log
+  // masuk, kerana pelancaran dengan sesi sedia ada tidak pernah melalui skrin
+  // log masuk. No-op dalam keluaran produksi.
+  applyQaCanonicalActivation();
 
   runApp(
     ProviderScope(

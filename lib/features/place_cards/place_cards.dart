@@ -5,7 +5,7 @@
 ///
 /// Varian:
 /// - [CanonicalNearbyCard]   : kad mendatar (Home "Berdekatan")
-/// - [CanonicalAiPickCard]   : kad hero (Home "Pilihan AI")
+/// - [CanonicalAiPickCard]   : kad hero (Home "Pilihan MakanMana")
 /// - [CanonicalSuggestionCard]: kad cadangan (Terima/Tolak/Seterusnya)
 /// - [CanonicalExploreListCard]: baris senarai Explore
 /// - [CanonicalExploreGridCard]: sel grid Explore

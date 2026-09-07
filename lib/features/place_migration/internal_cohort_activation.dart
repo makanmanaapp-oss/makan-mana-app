@@ -12,6 +12,7 @@
 library;
 
 import 'place_migration_flags.dart';
+import 'qa_canonical_activation.dart';
 
 /// UID owner/penguji dalaman yang DILULUSKAN (i.hachiman12@gmail.com).
 const Set<String> kApprovedInternalCohortUids = {
@@ -83,6 +84,10 @@ InternalCohortDecision evaluateInternalCohort({
 void applyInternalCohortActivation(InternalCohortDecision decision) {
   if (!decision.eligible) {
     PlaceMigrationFeatureFlags.resetToSafeDefaults();
+    // GATE 3F-A: log masuk akaun BUKAN-kohort tidak boleh senyap-senyap
+    // mematikan semula binaan QA kepada skrin legasi. Dalam keluaran produksi
+    // ini no-op (kDebugMode false), jadi semantik produksi tidak berubah.
+    applyQaCanonicalActivation();
     return;
   }
   // Keupayaan kohort dalaman (bukan awam/global).
