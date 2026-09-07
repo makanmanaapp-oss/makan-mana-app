@@ -301,7 +301,9 @@ void main() {
     //   Center, dmLoadError, purchaseUnavailable, notificationComment*.
     //   Dari baseline UI diluluskan: tetapan notifikasi, penapis Activity,
     //   check-in, undian suapan, hero tempatan mengikut negeri.
-    expect(msKeys, hasLength(1789));
+    // WAVE 4 Commercial Tools: +44 kunci promosi (permukaan peniaga,
+    //   status, jenis tawaran, kad awam) merentas 4 bahasa.
+    expect(msKeys, hasLength(1833));
     final placeholder = RegExp(r'\{[^}]+\}');
     final msValues = AppLocalizations.valuesForTesting(const Locale('ms'));
     for (final language in ['en', 'zh', 'ta']) {
