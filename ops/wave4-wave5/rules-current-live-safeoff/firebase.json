@@ -1,0 +1,9 @@
+{
+  "//": "WAVE 4 + WAVE 5 SAFE-OFF - LOCAL-ONLY emulator config for this artifact. NOT a deploy target: no project alias, no hosting, no functions, no storage, no indexes.",
+  "firestore": { "rules": "firestore.rules" },
+  "emulators": {
+    "firestore": { "port": 8188 },
+    "ui": { "enabled": false },
+    "singleProjectMode": false
+  }
+}

@@ -1,0 +1,4 @@
+{
+  "//": "WAVE 4 + WAVE 5 SAFE-OFF - ROLLBACK SOURCE. live-baseline.rules is a byte-exact copy of ruleset f77c0ada-9bf6-43f3-b419-7397510a8bb0 (43755 bytes, sha256 c3a44df897a10ae7bd1711643aa6737441703e8c353b6fb990e43f5b9ad15925), the ruleset live immediately before this cutover. Roll back with: firebase deploy --only firestore:rules --config firebase.rollback.json --project makanmana-c59f3",
+  "firestore": { "rules": "live-baseline.rules" }
+}

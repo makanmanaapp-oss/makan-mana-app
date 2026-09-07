@@ -1,0 +1,4 @@
+{
+  "//": "WAVE 4 + WAVE 5 SAFE-OFF - DEPLOY SOURCE. Declares ONLY firestore.rules: no indexes, no hosting, no functions, no storage, no emulators, no project alias. firestore.rules here is the CURRENT LIVE ruleset f77c0ada plus exactly three new server-only match blocks; it is NOT the repository root firestore.rules, which is built on a stale base. Deploy with: firebase deploy --only firestore:rules --config firebase.deploy.json --project makanmana-c59f3",
+  "firestore": { "rules": "firestore.rules" }
+}

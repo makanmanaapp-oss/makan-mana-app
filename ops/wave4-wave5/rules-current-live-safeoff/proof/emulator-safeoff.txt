@@ -1,0 +1,16 @@
+✔ 1. the three new collections deny every client read, signed in or not (5757.1848ms)
+✔ 2. the three new collections deny every client write (478.1423ms)
+✔ 3. artifact and live agree exactly: both already deny these paths (351.3629ms)
+✔ 4. G6 engagement reads are inherited and behave identically (929.014ms)
+✔ 5. accountStatus suspension enforcement is unchanged (487.9382ms)
+✔ 6. the notification boundary is unchanged (467.0566ms)
+✔ 7. server-only stores and the default-deny catch-all are unchanged (579.2689ms)
+✔ 8. an unauthenticated client is denied everywhere it was before (508.2164ms)
+ℹ tests 8
+ℹ suites 0
+ℹ pass 8
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 9884.6235
