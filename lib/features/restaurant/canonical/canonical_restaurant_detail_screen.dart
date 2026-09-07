@@ -266,15 +266,15 @@ class _CanonicalRestaurantDetailBodyState
 
   /// Summary merges price, cuisine tags, dish highlights and service/ambience
   /// into ONE block instead of four separately-carded sections.
-  Widget _summary(AppLocalizations t, MMColors mm) => _card(Column(
+  Widget _summary(AppLocalizations t, MMColors mm) => _plain(Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Raw label, not _price(): _price() self-cards and would nest cards.
-          Align(
-              alignment: Alignment.centerLeft,
-              child: PlacePriceLabel(model: vm.price)),
+          _infoRowWidget(
+              mm, t.t('priceTitle'), PlacePriceLabel(model: vm.price)),
+          if (vm.subtitle != null && vm.subtitle!.trim().isNotEmpty)
+            _infoRow(mm, t.t('cuisineTypeTitle'), vm.subtitle!.trim()),
           if (_hasAnyTag) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 6),
             _tags(t),
           ],
           if (vm.dishHighlights.isNotEmpty) ...[
@@ -325,6 +325,37 @@ class _CanonicalRestaurantDetailBodyState
           border: Border.all(color: context.mm.border),
         ),
         child: child,
+      );
+
+  /// GATE 3F polish — lightweight section body: no border, no fill, just the
+  /// content followed by a subtle divider. Large bordered cards are now
+  /// RESERVED for the two places where grouping genuinely helps: the location
+  /// block (address + map CTA) and the allergen safety warning.
+  Widget _plain(Widget child) => Container(
+        key: const Key('restaurant-plain-section'),
+        width: double.infinity,
+        padding: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          border: Border(
+              bottom: BorderSide(color: context.mm.border, width: 0.6)),
+        ),
+        child: child,
+      );
+
+  /// Compact `label ....... value-widget` row for values that are not plain text.
+  Widget _infoRowWidget(MMColors mm, String label, Widget value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 9),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(label,
+                  style: TextStyle(color: mm.onCardMuted, fontSize: 13.5)),
+            ),
+            const SizedBox(width: 12),
+            Flexible(child: Align(alignment: Alignment.centerRight, child: value)),
+          ],
+        ),
       );
 
   Widget _muted(String text) => Text(text,
@@ -527,9 +558,8 @@ class _CanonicalRestaurantDetailBodyState
           child: _recheck(t.t('hoursExpired'), mm)));
     }
     if (!h.hasWeekly && h.todayLabel == null) {
-      children.add(Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: _muted(t.t('hoursUnknown'))));
+      // Compact single row instead of a tall unknown-hours block.
+      children.add(_infoRow(mm, t.t('todayHours'), t.t('hoursUnknown')));
     }
     if (h.hasWeekly) {
       children.add(_expandRow(
@@ -566,7 +596,7 @@ class _CanonicalRestaurantDetailBodyState
           padding: const EdgeInsets.only(top: 6),
           child: _muted('${t.t('lastVerified')}: ${h.lastVerifiedLabel}')));
     }
-    return _card(Column(
+    return _plain(Column(
         crossAxisAlignment: CrossAxisAlignment.start, children: children));
   }
 
@@ -996,7 +1026,7 @@ class _CanonicalRestaurantDetailBodyState
       HalalDisplayState.none =>
         (t.t('noInfoAvailable'), Icons.info_outline_rounded, mm.onCardFaint),
     };
-    return _card(Row(
+    return _plain(Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Icon(icon, size: 17, color: color),
@@ -1112,9 +1142,10 @@ class _CanonicalRestaurantDetailBodyState
   Widget _contact(AppLocalizations t) {
     final c = vm.contact;
     if (!c.hasPhone && !c.hasWebsite) {
-      return _card(_muted(t.t('contactUnavailable')));
+      return _plain(_infoRow(
+          context.mm, t.t('callAction'), t.t('contactUnavailable')));
     }
-    return _card(Wrap(
+    return _plain(Wrap(
       spacing: 10,
       runSpacing: 8,
       children: [
@@ -1162,7 +1193,7 @@ class _CanonicalRestaurantDetailBodyState
         child: PlaceWarnings(warnings: vm.warnings, max: 3),
       ));
     }
-    return _card(Column(
+    return _plain(Column(
         crossAxisAlignment: CrossAxisAlignment.start, children: rows));
   }
 

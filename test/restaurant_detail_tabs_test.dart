@@ -38,6 +38,7 @@ void main() {
     CardRatingModel rating = const CardRatingModel(rating: 4.1),
     int? reviewCount,
     DetailActionConfig actions = const DetailActionConfig(),
+    CardPriceModel price = CardPriceModel.unknown,
   }) =>
       RestaurantDetailViewModel(
         placeId: 'p-1',
@@ -48,7 +49,7 @@ void main() {
         businessState: CardBusinessState.active,
         hours: const DetailHours(model: CardHoursModel.unknown),
         rating: rating,
-        price: CardPriceModel.unknown,
+        price: price,
         location: const LocationInfo(address: 'Jalan Ampang'),
         reviewCount: reviewCount,
         menuItems: menu,
@@ -394,6 +395,148 @@ void main() {
       expect("t.t('logMealAction')".allMatches(actions).length, 1);
       expect(actions.contains("t.t('rateAction')"), isFalse,
           reason: 'the rating action moved to the Ulasan tab');
+    });
+  });
+
+  group('profile minimalism', () {
+    /// Map every _card( / _plain( call to the method that owns it, so the test
+    /// asserts real card discipline rather than a raw occurrence count.
+    Map<String, List<String>> wrappersByMethod() {
+      final lines = read(
+              'lib/features/restaurant/canonical/canonical_restaurant_detail_screen.dart')
+          .split('\n');
+      final out = <String, List<String>>{};
+      final header = RegExp(r'^  (?:Widget|String|bool) (_?\w+)');
+      String? method;
+      for (final line in lines) {
+        final m = header.firstMatch(line);
+        if (m != null) method = m.group(1);
+        if (method == null) continue;
+        if (line.contains('_card(') && !line.contains('Widget _card')) {
+          out.putIfAbsent(method, () => []).add('card');
+        }
+        if (line.contains('_plain(') && !line.contains('Widget _plain')) {
+          out.putIfAbsent(method, () => []).add('plain');
+        }
+      }
+      return out;
+    }
+
+    test('large bordered cards survive ONLY for location and allergen', () {
+      final w = wrappersByMethod();
+      final carded = w.entries
+          .where((e) => e.value.contains('card'))
+          .map((e) => e.key)
+          .toSet();
+      expect(carded, {'_allergen', '_location'},
+          reason: 'only the safety warning and the address+map block keep a card');
+    });
+
+    test('summary, hours, halal, contact and source are lightweight', () {
+      final w = wrappersByMethod();
+      for (final method in ['_summary', '_hours', '_halal', '_contact', '_provenance']) {
+        expect(w[method], isNotNull, reason: '$method must render a section body');
+        expect(w[method]!.contains('plain'), isTrue,
+            reason: '$method must use the lightweight body');
+        expect(w[method]!.contains('card'), isFalse,
+            reason: '$method must not use a large bordered card');
+      }
+    });
+
+    testWidgets('summary shows compact price and category rows', (tester) async {
+      await pump(
+        tester,
+        CanonicalRestaurantDetailScreen(
+          vm: vm(
+            price: const CardPriceModel(
+                state: CardPriceState.estimatedRange, amountLabel: 'RM6 - RM14'),
+          ),
+        ),
+      );
+      expect(find.text(ms('restaurantSummaryTitle')), findsOneWidget);
+      expect(find.text(ms('priceTitle')), findsOneWidget);
+      // subtitle "Mamak" is surfaced as the category row value.
+      expect(find.text(ms('cuisineTypeTitle')), findsOneWidget);
+      expect(find.text('Mamak'), findsWidgets);
+    });
+
+    testWidgets('unknown hours render as ONE compact row', (tester) async {
+      await pump(tester, CanonicalRestaurantDetailScreen(vm: vm()));
+      expect(find.text(ms('hoursTitle')), findsOneWidget);
+      expect(find.text(ms('todayHours')), findsOneWidget);
+      expect(find.text(ms('hoursUnknown')), findsWidgets);
+    });
+
+    testWidgets('missing contact is one compact row, not a block', (tester) async {
+      await pump(tester, CanonicalRestaurantDetailScreen(vm: vm()));
+      await scrollProfileTo(tester, find.text(ms('contactUnavailable')));
+      expect(find.text(ms('callAction')), findsWidgets);
+      expect(find.text(ms('contactUnavailable')), findsOneWidget);
+    });
+
+    testWidgets('allergen safety warning stays prominent', (tester) async {
+      await pump(tester, CanonicalRestaurantDetailScreen(vm: vm()));
+      await scrollProfileTo(tester, find.text(ms('allergenInfo')));
+      expect(find.text(ms('allergenInfo')), findsOneWidget);
+      // Still rendered, still truthful — minimalism never removed it.
+      expect(find.text(ms('allergenCaution')), findsWidgets);
+    });
+
+    testWidgets('location keeps its card and the profile actions are unchanged',
+        (tester) async {
+      await pump(
+        tester,
+        CanonicalRestaurantDetailScreen(
+          vm: vm(
+            actions: const DetailActionConfig(
+              canOpenMaps: true, canSave: true, canShare: true, canLogMeal: true),
+          ),
+          callbacks: RestaurantDetailCallbacks(
+            onOpenMaps: () {}, onSave: () {}, onShare: () {}, onLogMeal: () {}),
+        ),
+      );
+      await scrollProfileTo(tester, find.byKey(const ValueKey('detail-action-maps')));
+      for (final id in ['maps', 'save', 'share', 'logmeal']) {
+        expect(find.byKey(ValueKey('detail-action-$id')), findsOneWidget,
+            reason: 'approved action row must be unchanged');
+      }
+      expect(find.text(ms('locationLabel')), findsOneWidget);
+    });
+
+    testWidgets('Ulasan and Menu tabs are untouched by the profile polish',
+        (tester) async {
+      await pump(
+        tester,
+        CanonicalRestaurantDetailScreen(
+          vm: vm(menu: [menuItem(id: 'm-1', name: 'Nasi Lemak', price: 8.5)]),
+          communityReviews: const CommunityReviewsData(
+              count: 1, average: 5, list: Text('ULASAN-SEBENAR')),
+        ),
+      );
+      await tester.tap(find.text(ms('reviewsTab')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('restaurant-reviews-tab')), findsOneWidget);
+      expect(find.text('ULASAN-SEBENAR'), findsOneWidget);
+
+      await tester.tap(find.text(ms('menuTab')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('restaurant-menu-tab')), findsOneWidget);
+      expect(find.text('Nasi Lemak'), findsOneWidget);
+      expect(find.byKey(const ValueKey('restaurant-menu-m-1')), findsOneWidget);
+    });
+
+    test('no callback or domain surface changed by the polish', () {
+      final screen = read(
+          'lib/features/restaurant/canonical/canonical_restaurant_detail_screen.dart');
+      for (final cb in [
+        'onOpenMaps', 'onSave', 'onShare', 'onCall', 'onOpenWebsite',
+        'onLogMeal', 'onRate', 'onAccept', 'onReject',
+        'onReportIncorrectInformation',
+      ]) {
+        expect(screen, contains(cb), reason: '$cb must still exist');
+      }
+      expect(screen.contains('FirebaseFirestore'), isFalse);
+      expect(screen.contains("collection('"), isFalse);
     });
   });
 
