@@ -245,3 +245,27 @@ export function previousPeriod(fromDay: string, toDay: string): {fromDay: string
     toDay: businessDayKey(prevEnd + 12 * 3_600_000),
   };
 }
+
+/**
+ * Rewrite each event's place to its PROVEN canonical id, dropping the ones that
+ * could not be resolved.
+ *
+ * Pure, so the rule is testable without Firestore: the caller does the lookups
+ * and hands in the map. Two properties matter and both are asserted by tests —
+ * an unresolved event is DROPPED rather than aggregated under its provider id,
+ * and a resolved event carries the canonical id forward, never the original.
+ */
+export function applyCanonicalResolution(
+  events: RawAnalyticsEvent[],
+  resolution: Map<string, string | null>,
+): RawAnalyticsEvent[] {
+  const out: RawAnalyticsEvent[] = [];
+  for (const event of events) {
+    const raw = typeof event.placeId === "string" ? event.placeId.trim() : "";
+    if (!raw) continue;
+    const canonical = resolution.get(raw);
+    if (!canonical) continue;
+    out.push({...event, placeId: canonical});
+  }
+  return out;
+}

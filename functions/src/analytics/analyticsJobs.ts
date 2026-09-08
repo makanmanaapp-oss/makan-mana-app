@@ -14,6 +14,15 @@
  * server-authoritative collections, and a signal the server wrote is worth more
  * than one a client asserted — so those triggers watch the real documents. That
  * also means no Wave 3 code path had to be edited to add analytics.
+ *
+ * IDENTITY. A client event's `placeId` is whatever the app was holding — very
+ * often a Google/provider id (`ChIJ...`), not a canonical `PLC-...`. It is
+ * resolved here through the EXISTING proven resolver before anything is
+ * aggregated, and an event that cannot be resolved is not counted at all. Two
+ * consequences worth stating: a provider id can never become the key of an
+ * analytics document, and a merchant reading by canonical identity sees the
+ * same rows the aggregation wrote. Before this, the two key spaces could never
+ * meet and every event-derived metric would have read as a permanent zero.
  */
 import {onDocumentCreated, onDocumentDeleted} from "firebase-functions/v2/firestore";
 import {onSchedule} from "firebase-functions/v2/scheduler";
@@ -24,6 +33,7 @@ import {
   aggregateEvents,
   businessDayKey,
   businessDayStartMs,
+  applyCanonicalResolution,
   eventOccurredAtMs,
   isCountableEvent,
   type RawAnalyticsEvent,
@@ -32,6 +42,7 @@ import {
   ANALYTICS_DAILY_COLLECTION,
   analyticsDailyDocId,
 } from "../domain/analytics/analyticsDocument";
+import {resolveProvenCanonicalRestaurantPlaceId} from "../services/restaurantProfileV2ReadService";
 import {
   DEDUPED_PER_USER_PER_DAY,
   EVENT_TO_METRIC,
@@ -63,6 +74,8 @@ async function applyMetric(params: {
   userId?: string;
   /** Marked applied inside the transaction; absent for document-sourced signals. */
   sourceEventRef?: FirebaseFirestore.DocumentReference;
+  /** Stamped alongside the applied marker, for operator visibility. */
+  resolutionState?: "resolved";
 }): Promise<"applied" | "duplicate"> {
   const dailyRef = db.collection(ANALYTICS_DAILY_COLLECTION)
     .doc(analyticsDailyDocId(params.canonicalPlaceId, params.dayKey));
@@ -106,10 +119,30 @@ async function applyMetric(params: {
     }
 
     if (params.sourceEventRef) {
-      tx.set(params.sourceEventRef, {analyticsAppliedAtMs: now}, {merge: true});
+      tx.set(params.sourceEventRef, {
+        analyticsAppliedAtMs: now,
+        ...(params.resolutionState ? {analyticsResolution: params.resolutionState} : {}),
+      }, {merge: true});
     }
     return alreadyCounted ? "duplicate" as const : "applied" as const;
   });
+}
+
+/**
+ * Resolve an event's place to a PROVEN canonical identity.
+ *
+ * Delegates to the Wave 3 resolver used by the public Follow surface — the
+ * strict one that returns null rather than handing back the caller's own id.
+ * No second resolver, no name matching, no guessing.
+ */
+async function resolveEventCanonicalId(rawPlaceId: string): Promise<string | null> {
+  if (!rawPlaceId) return null;
+  try {
+    return await resolveProvenCanonicalRestaurantPlaceId(rawPlaceId);
+  } catch {
+    // A lookup failure must not become an aggregate under an unproven id.
+    return null;
+  }
 }
 
 // ── CLIENT EVENT INGESTION ─────────────────────────────────────────────────
@@ -149,12 +182,25 @@ export const aggregateAnalyticsEventOnCreate = onDocumentCreated(
     if (!isCountableEvent(candidate)) return;
 
     const metric = EVENT_TO_METRIC[text(candidate.eventType)];
-    const placeId = text(candidate.placeId);
+    const rawPlaceId = text(candidate.placeId);
     const dayKey = businessDayKey(eventOccurredAtMs(candidate, now));
     const userId = text(candidate.userId);
 
+    // Identity first. Nothing is aggregated under an id we cannot prove.
+    const canonicalPlaceId = await resolveEventCanonicalId(rawPlaceId);
+    if (!canonicalPlaceId) {
+      // Recorded so an operator can see the volume of unattributable events
+      // instead of wondering why a restaurant looks quiet. Carries no new
+      // personal data: the event already held this placeId.
+      await snap.ref.set({
+        analyticsResolution: "unresolved",
+        analyticsResolvedAtMs: now,
+      }, {merge: true});
+      return;
+    }
+
     await applyMetric({
-      canonicalPlaceId: placeId,
+      canonicalPlaceId,
       dayKey,
       metric,
       delta: 1,
@@ -162,6 +208,7 @@ export const aggregateAnalyticsEventOnCreate = onDocumentCreated(
       dedupeKey: DEDUPED_PER_USER_PER_DAY.includes(metric) && userId
         ? `${metric}__${userId}` : undefined,
       sourceEventRef: snap.ref,
+      resolutionState: "resolved",
     });
   },
 );
@@ -173,10 +220,12 @@ export const aggregateRestaurantFollowOnCreate = onDocumentCreated(
   {document: "restaurant_follows/{followId}", region: REGION, maxInstances: 10},
   async (event) => {
     const data = event.data?.data() ?? {};
-    const placeId = text(data.canonicalPlaceId);
-    if (!placeId) return;
+    // Already canonical: the server wrote this document, so no resolution is
+    // needed. Named for what it holds, not for the field it came through.
+    const canonicalPlaceId = text(data.canonicalPlaceId);
+    if (!canonicalPlaceId) return;
     await applyMetric({
-      canonicalPlaceId: placeId,
+      canonicalPlaceId,
       dayKey: businessDayKey(Date.now()),
       metric: "newFollows",
       delta: 1,
@@ -188,10 +237,12 @@ export const aggregateRestaurantUnfollowOnDelete = onDocumentDeleted(
   {document: "restaurant_follows/{followId}", region: REGION, maxInstances: 10},
   async (event) => {
     const data = event.data?.data() ?? {};
-    const placeId = text(data.canonicalPlaceId);
-    if (!placeId) return;
+    // Already canonical: the server wrote this document, so no resolution is
+    // needed. Named for what it holds, not for the field it came through.
+    const canonicalPlaceId = text(data.canonicalPlaceId);
+    if (!canonicalPlaceId) return;
     await applyMetric({
-      canonicalPlaceId: placeId,
+      canonicalPlaceId,
       dayKey: businessDayKey(Date.now()),
       metric: "unfollows",
       delta: 1,
@@ -204,10 +255,10 @@ export const aggregateMenuCommentOnCreate = onDocumentCreated(
   {document: "menu_comments/{commentId}", region: REGION, maxInstances: 10},
   async (event) => {
     const data = event.data?.data() ?? {};
-    const placeId = text(data.canonicalPlaceId) || text(data.placeId);
-    if (!placeId) return;
+    const canonicalPlaceId = text(data.canonicalPlaceId) || text(data.placeId);
+    if (!canonicalPlaceId) return;
     await applyMetric({
-      canonicalPlaceId: placeId,
+      canonicalPlaceId,
       dayKey: businessDayKey(Date.now()),
       metric: "menuComments",
       delta: 1,
@@ -237,7 +288,7 @@ export async function reconcileAnalyticsDay(dayKey: string, nowMs: number): Prom
     .limit(RECONCILE_BATCH)
     .get();
 
-  const events: RawAnalyticsEvent[] = snap.docs.map((doc) => {
+  const rawEvents: RawAnalyticsEvent[] = snap.docs.map((doc) => {
     const raw = doc.data() ?? {};
     return {
       eventId: doc.id,
@@ -252,6 +303,17 @@ export async function reconcileAnalyticsDay(dayKey: string, nowMs: number): Prom
       metadata: raw.metadata,
     };
   });
+
+  // Resolve identity here too, or the nightly repair would happily rewrite a
+  // day's counters back under provider ids and undo the trigger's work. One
+  // lookup per DISTINCT place, cached, rather than one per event.
+  const resolution = new Map<string, string | null>();
+  for (const event of rawEvents) {
+    const placeId = text(event.placeId);
+    if (!placeId || resolution.has(placeId)) continue;
+    resolution.set(placeId, await resolveEventCanonicalId(placeId));
+  }
+  const events = applyCanonicalResolution(rawEvents, resolution);
 
   const buckets = aggregateEvents({events, nowMs});
   let repaired = 0;

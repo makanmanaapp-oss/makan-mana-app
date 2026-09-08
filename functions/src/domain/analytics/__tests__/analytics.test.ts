@@ -16,6 +16,7 @@ import {resolve} from "node:path";
 
 import {
   aggregateEvents,
+  applyCanonicalResolution,
   businessDayKey,
   conversionProxyActions,
   dayKeysBetween,
@@ -54,7 +55,10 @@ function ev(over: Partial<RawAnalyticsEvent> & {eventId: string}): RawAnalyticsE
 }
 
 function read(path: string) {
-  return readFileSync(resolve(process.cwd(), path), "utf8");
+  // Normalised: a fresh worktree may check these files out with CRLF, and a
+  // source assertion should be about the code, not the line endings.
+  return readFileSync(resolve(process.cwd(), path), "utf8")
+    .split(String.fromCharCode(13, 10)).join(String.fromCharCode(10));
 }
 
 // ── WHAT COUNTS ────────────────────────────────────────────────────────────
@@ -423,4 +427,145 @@ test("36. every not-tracked reason reaches the merchant payload", () => {
   for (const key of [...Object.keys(NOT_TRACKED_METRICS), ...Object.keys(NOT_YET_INSTRUMENTED)]) {
     assert.ok(summary.notTracked[key], `${key} must be explained to the merchant`);
   }
+});
+
+// ── HOTFIX: CANONICAL IDENTITY ─────────────────────────────────────────────
+
+const JOBS = read("src/analytics/analyticsJobs.ts");
+
+test("37. a provider id with no proven canonical mapping is NOT aggregated", () => {
+  const events = [
+    ev({eventId: "p1", placeId: "ChIJ1zW_d6tbzDER88JZkVupodY"}),
+    ev({eventId: "p2", placeId: "ChIJunknown"}),
+  ];
+  // The resolver proved nothing for either.
+  const resolution = new Map<string, string | null>([
+    ["ChIJ1zW_d6tbzDER88JZkVupodY", null],
+    ["ChIJunknown", null],
+  ]);
+  const resolved = applyCanonicalResolution(events, resolution);
+  assert.equal(resolved.length, 0, "unresolvable events must be dropped");
+  assert.equal(aggregateEvents({events: resolved, nowMs: NOW}).length, 0,
+    "and therefore produce no bucket at all");
+});
+
+test("38. a resolved provider id is aggregated under the CANONICAL id", () => {
+  const resolution = new Map<string, string | null>([
+    ["ChIJ1zW_d6tbzDER88JZkVupodY", "PLC-real-canonical"],
+  ]);
+  const resolved = applyCanonicalResolution(
+    [ev({eventId: "p1", placeId: "ChIJ1zW_d6tbzDER88JZkVupodY"})], resolution);
+  const [bucket] = aggregateEvents({events: resolved, nowMs: NOW});
+  assert.equal(bucket.canonicalPlaceId, "PLC-real-canonical");
+  assert.equal(bucket.counters.profileViews, 1);
+});
+
+test("39. an id that is ALREADY canonical stays canonical after verification", () => {
+  const resolution = new Map<string, string | null>([["PLC-abc", "PLC-abc"]]);
+  const resolved = applyCanonicalResolution(
+    [ev({eventId: "c1", placeId: "PLC-abc"})], resolution);
+  assert.equal(resolved[0].placeId, "PLC-abc");
+  assert.equal(aggregateEvents({events: resolved, nowMs: NOW})[0].canonicalPlaceId, "PLC-abc");
+});
+
+test("40. a provider id can NEVER become the key of an analytics document", () => {
+  const resolution = new Map<string, string | null>([
+    ["ChIJprovider", "PLC-canonical"],
+    ["ChIJorphan", null],
+  ]);
+  const resolved = applyCanonicalResolution([
+    ev({eventId: "a", placeId: "ChIJprovider"}),
+    ev({eventId: "b", placeId: "ChIJorphan"}),
+  ], resolution);
+  const buckets = aggregateEvents({events: resolved, nowMs: NOW});
+  for (const bucket of buckets) {
+    assert.equal(bucket.canonicalPlaceId.startsWith("ChIJ"), false,
+      `a provider id reached a document key: ${bucket.canonicalPlaceId}`);
+  }
+  assert.deepEqual(buckets.map((b) => b.canonicalPlaceId), ["PLC-canonical"]);
+});
+
+test("41. an event with no place at all is dropped, not defaulted", () => {
+  const resolved = applyCanonicalResolution(
+    [ev({eventId: "x", placeId: ""}), ev({eventId: "y", placeId: undefined})],
+    new Map(),
+  );
+  assert.equal(resolved.length, 0);
+});
+
+test("42. the trigger resolves BEFORE it aggregates, and fails closed", () => {
+  const resolveAt = JOBS.indexOf("await resolveEventCanonicalId(rawPlaceId)");
+  const applyAt = JOBS.indexOf("await applyMetric({\n      canonicalPlaceId,");
+  assert.ok(resolveAt > 0, "the trigger must resolve identity");
+  assert.ok(applyAt > resolveAt, "resolution must precede aggregation");
+  assert.ok(JOBS.includes('analyticsResolution: "unresolved"'),
+    "an unresolvable event is recorded, not silently dropped");
+  assert.ok(JOBS.includes("if (!canonicalPlaceId) {"), "and it returns before aggregating");
+});
+
+test("43. the trigger never aggregates under the raw event placeId", () => {
+  // The old bug, asserted as absent: `canonicalPlaceId: placeId` where placeId
+  // came straight off the event.
+  assert.equal(/canonicalPlaceId:\s*placeId\b/.test(JOBS), false,
+    "the raw event placeId must never be passed as the canonical id");
+  assert.ok(JOBS.includes("const canonicalPlaceId = await resolveEventCanonicalId"));
+});
+
+test("44. the nightly reconcile resolves too, or it would undo the trigger", () => {
+  assert.ok(JOBS.includes("applyCanonicalResolution(rawEvents, resolution)"),
+    "the repair path must resolve identity as well");
+  const cacheAt = JOBS.indexOf("const resolution = new Map<string, string | null>()");
+  const aggAt = JOBS.indexOf("aggregateEvents({events, nowMs})");
+  assert.ok(cacheAt > 0 && aggAt > cacheAt);
+});
+
+test("45. ONE lookup per distinct place, not one per event", () => {
+  assert.ok(JOBS.includes("if (!placeId || resolution.has(placeId)) continue;"),
+    "a busy day must not become thousands of identical lookups");
+});
+
+test("46. it reuses the EXISTING proven resolver — no second resolver", () => {
+  assert.ok(JOBS.includes("resolveProvenCanonicalRestaurantPlaceId"),
+    "the Wave 3 public-surface resolver is the authority");
+  for (const invented of ["fuzzy", "byName", "displayName", "levenshtein", "similar"]) {
+    assert.equal(JOBS.toLowerCase().includes(invented.toLowerCase()), false,
+      `identity must never be guessed (${invented})`);
+  }
+});
+
+test("47. follow and menu-comment aggregation still use the document's canonical id", () => {
+  // These were already correct and must stay untouched by the hotfix.
+  assert.ok(JOBS.includes('const canonicalPlaceId = text(data.canonicalPlaceId);'),
+    "document-sourced signals read canonicalPlaceId straight from the document");
+  const followBlock = JOBS.slice(JOBS.indexOf("aggregateRestaurantFollowOnCreate"),
+    JOBS.indexOf("aggregateRestaurantUnfollowOnDelete"));
+  assert.ok(followBlock.includes('metric: "newFollows"'));
+  assert.equal(followBlock.includes("resolveEventCanonicalId"), false,
+    "a document that already carries the canonical id needs no resolution");
+});
+
+test("48. one event id remains idempotent after the hotfix", () => {
+  const resolution = new Map<string, string | null>([["ChIJx", "PLC-x"]]);
+  const resolved = applyCanonicalResolution([
+    ev({eventId: "same", placeId: "ChIJx"}),
+    ev({eventId: "same", placeId: "ChIJx"}),
+    ev({eventId: "same", placeId: "ChIJx"}),
+  ], resolution);
+  assert.equal(aggregateEvents({events: resolved, nowMs: NOW})[0].counters.profileViews, 1);
+});
+
+test("49. no raw uid crosses the aggregate boundary", () => {
+  const resolution = new Map<string, string | null>([["ChIJx", "PLC-x"]]);
+  const resolved = applyCanonicalResolution(
+    [ev({eventId: "u1", placeId: "ChIJx", userId: "user-secret-abc"})], resolution);
+  const [bucket] = aggregateEvents({events: resolved, nowMs: NOW});
+  const json = JSON.stringify({
+    canonicalPlaceId: bucket.canonicalPlaceId,
+    dayKey: bucket.dayKey,
+    counters: bucket.counters,
+    distinctUsers: bucket.distinctUsers,
+  });
+  assert.equal(json.includes("user-secret-abc"), false,
+    "the aggregate carries a COUNT of people, never a person");
+  assert.equal(bucket.distinctUsers, 1);
 });
