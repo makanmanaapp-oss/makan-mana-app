@@ -1,7 +1,7 @@
 name: makan_mana
 description: MakanMana - AI food recommendation app untuk Malaysia.
 publish_to: "none"
-version: 0.1.9+16
+version: 0.1.9+17
 
 environment:
   sdk: ">=3.5.0 <4.0.0"
