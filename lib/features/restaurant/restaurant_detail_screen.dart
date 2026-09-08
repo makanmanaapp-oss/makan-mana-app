@@ -427,6 +427,14 @@ class _RestaurantDetailScreenState
       );
     }
 
+    // WAVE 6 HOTFIX — the LEGACY path is what PRODUCTION renders: the canonical
+    // flag is debug+QA only, so a release build never enters the branch above.
+    // Emitting the view only there would have made the fix invisible in every
+    // build that matters. Both paths call the same once-guarded helper, so a
+    // page cannot be counted twice, and this sits AFTER the not-found guard so
+    // a restaurant we could not load is not reported as a view.
+    _logDetailViewOnce(_resolvedCanonicalPlaceId);
+
     // ================= REDESIGN (Image 3) — laluan LEGASI (produksi) =========
     // Presentation-only: susunan hero → nama+badge → metrik → cip → aksi
     // ikon-sahaja → sebab → ulasan → lokasi. Semua callback & data kekal.

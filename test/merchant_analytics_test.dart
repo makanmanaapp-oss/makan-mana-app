@@ -287,6 +287,31 @@ void _hotfixCoverageTests() {
           reason: 'otherwise the requested id goes up and the server resolves it');
     });
 
+    test('16A. the PRODUCTION render path emits it, not just the canonical one',
+        () {
+      // The canonical detail flag is debug+QA only, so a release build renders
+      // the legacy path. A device check caught this: the first version of the
+      // fix logged only inside the canonical branch and emitted nothing in the
+      // build that actually ships.
+      final s = detail();
+      expect(s, contains('_logDetailViewOnce(_resolvedCanonicalPlaceId);'),
+          reason: 'the legacy production path must emit the view too');
+      final canonicalAt = s.indexOf('_logDetailViewOnce(canonicalId)');
+      final legacyAt = s.indexOf('_logDetailViewOnce(_resolvedCanonicalPlaceId)');
+      expect(canonicalAt, greaterThan(0));
+      expect(legacyAt, greaterThan(canonicalAt),
+          reason: 'both render paths log; the once-guard stops double counting');
+    });
+
+    test('16B. a restaurant that failed to load is not reported as a view', () {
+      final s = detail();
+      final notFoundAt = s.indexOf('body: const Center(child: Icon(Icons.error_outline))');
+      final legacyAt = s.indexOf('_logDetailViewOnce(_resolvedCanonicalPlaceId)');
+      expect(notFoundAt, greaterThan(0));
+      expect(legacyAt, greaterThan(notFoundAt),
+          reason: 'the log must sit AFTER the place == null guard');
+    });
+
     test('16. navigation is unchanged — the route push still happens', () {
       expect(suggestion(), contains("context.push('/restaurant/\${place.placeId}')"),
           reason: 'removing the log must not remove the navigation');
