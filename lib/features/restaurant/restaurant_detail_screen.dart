@@ -68,6 +68,39 @@ class _RestaurantDetailScreenState
   /// server-side and we keep what it actually returned.
   String? _resolvedCanonicalPlaceId;
 
+  /// WAVE 6 HOTFIX — `restaurant_detail_viewed` is emitted HERE, by the detail
+  /// surface itself, so every legitimate entry route counts: Spin/suggestion,
+  /// Explore, search, a check-in chip, a deep link. It used to be emitted only
+  /// by the suggestion screen, which meant a view arriving from Explore was
+  /// invisible and a merchant was quietly told fewer people looked than did.
+  ///
+  /// Once per page: guarded by this flag and fired after the frame, so a
+  /// preloaded or off-screen construction is not mistaken for someone looking
+  /// at the restaurant. The server additionally deduplicates per user per day.
+  bool _detailViewLogged = false;
+
+  /// Emit the view exactly once, preferring the identity the SERVER proved.
+  /// When no canonical identity was proven we still pass the requested id: the
+  /// backend resolves it through the same proven resolver and drops it if it
+  /// cannot be attributed, rather than aggregating under a provider id.
+  void _logDetailViewOnce(String? canonicalPlaceId) {
+    if (_detailViewLogged) return;
+    _detailViewLogged = true;
+    final attributionId =
+        (canonicalPlaceId != null && canonicalPlaceId.isNotEmpty)
+            ? canonicalPlaceId
+            : placeId;
+    if (attributionId.isEmpty) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      ref.read(eventLoggerProvider).logEvent(
+            EventType.restaurantDetailViewed,
+            placeId: attributionId,
+            sourceScreen: SourceScreen.restaurantDetail,
+          );
+    });
+  }
+
   /// WAVE 4 — active public offers returned alongside the profile. The
   /// server already applied the window and the viewer's eligibility, so
   /// this is rendered as-is and never re-filtered on the device clock.
@@ -278,6 +311,11 @@ class _RestaurantDetailScreenState
           final canonicalId = snapshot.connectionState == ConnectionState.done
               ? _resolvedCanonicalPlaceId
               : null;
+
+          // The page is genuinely resolved and about to be shown to the user.
+          if (snapshot.connectionState == ConnectionState.done) {
+            _logDetailViewOnce(canonicalId);
+          }
 
           return diag(
             CanonicalRestaurantDetailScreen(

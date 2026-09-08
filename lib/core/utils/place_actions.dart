@@ -31,26 +31,13 @@ void logSuggestionViewed(
       );
 }
 
-/// Log `restaurant_detail_viewed` bila skrin detail dibuka dari cadangan.
-/// Membawa konteks cadangan (suggestionId/sessionId/source) jika ada.
-void logRestaurantDetailViewed(
-  WidgetRef ref,
-  PlaceSummary place, {
-  String? suggestionId,
-  String? sessionId,
-  String? source,
-}) {
-  ref.read(eventLoggerProvider).logEvent(
-        EventType.restaurantDetailViewed,
-        placeId: place.placeId,
-        placeNameSnapshot: place.name,
-        suggestionId: suggestionId,
-        sessionId: sessionId,
-        sourceScreen: SourceScreen.restaurantDetail,
-        resultSource: place.source ?? source,
-        isSample: place.isSample,
-      );
-}
+// WAVE 6 HOTFIX — `logRestaurantDetailViewed` was removed from here.
+//
+// It existed so ONE screen could announce a detail view, and that is exactly
+// what went wrong: only the suggestion path ever called it, so a view arriving
+// from Explore or search was never counted. The detail screen now emits its own
+// view once, for every entry route. A per-caller helper would just invite the
+// same partial wiring again.
 
 /// Buka tempat dalam Google Maps + log `open_map`.
 /// Keutamaan URI: query_place_id (tempat Google sebenar) -> carian nama.

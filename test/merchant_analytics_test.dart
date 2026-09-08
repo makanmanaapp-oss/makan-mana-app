@@ -12,6 +12,8 @@ import 'package:makan_mana/features/merchant/merchant_error_mapper.dart';
 /// nombor yang menipu (0 yang sepatutnya "tidak dijejaki"), dan kod teknikal
 /// yang terlepas ke skrin pengguna.
 void main() {
+  _hotfixCoverageTests();
+
   group('MerchantErrorMapper — kod teknikal tidak boleh naik ke skrin', () {
     test('1. kod gRPC yang pernah bocor kini jadi ayat biasa', () {
       // Ini DUA kod sebenar yang dilihat pada telefon semasa kuota CPU projek
@@ -221,6 +223,73 @@ void main() {
       // "tidak dijejaki" dan bukan nombor rekaan.
       expect(promo.contains('onTap'), isFalse,
           reason: 'CTA palsu akan menjadikan metrik ketukan satu pembohongan');
+    });
+  });
+}
+
+/// WAVE 6 HOTFIX — restaurant-detail view coverage.
+///
+/// The defect was structural, so the guards are structural: the view must be
+/// emitted by the DETAIL SURFACE (every entry route reaches it) and by nothing
+/// else (or Spin would be counted twice and look better than Explore).
+void _hotfixCoverageTests() {
+  String detail() => File(
+      'lib/features/restaurant/restaurant_detail_screen.dart').readAsStringSync();
+  String suggestion() => File(
+      'lib/features/suggestions/suggestion_screen.dart').readAsStringSync();
+  String actions() => File('lib/core/utils/place_actions.dart').readAsStringSync();
+
+  group('Wave6 hotfix — detail view coverage', () {
+    test('10. the DETAIL SCREEN emits the view, so every entry route counts', () {
+      final s = detail();
+      expect(s, contains('EventType.restaurantDetailViewed'));
+      expect(s, contains('_logDetailViewOnce'));
+      expect(s, contains('SourceScreen.restaurantDetail'));
+    });
+
+    test('11. Explore and search reach it because the SURFACE logs, not the caller', () {
+      // Every route pushes /restaurant/:id, which mounts this one screen.
+      final s = detail();
+      expect(s, contains('class RestaurantDetailScreen'));
+      expect(s, contains('_logDetailViewOnce(canonicalId)'),
+          reason: 'logging must hang off the screen, not off a navigation site');
+    });
+
+    test('12. the old suggestion-only hook is gone, so Spin cannot double-count', () {
+      expect(suggestion().contains('logRestaurantDetailViewed'), isFalse,
+          reason: 'the suggestion screen must not log the view as well');
+      expect(actions().contains('void logRestaurantDetailViewed'), isFalse,
+          reason: 'the caller-specific helper is removed so it cannot be re-wired');
+    });
+
+    test('13. it fires at most once per page', () {
+      final s = detail();
+      expect(s, contains('bool _detailViewLogged = false;'));
+      expect(s, contains('if (_detailViewLogged) return;'));
+      expect(s, contains('_detailViewLogged = true;'));
+    });
+
+    test('14. a preloaded or off-screen build is not a view', () {
+      final s = detail();
+      // Fired after the frame, and only once the lookup genuinely resolved.
+      expect(s, contains('addPostFrameCallback'));
+      expect(s, contains('if (!mounted) return;'));
+      expect(s, contains('if (snapshot.connectionState == ConnectionState.done)'),
+          reason: 'a half-loaded page must not count as someone looking');
+    });
+
+    test('15. it prefers the SERVER-PROVEN canonical identity', () {
+      final s = detail();
+      expect(s, contains('canonicalPlaceId != null && canonicalPlaceId.isNotEmpty'),
+          reason: 'the proven id wins when the server resolved one');
+      expect(s, contains('? canonicalPlaceId'));
+      expect(s, contains(': placeId'),
+          reason: 'otherwise the requested id goes up and the server resolves it');
+    });
+
+    test('16. navigation is unchanged — the route push still happens', () {
+      expect(suggestion(), contains("context.push('/restaurant/\${place.placeId}')"),
+          reason: 'removing the log must not remove the navigation');
     });
   });
 }

@@ -226,11 +226,10 @@ class _SuggestionScreenState extends ConsumerState<SuggestionScreen> {
   }
 
   void _openDetail(PlaceSummary place) {
-    final s = ref.read(suggestionActionControllerProvider);
-    logRestaurantDetailViewed(ref, place,
-        suggestionId: s.suggestionId,
-        sessionId: s.sessionId,
-        source: s.source);
+    // WAVE 6 HOTFIX — the view is logged by the Restaurant Detail screen
+    // itself now, so every entry route is counted equally. Logging here as
+    // well would double-count exactly the suggestion path, making Spin look
+    // twice as effective as Explore.
     context.push('/restaurant/${place.placeId}');
   }
 
