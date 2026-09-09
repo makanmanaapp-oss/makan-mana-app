@@ -9,17 +9,16 @@
 /// Kelayakannya juga terikat kepada SATU UID keras, jadi walaupun selepas log
 /// masuk semula ia tidak akan aktif untuk akaun QA biasa.
 ///
-/// Modul ini menambah pengaktifan TERKECIL yang selamat, dinilai pada
-/// permulaan app (bukan pada peristiwa log masuk):
+/// Laluan biasa kekal:
 ///
 ///     kDebugMode && appFlavor == "qa"
 ///
-/// Kenapa syarat ini selamat:
-/// - `com.makanmana.apps.qa` ialah pakej dalaman BERASINGAN daripada produksi;
-/// - `appFlavor` ialah pemalar masa-kompil daripada `--flavor qa`, jadi binaan
-///   `--flavor prod` tidak boleh melaporkan "qa";
-/// - `kDebugMode` FALSE dalam sebarang binaan keluaran, jadi keluaran produksi
-///   sentiasa litar-pintas kepada FALSE walaupun flavor entah bagaimana "qa".
+/// Untuk SATU gate peranti Wave 2 sahaja, binaan QA release bertandatangan boleh
+/// mengaktifkan canonical melalui dart-define eksplisit
+/// `MM_MENU_SCROLL_DEVICE_QA=true`. Ia masih WAJIB flavor `qa`; flavor `prod`
+/// tidak boleh mengaktifkan override ini. Tujuannya hanya membolehkan APK QA
+/// bertandatangan yang serasi dengan app sedia ada diuji tanpa uninstall/data
+/// loss. Branch diagnosis ini tidak boleh digabungkan sebagai perubahan produk.
 ///
 /// Ia TIDAK menukar lalai global: `RestaurantDetailFlags
 /// .canonicalRestaurantDetailEnabled` kekal `false` dalam sumber.
@@ -34,30 +33,42 @@ import 'place_migration_flags.dart';
 /// android/app/build.gradle.kts (applicationIdSuffix ".qa").
 const String kQaFlavorName = 'qa';
 
+/// Override compile-time yang HANYA digunakan oleh real-device diagnostic gate.
+/// Default FALSE dalam semua binaan biasa.
+const bool kMenuScrollDeviceQaOverride = bool.fromEnvironment(
+  'MM_MENU_SCROLL_DEVICE_QA',
+  defaultValue: false,
+);
+
 /// Penilaian TULEN (tiada kesan sampingan, boleh diuji tanpa binaan sebenar).
-///
-/// Sengaja TIDAK menerima mana-mana rahsia/UID keras: satu-satunya isyarat ialah
-/// jenis binaan + flavor, kedua-duanya pemalar masa-kompil.
 bool qaCanonicalDetailAllowed({
   required bool isDebugBuild,
   required String? flavor,
+  bool? deviceQaOverride,
 }) {
-  if (!isDebugBuild) return false;
-  return flavor == kQaFlavorName;
+  if (flavor != kQaFlavorName) return false;
+  final diagnosticOverride =
+      deviceQaOverride ?? kMenuScrollDeviceQaOverride;
+  return isDebugBuild || diagnosticOverride;
 }
 
 /// Terapkan keupayaan kanonikal untuk binaan QA sahaja.
 ///
-/// Mengembalikan `true` HANYA apabila ia benar-benar mengaktifkan sesuatu.
-/// Dalam produksi/keluaran ia no-op dan mengembalikan `false`.
+/// Binaan biasa: hanya debug + qa. Binaan release QA hanya boleh masuk melalui
+/// override diagnostic eksplisit di atas. Prod sentiasa gagal syarat flavor.
 ///
 /// Nota: laluan baca kekal `canonicalPreferredWithLegacyFallback`, jadi apabila
 /// tiada penerbitan kanonikal AKTIF, skrin legasi yang selamat masih digunakan —
 /// tiada data menu direka.
-bool applyQaCanonicalActivation({bool? isDebugBuild, String? flavor}) {
+bool applyQaCanonicalActivation({
+  bool? isDebugBuild,
+  String? flavor,
+  bool? deviceQaOverride,
+}) {
   final allowed = qaCanonicalDetailAllowed(
     isDebugBuild: isDebugBuild ?? kDebugMode,
     flavor: flavor ?? appFlavor,
+    deviceQaOverride: deviceQaOverride,
   );
   if (!allowed) return false;
 
