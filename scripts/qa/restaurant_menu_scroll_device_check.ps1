@@ -23,6 +23,15 @@ function Invoke-Checked {
     }
 }
 
+function Get-AdbText {
+    param([Parameter(Mandatory = $true)][string[]]$Arguments)
+    $value = (& adb @Arguments 2>&1 | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0) {
+        throw "adb $($Arguments -join ' ') failed with exit code $LASTEXITCODE`n$value"
+    }
+    return $value
+}
+
 Write-Host ""
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host " MAKANMANA - RESTAURANT MENU SCROLL - REAL DEVICE GATE" -ForegroundColor Cyan
@@ -52,7 +61,11 @@ if ($dirty.Count -gt 0) {
 }
 
 $head = (git rev-parse HEAD).Trim()
-$versionLine = (Select-String -Path (Join-Path $RepoRoot "pubspec.yaml") -Pattern '^version:\s*(.+)$').Matches.Groups[1].Value.Trim()
+$versionMatch = Select-String -Path (Join-Path $RepoRoot "pubspec.yaml") -Pattern '^version:\s*(.+)$' | Select-Object -First 1
+if ($null -eq $versionMatch) {
+    throw "Unable to read version from pubspec.yaml."
+}
+$versionLine = $versionMatch.Matches[0].Groups[1].Value.Trim()
 
 Write-Host "Branch : $currentBranch" -ForegroundColor Green
 Write-Host "HEAD   : $head" -ForegroundColor Green
@@ -63,20 +76,26 @@ Write-Host "Package: $ExpectedPackage" -ForegroundColor Green
 Invoke-Checked -Label "Flutter version" -Command { flutter --version }
 Invoke-Checked -Label "ADB version" -Command { adb version }
 
-$deviceState = (& adb -s $ExpectedDevice get-state 2>&1 | Out-String).Trim()
-if ($LASTEXITCODE -ne 0 -or $deviceState -ne "device") {
+$deviceState = Get-AdbText -Arguments @('-s', $ExpectedDevice, 'get-state')
+if ($deviceState -ne "device") {
     Write-Host "adb devices:" -ForegroundColor Yellow
     & adb devices -l
     throw "Samsung QA device '$ExpectedDevice' is not online/authorized."
 }
 
+$model = Get-AdbText -Arguments @('-s', $ExpectedDevice, 'shell', 'getprop', 'ro.product.model')
+$android = Get-AdbText -Arguments @('-s', $ExpectedDevice, 'shell', 'getprop', 'ro.build.version.release')
+$sdk = Get-AdbText -Arguments @('-s', $ExpectedDevice, 'shell', 'getprop', 'ro.build.version.sdk')
+$wmSize = Get-AdbText -Arguments @('-s', $ExpectedDevice, 'shell', 'wm', 'size')
+$wmDensity = Get-AdbText -Arguments @('-s', $ExpectedDevice, 'shell', 'wm', 'density')
+
 $deviceInfo = @(
     "serial=$ExpectedDevice",
-    "model=$((& adb -s $ExpectedDevice shell getprop ro.product.model) -join '' | ForEach-Object { $_.Trim() })",
-    "android=$((& adb -s $ExpectedDevice shell getprop ro.build.version.release) -join '' | ForEach-Object { $_.Trim() })",
-    "sdk=$((& adb -s $ExpectedDevice shell getprop ro.build.version.sdk) -join '' | ForEach-Object { $_.Trim() })",
-    "wm_size=$((& adb -s $ExpectedDevice shell wm size) -join ' ' | ForEach-Object { $_.Trim() })",
-    "wm_density=$((& adb -s $ExpectedDevice shell wm density) -join ' ' | ForEach-Object { $_.Trim() })"
+    "model=$model",
+    "android=$android",
+    "sdk=$sdk",
+    "wm_size=$wmSize",
+    "wm_density=$wmDensity"
 )
 $deviceInfo | Set-Content -Path (Join-Path $EvidenceDir "device.txt") -Encoding UTF8
 $deviceInfo | ForEach-Object { Write-Host $_ }
@@ -116,9 +135,10 @@ Write-Host ""
 Write-Host "Installing with -r only (preserves QA app data)." -ForegroundColor Cyan
 Write-Host "The script will NOT uninstall the app automatically." -ForegroundColor Yellow
 $installOutput = (& adb -s $ExpectedDevice install -r $Apk 2>&1 | Out-String).Trim()
+$installExit = $LASTEXITCODE
 $installOutput | Set-Content -Path (Join-Path $EvidenceDir "adb-install.txt") -Encoding UTF8
 Write-Host $installOutput
-if ($LASTEXITCODE -ne 0 -or $installOutput -notmatch '(?m)^Success\s*$') {
+if ($installExit -ne 0 -or $installOutput -notmatch '(?m)^Success\s*$') {
     throw "QA APK install failed. If Android reports a signature mismatch, stop here; do NOT uninstall the existing QA app yet."
 }
 
@@ -154,7 +174,7 @@ Invoke-Checked -Label "Clear logcat immediately before reproduction" -Command {
 
 $remoteVideo = "/sdcard/makanmana-menu-scroll-$Stamp.mp4"
 Write-Host ""
-Write-Host "RECORDING 30 SAAT BERMULA SEKARANG — cuba scroll Menu naik/turun." -ForegroundColor Magenta
+Write-Host "RECORDING 30 SAAT BERMULA SEKARANG - cuba scroll Menu naik/turun." -ForegroundColor Magenta
 Invoke-Checked -Label "30-second device screen recording" -Command {
     adb -s $ExpectedDevice shell screenrecord --time-limit 30 --bit-rate 8000000 $remoteVideo
 }
