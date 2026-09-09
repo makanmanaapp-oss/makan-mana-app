@@ -7,16 +7,20 @@ import 'package:makan_mana/features/restaurant/canonical/canonical_restaurant_de
 import 'package:makan_mana/features/restaurant/canonical/restaurant_detail_view_model.dart';
 
 void main() {
-  DetailMenuItem item(int index) => DetailMenuItem(
+  DetailMenuItem item(int index, {String? category}) => DetailMenuItem(
         id: 'menu-$index',
         section: 'makanan',
         name: 'Menu item $index',
-        category: 'Makanan',
+        category: category ?? 'Makanan',
         price: 8 + index.toDouble(),
         available: true,
       );
 
-  RestaurantDetailViewModel vm({int menuCount = 28}) => RestaurantDetailViewModel(
+  RestaurantDetailViewModel vm({
+    int menuCount = 28,
+    bool multipleCategories = false,
+  }) =>
+      RestaurantDetailViewModel(
         placeId: 'scroll-regression-place',
         title: 'Scroll Regression Restaurant',
         subtitle: 'Mamak',
@@ -27,7 +31,15 @@ void main() {
         rating: const CardRatingModel(rating: 4.2),
         price: CardPriceModel.unknown,
         location: const LocationInfo(address: 'Jalan Ampang'),
-        menuItems: List.generate(menuCount, item),
+        menuItems: List.generate(
+          menuCount,
+          (index) => item(
+            index,
+            category: multipleCategories
+                ? const ['Nasi', 'Mee', 'Ayam', 'Minuman'][index % 4]
+                : null,
+          ),
+        ),
       );
 
   void usePhoneSize(WidgetTester tester) {
@@ -50,10 +62,21 @@ void main() {
         home: home,
       );
 
-  Future<void> pump(WidgetTester tester, {int menuCount = 28}) async {
+  Future<void> pump(
+    WidgetTester tester, {
+    int menuCount = 28,
+    bool multipleCategories = false,
+    void Function(DetailMenuItem item)? onOpenMenuItemComments,
+  }) async {
     usePhoneSize(tester);
     await tester.pumpWidget(localizedApp(
-      CanonicalRestaurantDetailScreen(vm: vm(menuCount: menuCount)),
+      CanonicalRestaurantDetailScreen(
+        vm: vm(
+          menuCount: menuCount,
+          multipleCategories: multipleCategories,
+        ),
+        onOpenMenuItemComments: onOpenMenuItemComments,
+      ),
     ));
     await tester.pumpAndSettle();
   }
@@ -65,22 +88,6 @@ void main() {
       matching: find.byType(Scrollable),
     ).first;
     return tester.state<ScrollableState>(scrollable);
-  }
-
-  Future<void> swipeToMenu(WidgetTester tester) async {
-    final views = find.byKey(const Key('restaurant-detail-tabviews'));
-    final tabs = find.byKey(const Key('restaurant-detail-tabs'));
-    final controller = DefaultTabController.of(tester.element(tabs));
-
-    await tester.fling(views, const Offset(-400, 0), 1200);
-    await tester.pumpAndSettle();
-    expect(controller.index, 1,
-        reason: 'Profil -> Ulasan horizontal swipe must remain enabled.');
-
-    await tester.fling(views, const Offset(-400, 0), 1200);
-    await tester.pumpAndSettle();
-    expect(controller.index, 2,
-        reason: 'Ulasan -> Menu horizontal swipe must remain enabled.');
   }
 
   testWidgets('Menu remains vertically scrollable after opening the third tab',
@@ -127,33 +134,6 @@ void main() {
             'Even an under-filled Menu must accept vertical drag so the shared header can collapse.');
   });
 
-  testWidgets('horizontal swipe reaches Menu before vertical scroll',
-      (tester) async {
-    await pump(tester);
-    await swipeToMenu(tester);
-  });
-
-  testWidgets('Menu remains vertically scrollable after horizontal swipe into it',
-      (tester) async {
-    await pump(tester);
-    await swipeToMenu(tester);
-
-    final menu = find.byKey(const Key('restaurant-menu-tab'));
-    final state = menuScrollableState(tester);
-
-    await tester.drag(menu, const Offset(0, -420));
-    await tester.pumpAndSettle();
-    final before = state.position.pixels;
-
-    await tester.drag(menu, const Offset(0, -320));
-    await tester.pumpAndSettle();
-    final after = state.position.pixels;
-
-    expect(after, greaterThan(before),
-        reason:
-            'Entering Menu by the approved horizontal tab swipe must not disable its vertical scroll.');
-  });
-
   testWidgets('Menu can scroll back toward top after scrolling down the list',
       (tester) async {
     await pump(tester);
@@ -180,27 +160,59 @@ void main() {
             'The Menu must remain bidirectionally scrollable after the NestedScrollView header has collapsed.');
   });
 
-  testWidgets('Menu to Ulasan horizontal swipe works after vertical scroll',
+  testWidgets('vertical drag starting on category rail reaches shared header',
       (tester) async {
-    await pump(tester);
+    await pump(tester, multipleCategories: true);
 
     await tester.tap(find.byKey(const Key('tab-menu')));
     await tester.pumpAndSettle();
 
-    final views = find.byKey(const Key('restaurant-detail-tabviews'));
+    final categories = find.byKey(const Key('restaurant-menu-categories'));
     final tabs = find.byKey(const Key('restaurant-detail-tabs'));
-    final controller = DefaultTabController.of(tester.element(tabs));
-    expect(controller.index, 2);
+    expect(categories, findsOneWidget);
+
+    final before = tester.getTopLeft(tabs).dy;
+    await tester.drag(categories, const Offset(0, -180));
+    await tester.pumpAndSettle();
+    final after = tester.getTopLeft(tabs).dy;
+
+    expect(after, lessThan(before - 20),
+        reason:
+            'The horizontal category rail must not swallow a vertical drag intended for Restaurant Detail scrolling.');
+  });
+
+  testWidgets('vertical drag starting on comment affordance still scrolls Menu',
+      (tester) async {
+    var commentOpens = 0;
+    await pump(
+      tester,
+      onOpenMenuItemComments: (_) => commentOpens++,
+    );
+
+    await tester.tap(find.byKey(const Key('tab-menu')));
+    await tester.pumpAndSettle();
 
     final menu = find.byKey(const Key('restaurant-menu-tab'));
+    final state = menuScrollableState(tester);
+
+    // Collapse the shared identity header first, while keeping menu rows active.
     await tester.drag(menu, const Offset(0, -420));
     await tester.pumpAndSettle();
-    await tester.drag(menu, const Offset(0, -320));
-    await tester.pumpAndSettle();
 
-    await tester.fling(views, const Offset(400, 0), 1200);
+    final comment = find.byKey(const ValueKey('restaurant-menu-comments-menu-4'));
+    await tester.ensureVisible(comment);
     await tester.pumpAndSettle();
-    expect(controller.index, 1,
-        reason: 'Menu -> Ulasan horizontal swipe must remain enabled.');
+    expect(comment, findsOneWidget);
+
+    final before = state.position.pixels;
+    await tester.drag(comment, const Offset(0, -120));
+    await tester.pumpAndSettle();
+    final after = state.position.pixels;
+
+    expect(after, greaterThan(before),
+        reason:
+            'The tappable Komen affordance must yield to a vertical drag so the Menu list keeps scrolling.');
+    expect(commentOpens, 0,
+        reason: 'A drag gesture must not be mistaken for a comment tap.');
   });
 }
