@@ -102,14 +102,17 @@ $deviceInfo | ForEach-Object { Write-Host $_ }
 
 Invoke-Checked -Label "flutter clean" -Command { flutter clean }
 Invoke-Checked -Label "flutter pub get" -Command { flutter pub get }
+Invoke-Checked -Label "QA canonical activation safety tests" -Command {
+    flutter test test/qa_canonical_activation_test.dart
+}
 Invoke-Checked -Label "Targeted Menu vertical-scroll tests" -Command {
     flutter test test/restaurant_detail_menu_scroll_regression_test.dart
 }
 Invoke-Checked -Label "Restaurant Detail tab contract" -Command {
     flutter test test/restaurant_detail_tabs_test.dart
 }
-Invoke-Checked -Label "Clean QA RELEASE APK build" -Command {
-    flutter build apk --release --flavor qa
+Invoke-Checked -Label "Clean signed QA RELEASE APK build with explicit Menu-scroll diagnostic override" -Command {
+    flutter build apk --release --flavor qa --dart-define=MM_MENU_SCROLL_DEVICE_QA=true
 }
 
 if (-not (Test-Path $Apk)) {
@@ -122,6 +125,7 @@ $apkSize = (Get-Item $Apk).Length
     "head=$head",
     "branch=$currentBranch",
     "version=$versionLine",
+    "diagnostic_override=MM_MENU_SCROLL_DEVICE_QA=true",
     "apk=$Apk",
     "apk_size=$apkSize",
     "apk_sha256=$apkHash"
@@ -130,6 +134,7 @@ $apkSize = (Get-Item $Apk).Length
 Write-Host ""
 Write-Host "QA release APK SHA256: $apkHash" -ForegroundColor Green
 Write-Host "QA release APK bytes : $apkSize" -ForegroundColor Green
+Write-Host "Canonical diagnostic override: ON for this QA release only" -ForegroundColor Yellow
 
 Write-Host ""
 Write-Host "Installing with -r only (preserves QA app data)." -ForegroundColor Cyan
@@ -161,12 +166,13 @@ Write-Host "============================================================" -Foreg
 Write-Host " DEVICE ACTION NEEDED" -ForegroundColor Yellow
 Write-Host "============================================================" -ForegroundColor Yellow
 Write-Host "1. Dalam MakanMana QA, buka Restaurant Detail yang ada banyak menu." -ForegroundColor White
-Write-Host "2. Tekan tab Menu." -ForegroundColor White
-Write-Host "3. Jangan swipe lagi." -ForegroundColor White
-Write-Host "4. Kembali ke PowerShell dan tekan ENTER." -ForegroundColor White
-Write-Host "5. Selepas recording bermula, cuba swipe Menu naik/turun berulang kali." -ForegroundColor White
+Write-Host "2. Pastikan UI BARU dengan tab Profil | Ulasan | Menu muncul." -ForegroundColor White
+Write-Host "3. Tekan tab Menu." -ForegroundColor White
+Write-Host "4. Jangan swipe lagi." -ForegroundColor White
+Write-Host "5. Kembali ke PowerShell dan tekan ENTER." -ForegroundColor White
+Write-Host "6. Selepas recording bermula, cuba swipe Menu naik/turun berulang kali." -ForegroundColor White
 Write-Host ""
-Read-Host "Tekan ENTER bila sudah berada pada tab Menu"
+Read-Host "Tekan ENTER bila sudah berada pada tab Menu UI baru"
 
 Invoke-Checked -Label "Clear logcat immediately before reproduction" -Command {
     adb -s $ExpectedDevice logcat -c
