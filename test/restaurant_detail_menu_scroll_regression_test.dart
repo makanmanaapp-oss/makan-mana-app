@@ -16,7 +16,7 @@ void main() {
         available: true,
       );
 
-  RestaurantDetailViewModel vm() => RestaurantDetailViewModel(
+  RestaurantDetailViewModel vm({int menuCount = 28}) => RestaurantDetailViewModel(
         placeId: 'scroll-regression-place',
         title: 'Scroll Regression Restaurant',
         subtitle: 'Mamak',
@@ -27,10 +27,10 @@ void main() {
         rating: const CardRatingModel(rating: 4.2),
         price: CardPriceModel.unknown,
         location: const LocationInfo(address: 'Jalan Ampang'),
-        menuItems: List.generate(28, item),
+        menuItems: List.generate(menuCount, item),
       );
 
-  Future<void> pump(WidgetTester tester) async {
+  Future<void> pump(WidgetTester tester, {int menuCount = 28}) async {
     tester.view.physicalSize = const Size(360, 640);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -46,7 +46,7 @@ void main() {
         GlobalCupertinoLocalizations.delegate,
       ],
       theme: AppTheme.light(),
-      home: CanonicalRestaurantDetailScreen(vm: vm()),
+      home: CanonicalRestaurantDetailScreen(vm: vm(menuCount: menuCount)),
     ));
     await tester.pumpAndSettle();
   }
@@ -67,10 +67,6 @@ void main() {
     ).first;
     final state = tester.state<ScrollableState>(scrollable);
 
-    // Collapse any remaining shared Restaurant Detail header first. A second
-    // vertical gesture must then advance the Menu list itself. This mirrors the
-    // physical-device failure where horizontal tab switching worked but the
-    // Menu content would not move down the list.
     await tester.drag(menu, const Offset(0, -420));
     await tester.pumpAndSettle();
     final before = state.position.pixels;
@@ -80,7 +76,32 @@ void main() {
     final after = state.position.pixels;
 
     expect(after, greaterThan(before),
-        reason: 'The Menu inner scroll position must advance after the shared header is collapsed.');
+        reason:
+            'The Menu inner scroll position must advance after the shared header is collapsed.');
+  });
+
+  testWidgets('short Menu can still collapse the shared Restaurant Detail header',
+      (tester) async {
+    // This reproduces the physical-device shape more closely than a long menu:
+    // the Menu body itself does not have enough rows to create inner extent, but
+    // a vertical drag must still reach NestedScrollView so the tall shared
+    // identity header can scroll away.
+    await pump(tester, menuCount: 2);
+
+    await tester.tap(find.byKey(const Key('tab-menu')));
+    await tester.pumpAndSettle();
+
+    final menu = find.byKey(const Key('restaurant-menu-tab'));
+    final tabs = find.byKey(const Key('restaurant-detail-tabs'));
+    final before = tester.getTopLeft(tabs).dy;
+
+    await tester.drag(menu, const Offset(0, -220));
+    await tester.pumpAndSettle();
+
+    final after = tester.getTopLeft(tabs).dy;
+    expect(after, lessThan(before - 20),
+        reason:
+            'Even an under-filled Menu must accept vertical drag so the shared header can collapse.');
   });
 
   testWidgets('vertical Menu scrolling does not break horizontal tab swipe',
@@ -105,6 +126,7 @@ void main() {
 
     await tester.fling(views, const Offset(400, 0), 1200);
     await tester.pumpAndSettle();
-    expect(controller.index, 1, reason: 'Menu -> Ulasan horizontal swipe must remain enabled.');
+    expect(controller.index, 1,
+        reason: 'Menu -> Ulasan horizontal swipe must remain enabled.');
   });
 }
