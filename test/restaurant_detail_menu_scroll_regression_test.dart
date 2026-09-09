@@ -5,6 +5,7 @@ import 'package:makan_mana/app/localization/app_localizations.dart';
 import 'package:makan_mana/app/theme.dart';
 import 'package:makan_mana/features/restaurant/canonical/canonical_restaurant_detail_screen.dart';
 import 'package:makan_mana/features/restaurant/canonical/restaurant_detail_view_model.dart';
+import 'package:makan_mana/features/shell/app_shell.dart';
 
 void main() {
   DetailMenuItem item(int index) => DetailMenuItem(
@@ -30,23 +31,30 @@ void main() {
         menuItems: List.generate(menuCount, item),
       );
 
-  Future<void> pump(WidgetTester tester, {int menuCount = 28}) async {
+  void usePhoneSize(WidgetTester tester) {
     tester.view.physicalSize = const Size(360, 640);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
+  }
 
-    await tester.pumpWidget(MaterialApp(
-      locale: const Locale('ms'),
-      supportedLocales: AppLocalizations.supportedLocales,
-      localizationsDelegates: const [
-        AppLocalizations.delegate,
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      theme: AppTheme.light(),
-      home: CanonicalRestaurantDetailScreen(vm: vm(menuCount: menuCount)),
+  Widget localizedApp(Widget home) => MaterialApp(
+        locale: const Locale('ms'),
+        supportedLocales: AppLocalizations.supportedLocales,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        theme: AppTheme.light(),
+        home: home,
+      );
+
+  Future<void> pump(WidgetTester tester, {int menuCount = 28}) async {
+    usePhoneSize(tester);
+    await tester.pumpWidget(localizedApp(
+      CanonicalRestaurantDetailScreen(vm: vm(menuCount: menuCount)),
     ));
     await tester.pumpAndSettle();
   }
@@ -82,10 +90,6 @@ void main() {
 
   testWidgets('short Menu can still collapse the shared Restaurant Detail header',
       (tester) async {
-    // This reproduces the physical-device shape more closely than a long menu:
-    // the Menu body itself does not have enough rows to create inner extent, but
-    // a vertical drag must still reach NestedScrollView so the tall shared
-    // identity header can scroll away.
     await pump(tester, menuCount: 2);
 
     await tester.tap(find.byKey(const Key('tab-menu')));
@@ -104,7 +108,7 @@ void main() {
             'Even an under-filled Menu must accept vertical drag so the shared header can collapse.');
   });
 
-  testWidgets('vertical Menu scrolling does not break horizontal tab swipe',
+  testWidgets('horizontal swipe reaches Menu before vertical scroll',
       (tester) async {
     await pump(tester);
 
@@ -114,8 +118,25 @@ void main() {
 
     await tester.fling(views, const Offset(-400, 0), 1200);
     await tester.pumpAndSettle();
+    expect(controller.index, 1,
+        reason: 'Profil -> Ulasan horizontal swipe must remain enabled.');
+
     await tester.fling(views, const Offset(-400, 0), 1200);
     await tester.pumpAndSettle();
+    expect(controller.index, 2,
+        reason: 'Ulasan -> Menu horizontal swipe must remain enabled.');
+  });
+
+  testWidgets('Menu to Ulasan horizontal swipe works after vertical scroll',
+      (tester) async {
+    await pump(tester);
+
+    await tester.tap(find.byKey(const Key('tab-menu')));
+    await tester.pumpAndSettle();
+
+    final views = find.byKey(const Key('restaurant-detail-tabviews'));
+    final tabs = find.byKey(const Key('restaurant-detail-tabs'));
+    final controller = DefaultTabController.of(tester.element(tabs));
     expect(controller.index, 2);
 
     final menu = find.byKey(const Key('restaurant-menu-tab'));
@@ -128,5 +149,47 @@ void main() {
     await tester.pumpAndSettle();
     expect(controller.index, 1,
         reason: 'Menu -> Ulasan horizontal swipe must remain enabled.');
+  });
+
+  testWidgets(
+      'Menu remains vertically scrollable inside MainNavigationPager shell PageView',
+      (tester) async {
+    usePhoneSize(tester);
+
+    await tester.pumpWidget(localizedApp(
+      MainNavigationPager(
+        currentIndex: 0,
+        onBranchSelected: (_) {},
+        children: [
+          CanonicalRestaurantDetailScreen(vm: vm()),
+          const SizedBox.shrink(),
+          const SizedBox.shrink(),
+          const SizedBox.shrink(),
+        ],
+      ),
+    ));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('tab-menu')));
+    await tester.pumpAndSettle();
+
+    final menu = find.byKey(const Key('restaurant-menu-tab'));
+    final scrollable = find.descendant(
+      of: menu,
+      matching: find.byType(Scrollable),
+    ).first;
+    final state = tester.state<ScrollableState>(scrollable);
+
+    await tester.drag(menu, const Offset(0, -420));
+    await tester.pumpAndSettle();
+    final before = state.position.pixels;
+
+    await tester.drag(menu, const Offset(0, -320));
+    await tester.pumpAndSettle();
+    final after = state.position.pixels;
+
+    expect(after, greaterThan(before),
+        reason:
+            'The outer bottom-navigation PageView must not steal Menu vertical scrolling.');
   });
 }
