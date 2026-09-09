@@ -23,12 +23,10 @@ void main() {
     });
 
     test('1. KELUARAN produksi tidak pernah diaktifkan oleh mekanisme QA', () {
-      // Keluaran + flavor prod.
       expect(
         qaCanonicalDetailAllowed(isDebugBuild: false, flavor: 'prod'),
         isFalse,
       );
-      // Walaupun flavor entah bagaimana "qa", keluaran tetap litar-pintas FALSE.
       expect(
         qaCanonicalDetailAllowed(isDebugBuild: false, flavor: kQaFlavorName),
         isFalse,
@@ -38,7 +36,29 @@ void main() {
       expect(
         applyQaCanonicalActivation(isDebugBuild: false, flavor: kQaFlavorName),
         isFalse,
-        reason: 'keluaran tidak boleh mengaktifkan apa-apa',
+        reason: 'release QA tanpa override diagnostic kekal OFF',
+      );
+      expect(RestaurantDetailFlags.canonicalRestaurantDetailEnabled, isFalse);
+    });
+
+    test('1a. prod kekal OFF walaupun override diagnostic diminta', () {
+      expect(
+        qaCanonicalDetailAllowed(
+          isDebugBuild: false,
+          flavor: 'prod',
+          deviceQaOverride: true,
+        ),
+        isFalse,
+      );
+
+      PlaceMigrationFeatureFlags.resetToSafeDefaults();
+      expect(
+        applyQaCanonicalActivation(
+          isDebugBuild: false,
+          flavor: 'prod',
+          deviceQaOverride: true,
+        ),
+        isFalse,
       );
       expect(RestaurantDetailFlags.canonicalRestaurantDetailEnabled, isFalse);
     });
@@ -66,7 +86,30 @@ void main() {
           applyQaCanonicalActivation(isDebugBuild: true, flavor: kQaFlavorName);
       expect(applied, isTrue);
       expect(RestaurantDetailFlags.canonicalRestaurantDetailEnabled, isTrue);
-      // Fallback legasi MESTI kekal: mod baca bukan canonical-only.
+      expect(
+        PlaceMigrationFeatureFlags.canonicalPlaceReadMode,
+        PlaceReadMode.canonicalPreferredWithLegacyFallback,
+      );
+    });
+
+    test('2a. signed release QA can opt in ONLY via explicit device override', () {
+      expect(
+        qaCanonicalDetailAllowed(
+          isDebugBuild: false,
+          flavor: kQaFlavorName,
+          deviceQaOverride: true,
+        ),
+        isTrue,
+      );
+
+      PlaceMigrationFeatureFlags.resetToSafeDefaults();
+      final applied = applyQaCanonicalActivation(
+        isDebugBuild: false,
+        flavor: kQaFlavorName,
+        deviceQaOverride: true,
+      );
+      expect(applied, isTrue);
+      expect(RestaurantDetailFlags.canonicalRestaurantDetailEnabled, isTrue);
       expect(
         PlaceMigrationFeatureFlags.canonicalPlaceReadMode,
         PlaceReadMode.canonicalPreferredWithLegacyFallback,
@@ -74,9 +117,6 @@ void main() {
     });
 
     test('2b. pengaktifan QA dinilai pada permulaan app, bukan pada log masuk', () {
-      // Punca asal kegagalan QA: satu-satunya laluan pengaktifan hanya dipanggil
-      // dari skrin log masuk, jadi pelancaran dengan sesi sedia ada tidak pernah
-      // mengaktifkannya. main() mesti memanggilnya secara langsung.
       final main = read('lib/main.dart');
       expect(main, contains('applyQaCanonicalActivation()'));
       expect(main, contains('qa_canonical_activation.dart'));
@@ -97,13 +137,9 @@ void main() {
     test('mekanisme QA tidak menggunakan rahsia atau UID keras', () {
       final source =
           read('lib/features/place_migration/qa_canonical_activation.dart');
-      // Hanya jenis binaan + flavor yang menentukan pengaktifan.
       expect(source, contains('isDebugBuild'));
       expect(source, contains('appFlavor'));
-      // Tiada UID Firebase ditanam: UID akan muncul sebagai LITERAL berpetik
-      // alfanumerik panjang. (Memadan pengecam biasa seperti
-      // `canonicalPreferredWithLegacyFallback` adalah positif palsu, jadi
-      // pemadanan dibuat pada literal string sahaja.)
+      expect(source, contains('MM_MENU_SCROLL_DEVICE_QA'));
       expect(
         RegExp(r"'[A-Za-z0-9]{20,}'").hasMatch(source),
         isFalse,
