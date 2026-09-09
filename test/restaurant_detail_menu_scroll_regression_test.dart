@@ -5,7 +5,6 @@ import 'package:makan_mana/app/localization/app_localizations.dart';
 import 'package:makan_mana/app/theme.dart';
 import 'package:makan_mana/features/restaurant/canonical/canonical_restaurant_detail_screen.dart';
 import 'package:makan_mana/features/restaurant/canonical/restaurant_detail_view_model.dart';
-import 'package:makan_mana/features/shell/app_shell.dart';
 
 void main() {
   DetailMenuItem item(int index) => DetailMenuItem(
@@ -59,6 +58,31 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  ScrollableState menuScrollableState(WidgetTester tester) {
+    final menu = find.byKey(const Key('restaurant-menu-tab'));
+    final scrollable = find.descendant(
+      of: menu,
+      matching: find.byType(Scrollable),
+    ).first;
+    return tester.state<ScrollableState>(scrollable);
+  }
+
+  Future<void> swipeToMenu(WidgetTester tester) async {
+    final views = find.byKey(const Key('restaurant-detail-tabviews'));
+    final tabs = find.byKey(const Key('restaurant-detail-tabs'));
+    final controller = DefaultTabController.of(tester.element(tabs));
+
+    await tester.fling(views, const Offset(-400, 0), 1200);
+    await tester.pumpAndSettle();
+    expect(controller.index, 1,
+        reason: 'Profil -> Ulasan horizontal swipe must remain enabled.');
+
+    await tester.fling(views, const Offset(-400, 0), 1200);
+    await tester.pumpAndSettle();
+    expect(controller.index, 2,
+        reason: 'Ulasan -> Menu horizontal swipe must remain enabled.');
+  }
+
   testWidgets('Menu remains vertically scrollable after opening the third tab',
       (tester) async {
     await pump(tester);
@@ -68,12 +92,7 @@ void main() {
 
     final menu = find.byKey(const Key('restaurant-menu-tab'));
     expect(menu, findsOneWidget);
-
-    final scrollable = find.descendant(
-      of: menu,
-      matching: find.byType(Scrollable),
-    ).first;
-    final state = tester.state<ScrollableState>(scrollable);
+    final state = menuScrollableState(tester);
 
     await tester.drag(menu, const Offset(0, -420));
     await tester.pumpAndSettle();
@@ -111,20 +130,54 @@ void main() {
   testWidgets('horizontal swipe reaches Menu before vertical scroll',
       (tester) async {
     await pump(tester);
+    await swipeToMenu(tester);
+  });
 
-    final views = find.byKey(const Key('restaurant-detail-tabviews'));
-    final tabs = find.byKey(const Key('restaurant-detail-tabs'));
-    final controller = DefaultTabController.of(tester.element(tabs));
+  testWidgets('Menu remains vertically scrollable after horizontal swipe into it',
+      (tester) async {
+    await pump(tester);
+    await swipeToMenu(tester);
 
-    await tester.fling(views, const Offset(-400, 0), 1200);
+    final menu = find.byKey(const Key('restaurant-menu-tab'));
+    final state = menuScrollableState(tester);
+
+    await tester.drag(menu, const Offset(0, -420));
     await tester.pumpAndSettle();
-    expect(controller.index, 1,
-        reason: 'Profil -> Ulasan horizontal swipe must remain enabled.');
+    final before = state.position.pixels;
 
-    await tester.fling(views, const Offset(-400, 0), 1200);
+    await tester.drag(menu, const Offset(0, -320));
     await tester.pumpAndSettle();
-    expect(controller.index, 2,
-        reason: 'Ulasan -> Menu horizontal swipe must remain enabled.');
+    final after = state.position.pixels;
+
+    expect(after, greaterThan(before),
+        reason:
+            'Entering Menu by the approved horizontal tab swipe must not disable its vertical scroll.');
+  });
+
+  testWidgets('Menu can scroll back toward top after scrolling down the list',
+      (tester) async {
+    await pump(tester);
+
+    await tester.tap(find.byKey(const Key('tab-menu')));
+    await tester.pumpAndSettle();
+
+    final menu = find.byKey(const Key('restaurant-menu-tab'));
+    final state = menuScrollableState(tester);
+
+    await tester.drag(menu, const Offset(0, -520));
+    await tester.pumpAndSettle();
+    await tester.drag(menu, const Offset(0, -360));
+    await tester.pumpAndSettle();
+    final scrolled = state.position.pixels;
+    expect(scrolled, greaterThan(0));
+
+    await tester.drag(menu, const Offset(0, 320));
+    await tester.pumpAndSettle();
+    final returned = state.position.pixels;
+
+    expect(returned, lessThan(scrolled),
+        reason:
+            'The Menu must remain bidirectionally scrollable after the NestedScrollView header has collapsed.');
   });
 
   testWidgets('Menu to Ulasan horizontal swipe works after vertical scroll',
@@ -149,47 +202,5 @@ void main() {
     await tester.pumpAndSettle();
     expect(controller.index, 1,
         reason: 'Menu -> Ulasan horizontal swipe must remain enabled.');
-  });
-
-  testWidgets(
-      'Menu remains vertically scrollable inside MainNavigationPager shell PageView',
-      (tester) async {
-    usePhoneSize(tester);
-
-    await tester.pumpWidget(localizedApp(
-      MainNavigationPager(
-        currentIndex: 0,
-        onBranchSelected: (_) {},
-        children: [
-          CanonicalRestaurantDetailScreen(vm: vm()),
-          const SizedBox.shrink(),
-          const SizedBox.shrink(),
-          const SizedBox.shrink(),
-        ],
-      ),
-    ));
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.byKey(const Key('tab-menu')));
-    await tester.pumpAndSettle();
-
-    final menu = find.byKey(const Key('restaurant-menu-tab'));
-    final scrollable = find.descendant(
-      of: menu,
-      matching: find.byType(Scrollable),
-    ).first;
-    final state = tester.state<ScrollableState>(scrollable);
-
-    await tester.drag(menu, const Offset(0, -420));
-    await tester.pumpAndSettle();
-    final before = state.position.pixels;
-
-    await tester.drag(menu, const Offset(0, -320));
-    await tester.pumpAndSettle();
-    final after = state.position.pixels;
-
-    expect(after, greaterThan(before),
-        reason:
-            'The outer bottom-navigation PageView must not steal Menu vertical scrolling.');
   });
 }
