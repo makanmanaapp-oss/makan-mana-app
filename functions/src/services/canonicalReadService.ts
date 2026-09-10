@@ -34,29 +34,44 @@ interface ResolvedCanonical {
   view: CanonicalPlaceView | null;
 }
 
-/** Selesaikan providerId → kanonikal + penerbitan aktif (BACA server-only). */
+function looksCanonicalId(value: string): boolean {
+  return value.startsWith("PLC-") || value.startsWith("CCM-");
+}
+
+/** Selesaikan providerId / canonicalId → kanonikal + penerbitan aktif (BACA server-only). */
 export async function readCanonicalForProvider(providerId: string): Promise<ResolvedCanonical> {
   if (!providerId) return { aliasResolved: false, view: null };
 
-  // 1) alias: providerId → canonicalPlaceId (bounded hops, tolak gelung).
-  let current = providerId;
-  const seen = new Set<string>([current]);
+  // Master-place candidate seeds use the canonical id itself as `placeId` when
+  // no provider id exists. Resolve that identity directly instead of requiring
+  // a synthetic self-alias. Limit the direct probe to canonical id namespaces so
+  // ordinary provider candidates retain the original one-alias-read cost.
   let canonicalId: string | null = null;
-  for (let hop = 0; hop < MAX_ALIAS_HOPS; hop++) {
-    const aliasDoc = await db.collection(C_ALIAS).doc(current).get();
-    if (!aliasDoc.exists) break;
-    const d = aliasDoc.data() ?? {};
-    if (d.status === "blocked") return { aliasResolved: false, view: null };
-    const next = str(d.canonicalPlaceId);
-    if (!next) break;
-    canonicalId = next;
-    if (next === current) break;
-    if (seen.has(next)) return { aliasResolved: false, view: null }; // gelung
-    seen.add(next);
-    current = next;
-    // Jika next ialah ID kanonikal (bukan alias lain), berhenti.
-    const nextAlias = await db.collection(C_ALIAS).doc(next).get();
-    if (!nextAlias.exists) break;
+  if (looksCanonicalId(providerId)) {
+    const direct = await db.collection(C_REGISTRY).doc(providerId).get();
+    if (direct.exists) canonicalId = providerId;
+  }
+
+  // 1) alias: providerId → canonicalPlaceId (bounded hops, tolak gelung).
+  if (!canonicalId) {
+    let current = providerId;
+    const seen = new Set<string>([current]);
+    for (let hop = 0; hop < MAX_ALIAS_HOPS; hop++) {
+      const aliasDoc = await db.collection(C_ALIAS).doc(current).get();
+      if (!aliasDoc.exists) break;
+      const d = aliasDoc.data() ?? {};
+      if (d.status === "blocked") return { aliasResolved: false, view: null };
+      const next = str(d.canonicalPlaceId);
+      if (!next) break;
+      canonicalId = next;
+      if (next === current) break;
+      if (seen.has(next)) return { aliasResolved: false, view: null }; // gelung
+      seen.add(next);
+      current = next;
+      // Jika next ialah ID kanonikal (bukan alias lain), berhenti.
+      const nextAlias = await db.collection(C_ALIAS).doc(next).get();
+      if (!nextAlias.exists) break;
+    }
   }
   if (!canonicalId) return { aliasResolved: false, view: null };
 
