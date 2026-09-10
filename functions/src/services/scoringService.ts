@@ -5,6 +5,11 @@ import {PlaceCandidate} from "../types/place";
  * Skor pemberat penuh Milestone 4 (rujuk seksyen 20 spec):
  * finalScore = jumlah(komponen * pemberat) - penalti sejarah.
  * Setiap komponen dinormalkan 0..1.
+ *
+ * Registry-first policy: Control Center candidates (dataSource=canonical before
+ * ranking) still receive the same score and safety adjustments, but they are a
+ * higher-authority source than stale provider-only rows. Curated and provider
+ * groups each preserve their algorithmic score order.
  */
 
 export interface ScoringContext {
@@ -238,7 +243,12 @@ export function scoreAndRank(
 
       return {place: p, score: total / maxTotal, reasons, negativeSignals};
     })
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => {
+      const aCurated = a.place.dataSource === "canonical" ? 1 : 0;
+      const bCurated = b.place.dataSource === "canonical" ? 1 : 0;
+      if (aCurated !== bCurated) return bCurated - aCurated;
+      return b.score - a.score;
+    });
 
   return scored.map((s) => ({
     ...s.place,
