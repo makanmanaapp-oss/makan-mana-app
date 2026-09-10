@@ -6,6 +6,7 @@
  * SELEPAS ini dalam perkhidmatan sesi. Modul TULEN (tiada I/O).
  */
 import { PlaceCandidate } from "../../types/place";
+import { prioritizeCanonicalCandidates } from "../places/canonical/canonicalPriority";
 import { RecommendationUserContext } from "./recommendationContext";
 import { applyHardSafety, HardSafetyResult, SafetyFilterReason } from "./safetyFilter";
 import { rankCandidatesV2, ScoredCandidate, SCORING_VERSION } from "./scoringModel";
@@ -109,10 +110,16 @@ export function rankUnified(
 
   const { ranked, scored } = rankCandidatesV2(safety.eligible, ctx);
 
+  // MASTER PLACE PRIORITY — skor kekal autoritatif di dalam setiap tier.
+  // Stable partition ini hanya memastikan tempat yang SUDAH disahkan/diterbitkan
+  // kanonikal berada di atas suggestion provider-only yang belum dikemas kini.
+  // Tiada score boost dan tiada nilai direka.
+  const canonicalFirst = prioritizeCanonicalCandidates(ranked);
+
   // Explainability OFF → jangan pulangkan sebab/isyarat (rollback berbutir).
   const outRanked = subFlags.explain
-    ? ranked
-    : ranked.map((p) => ({ ...p, matchReasonKeys: [], negativeSignals: [] }));
+    ? canonicalFirst
+    : canonicalFirst.map((p) => ({ ...p, matchReasonKeys: [], negativeSignals: [] }));
 
   const top = scored[0]?.score ?? null;
   const second = scored[1]?.score ?? null;
