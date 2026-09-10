@@ -160,17 +160,24 @@ async function publishMasterPlace(resourceId: string, payload: Plain, requestId:
   });
 
   const result = await db.runTransaction(async (tx) => {
+    // Firestore transaction invariant: complete ALL reads before first write.
     const [registrySnap, headSnap, existingPublication, cellSnap] = await Promise.all([
       tx.get(registryRef),
       tx.get(headRef),
       tx.get(publicationRef),
       tx.get(cellRef),
     ]);
+    const activePublicationId = optionalText(headSnap.data()?.activePublicationId, 240);
+    const activeSnap = activePublicationId
+      ? await tx.get(db.collection("place_publications").doc(activePublicationId))
+      : null;
 
     const existingCandidates = (cellSnap.data()?.candidates as PlaceCandidate[] | undefined) ?? [];
     const seeded = prioritizeCanonicalCandidates(
       upsertMasterCandidateSeed(existingCandidates, seed),
     ).slice(0, MAX_CANDIDATES_PER_CELL);
+    const oldPublication = activeSnap?.exists ? (activeSnap.data() ?? {}) as Plain : {};
+    const oldVersion = typeof oldPublication.versionNumber === "number" ? oldPublication.versionNumber : 0;
 
     // Always repair/refresh the recommendation seed, including idempotent retry.
     // Do not touch lastDiscoveryAt: publishing a master place must not suppress
@@ -193,10 +200,6 @@ async function publishMasterPlace(resourceId: string, payload: Plain, requestId:
       };
     }
 
-    const activePublicationId = optionalText(headSnap.data()?.activePublicationId, 240);
-    const activeSnap = activePublicationId ? await tx.get(db.collection("place_publications").doc(activePublicationId)) : null;
-    const oldPublication = activeSnap?.exists ? (activeSnap.data() ?? {}) as Plain : {};
-    const oldVersion = typeof oldPublication.versionNumber === "number" ? oldPublication.versionNumber : 0;
     const versionNumber = oldVersion + 1;
 
     tx.set(registryRef, {
