@@ -4,6 +4,13 @@
  * Alir: sub-bendera degradasi konteks → penapis KESELAMATAN KERAS → markah V2 →
  * susun. Penindasan sesi / putaran / kepelbagaian / overlay kanonikal berlaku
  * SELEPAS ini dalam perkhidmatan sesi. Modul TULEN (tiada I/O).
+ *
+ * Registry-first policy: first-party Control Center candidates enter this module
+ * already marked dataSource="canonical". They STILL pass the same hard-safety
+ * filter and receive the same Algorithm 2 score. After that, source authority is
+ * a stable partition: curated first, algorithm score order preserved inside the
+ * curated and provider groups. This makes owner-curated fresh data outrank stale
+ * provider suggestions without bypassing safety or fabricating rating data.
  */
 import { PlaceCandidate } from "../../types/place";
 import { RecommendationUserContext } from "./recommendationContext";
@@ -46,6 +53,9 @@ export interface UnifiedRankDiagnostics {
   diversityApplied: boolean;
   topReasonKeys: string[];
   negativeSignalKeys: string[];
+  // Registry-first observability (owner diagnostics only via caller).
+  curatedEligibleCount: number;
+  curatedPriorityApplied: boolean;
   // Part C/D/E — bukti Fit/Sport + wallet dipercayai (owner-only).
   fitEvidenceLevel: number;
   sportEvidenceLevel: number;
@@ -92,6 +102,16 @@ export function applySubFlags(
   return c;
 }
 
+function registryFirst<T>(items: readonly T[], placeOf: (item: T) => PlaceCandidate): T[] {
+  const curated: T[] = [];
+  const provider: T[] = [];
+  for (const item of items) {
+    if (placeOf(item).dataSource === "canonical") curated.push(item);
+    else provider.push(item);
+  }
+  return [...curated, ...provider];
+}
+
 /** Susun calon melalui keselamatan keras + model V2 bersatu. */
 export function rankUnified(
   candidates: PlaceCandidate[],
@@ -107,7 +127,10 @@ export function rankUnified(
     excludeClosed: opts.excludeClosed,
   });
 
-  const { ranked, scored } = rankCandidatesV2(safety.eligible, ctx);
+  const base = rankCandidatesV2(safety.eligible, ctx);
+  const ranked = registryFirst(base.ranked, (p) => p);
+  const scored = registryFirst(base.scored, (s) => s.place);
+  const curatedEligibleCount = safety.eligible.filter((p) => p.dataSource === "canonical").length;
 
   // Explainability OFF → jangan pulangkan sebab/isyarat (rollback berbutir).
   const outRanked = subFlags.explain
@@ -134,6 +157,8 @@ export function rankUnified(
     diversityApplied: false, // diisi oleh perkhidmatan sesi selepas kepelbagaian
     topReasonKeys: scored[0]?.reasons ?? [],
     negativeSignalKeys: scored[0]?.negativeSignals ?? [],
+    curatedEligibleCount,
+    curatedPriorityApplied: curatedEligibleCount > 0,
     fitEvidenceLevel: scored[0]?.fitEvidenceLevel ?? 0,
     sportEvidenceLevel: scored[0]?.sportEvidenceLevel ?? 0,
     nutritionVerified: scored[0]?.nutritionVerified ?? false,
