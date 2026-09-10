@@ -6,6 +6,10 @@
  * SDK, kemudian menerapkan overlay TULEN. Digunakan oleh getNearbyPlaces &
  * getSuggestions UNTUK KOHORT SAHAJA. Awam tidak pernah memanggil ini.
  *
+ * Registry-first extension: a first-party candidate may already use the
+ * canonicalPlaceId as placeId. Resolve that direct identity before trying the
+ * provider-alias chain so Control Center-only places remain canonical end-to-end.
+ *
  * TIDAK PERNAH menulis. TIDAK PERNAH mendedahkan koleksi server-only kepada klien.
  */
 import { db } from "../config/firebase";
@@ -34,35 +38,43 @@ interface ResolvedCanonical {
   view: CanonicalPlaceView | null;
 }
 
-/** Selesaikan providerId → kanonikal + penerbitan aktif (BACA server-only). */
+/** Selesaikan providerId ATAU canonicalPlaceId → penerbitan aktif. */
 export async function readCanonicalForProvider(providerId: string): Promise<ResolvedCanonical> {
   if (!providerId) return { aliasResolved: false, view: null };
 
-  // 1) alias: providerId → canonicalPlaceId (bounded hops, tolak gelung).
-  let current = providerId;
-  const seen = new Set<string>([current]);
-  let canonicalId: string | null = null;
-  for (let hop = 0; hop < MAX_ALIAS_HOPS; hop++) {
-    const aliasDoc = await db.collection(C_ALIAS).doc(current).get();
-    if (!aliasDoc.exists) break;
-    const d = aliasDoc.data() ?? {};
-    if (d.status === "blocked") return { aliasResolved: false, view: null };
-    const next = str(d.canonicalPlaceId);
-    if (!next) break;
-    canonicalId = next;
-    if (next === current) break;
-    if (seen.has(next)) return { aliasResolved: false, view: null }; // gelung
-    seen.add(next);
-    current = next;
-    // Jika next ialah ID kanonikal (bukan alias lain), berhenti.
-    const nextAlias = await db.collection(C_ALIAS).doc(next).get();
-    if (!nextAlias.exists) break;
+  // 0) Registry-first: candidates published by MakanMana may already carry the
+  // canonical ID directly (no provider alias exists by design).
+  const directRegistrySnap = await db.collection(C_REGISTRY).doc(providerId).get();
+  let canonicalId: string | null = directRegistrySnap.exists ? providerId : null;
+
+  // 1) Provider alias → canonicalPlaceId (bounded hops, tolak gelung).
+  if (!canonicalId) {
+    let current = providerId;
+    const seen = new Set<string>([current]);
+    for (let hop = 0; hop < MAX_ALIAS_HOPS; hop++) {
+      const aliasDoc = await db.collection(C_ALIAS).doc(current).get();
+      if (!aliasDoc.exists) break;
+      const d = aliasDoc.data() ?? {};
+      if (d.status === "blocked") return { aliasResolved: false, view: null };
+      const next = str(d.canonicalPlaceId);
+      if (!next) break;
+      canonicalId = next;
+      if (next === current) break;
+      if (seen.has(next)) return { aliasResolved: false, view: null }; // gelung
+      seen.add(next);
+      current = next;
+      // Jika next ialah ID kanonikal (bukan alias lain), berhenti.
+      const nextAlias = await db.collection(C_ALIAS).doc(next).get();
+      if (!nextAlias.exists) break;
+    }
   }
   if (!canonicalId) return { aliasResolved: false, view: null };
 
   // 2) registry + head + publication aktif.
   const [regSnap, headSnap] = await Promise.all([
-    db.collection(C_REGISTRY).doc(canonicalId).get(),
+    canonicalId === providerId && directRegistrySnap.exists
+      ? Promise.resolve(directRegistrySnap)
+      : db.collection(C_REGISTRY).doc(canonicalId).get(),
     db.collection(C_HEAD).doc(canonicalId).get(),
   ]);
   if (!regSnap.exists || !headSnap.exists) return { aliasResolved: true, view: null };
