@@ -1,4 +1,5 @@
 import {DEFAULT_WEIGHTS} from "../config/constants";
+import {prioritizeCanonicalCandidates} from "../domain/places/canonical/canonicalPriority";
 import {PlaceCandidate} from "../types/place";
 
 /**
@@ -98,7 +99,6 @@ function moodScore(place: PlaceCandidate, mood?: string | null): number {
       return cuisine.includes("cafe") || cuisine.includes("kafe") ||
         cuisine.includes("coffee") ? 1 : 0.3;
     case "moodHujan":
-      // Hari hujan: makanan panas berkuah / selesa.
       return cuisine.includes("thai") || cuisine.includes("soup") ||
         cuisine.includes("mamak") || cuisine.includes("noodle") ||
         cuisine.includes("ramen") ? 1 : 0.45;
@@ -143,7 +143,6 @@ export function scoreAndRank(
   const spicy = ctx.spicyPreference ?? 0;
   const dietType = (ctx.dietType ?? "none").toLowerCase();
   const fitGoal = (ctx.fitGoal ?? "").toLowerCase();
-  // Isyarat food-memory boleh laraskan pemberat jarak/bajet sedikit.
   const distanceWeight = w.distance * (wantsCloser ? 1.4 : 1);
   const budgetWeight = w.budget * (wantsCheaper ? 1.4 : 1);
 
@@ -166,23 +165,16 @@ export function scoreAndRank(
 
       const confidence = Math.min(1, Math.log10(p.userRatingCount + 1) / 3);
       const rating = (p.rating / 5) * confidence;
-      if (p.rating >= 4.5 && p.userRatingCount >= 100) {
-        reasons.push("highRating");
-      }
+      if (p.rating >= 4.5 && p.userRatingCount >= 100) reasons.push("highRating");
 
       const variety = lastCuisines.some((c) => cuisine.includes(c)) ? 0.3 : 1;
-
       const mood = moodScore(p, ctx.mood);
       if (mood >= 0.9) reasons.push("fitsMood");
-
       const userPref = favorites.some((c) => cuisine.includes(c)) ? 1 : 0.5;
-
       const historyPenalty = recent.has(p.placeId) ? 0.5 : 0;
-
       const goal = goalScore(p, ctx.dietGoal);
       const goalWeight = ctx.dietGoal ? 0.9 : 0;
 
-      // ---- Prompt 6: keselamatan + peribadi (best-effort, tiada jaminan) ----
       let safetyAdj = 0;
       if (allergies.length > 0) {
         const conflict = allergies.some((a) =>
@@ -191,7 +183,6 @@ export function scoreAndRank(
           safetyAdj -= 1.2;
           negativeSignals.push("possible_allergy_conflict");
         } else {
-          // Data tidak jelas — kami TIDAK dakwa selamat.
           negativeSignals.push("allergy_data_unknown");
         }
       }
@@ -205,15 +196,10 @@ export function scoreAndRank(
         }
       }
       if (dietType === "vegetarian" || dietType === "vegan") {
-        if (VEG_POSITIVE.some((t) => text.includes(t))) {
-          safetyAdj += 0.3;
-        } else if (MEAT_HEAVY.some((t) => text.includes(t))) {
-          safetyAdj -= 0.6;
-        }
+        if (VEG_POSITIVE.some((t) => text.includes(t))) safetyAdj += 0.3;
+        else if (MEAT_HEAVY.some((t) => text.includes(t))) safetyAdj -= 0.6;
       }
-      if (spicy >= 3 && SPICY_CUISINES.some((c) => cuisine.includes(c))) {
-        safetyAdj += 0.2;
-      }
+      if (spicy >= 3 && SPICY_CUISINES.some((c) => cuisine.includes(c))) safetyAdj += 0.2;
       if (topCuisines.some((c) => cuisine.includes(c))) safetyAdj += 0.15;
       if (avoidedCuisines.some((c) => cuisine.includes(c))) safetyAdj -= 0.3;
       if ((fitGoal.includes("fat") || fitGoal.includes("healthy") ||
@@ -240,10 +226,11 @@ export function scoreAndRank(
     })
     .sort((a, b) => b.score - a.score);
 
-  return scored.map((s) => ({
+  const algorithmRanked = scored.map((s) => ({
     ...s.place,
     matchScore: Math.min(99, Math.max(40, Math.round(s.score * 100))),
     matchReasonKeys: s.reasons.slice(0, 4),
     negativeSignals: s.negativeSignals,
   }));
+  return prioritizeCanonicalCandidates(algorithmRanked);
 }
