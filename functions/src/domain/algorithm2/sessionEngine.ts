@@ -7,6 +7,7 @@
  * deterministik + boleh diuji tanpa Firestore.
  */
 import { hashCanonical } from "../places/staging/hashing";
+import { prioritizeCanonicalCandidates } from "../places/canonical/canonicalPriority";
 import { PlaceCandidate } from "../../types/place";
 
 // --- Context hash -----------------------------------------------------------
@@ -204,7 +205,9 @@ export function applyCuisineDiversity(
       overflow.push(p);
     }
   }
-  return [...head, ...overflow];
+  // Canonical precedence is a tier, not a score. Keep diversity order inside
+  // each tier but never let a provider-only result jump above curated data.
+  return prioritizeCanonicalCandidates([...head, ...overflow]);
 }
 
 // --- Mood-priority re-rank (Master pre-launch fix) --------------------------
@@ -228,10 +231,14 @@ export function applyMoodPriority(
   ranked: readonly PlaceCandidate[],
   moodFitById: (placeId: string) => number,
 ): PlaceCandidate[] {
-  return ranked
+  const moodRanked = ranked
     .map((p, i) => ({ p, i, tier: moodPriorityTier(moodFitById(p.placeId)) }))
     .sort((a, b) => (b.tier - a.tier) || (a.i - b.i))
     .map((x) => x.p);
+  // Mood still decides order INSIDE each authority tier. A legacy suggestion
+  // cannot overtake a published canonical place merely because its mood tier is
+  // stronger.
+  return prioritizeCanonicalCandidates(moodRanked);
 }
 
 // --- Alternative reuse ------------------------------------------------------
