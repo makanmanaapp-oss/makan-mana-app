@@ -9,10 +9,12 @@ import {ADMIN_UIDS} from "../config/constants";
 import {db} from "../config/firebase";
 import {DUMMY_PLACES} from "../data/dummyPlaces";
 import {paginateRanked} from "../domain/algorithm2/sessionEngine";
+import {prioritizeCanonicalCandidates} from "../domain/places/canonical/canonicalPriority";
 import {resolveCohortAuthorization} from "../domain/places/canonical/canonicalReadResolver";
 import {resolveRolloutForRequest} from "../services/rolloutService";
 import {algorithm2LiveEligible as isAlgorithm2LiveEligible, ownerDiagnosticsAllowed} from "../domain/rollout/liveEligibility";
 import {applyCanonicalOverlay} from "../services/canonicalReadService";
+import {getAreaCandidatePool} from "../services/areaCandidatePoolService";
 import {getExpandedPool} from "../services/expandedPoolService";
 import {searchNearby} from "../services/placesService";
 import {scoreAndRank} from "../services/scoringService";
@@ -85,9 +87,22 @@ export const getNearbyPlaces = onCall(
     const forceLegacy = input.forceLegacy === true;
     const useExpandedPool = !forceLegacy &&
       algorithm2FlagActive("expandedPool", algorithm2LiveEligible);
+    // Keep Home/Explore on the SAME persistent area supply as Spin when the
+    // rollout flag is active. This is what lets an explicitly published Control
+    // Center master place enter browsing BEFORE algorithm ranking.
+    const areaCoverageOn = process.env.AREA_COVERAGE_POOL_ENABLED === "true" &&
+      !forceLegacy && algorithm2LiveEligible;
     if (apiKey) {
       try {
-        if (useExpandedPool) {
+        if (areaCoverageOn) {
+          const area = await getAreaCandidatePool({
+            lat, lng, radiusMeters: radiusM, languageCode, apiKey, now: Date.now(),
+          });
+          candidates = area.pool.candidates.length > 0
+            ? area.pool.candidates
+            : await searchNearby({lat, lng, radiusMeters: radiusM, languageCode, apiKey});
+          source = "area_pool";
+        } else if (useExpandedPool) {
           const pool = await getExpandedPool({lat, lng, radiusMeters: radiusM, languageCode, apiKey, now: Date.now()});
           candidates = pool.candidates.length > 0 ? pool.candidates : await searchNearby({lat, lng, radiusMeters: radiusM, languageCode, apiKey});
         } else {
@@ -162,6 +177,10 @@ export const getNearbyPlaces = onCall(
         radiusKm: radiusM / 1000,
       });
     }
+    // Defense in depth: regardless of active scoring engine, published canonical
+    // rows are a precedence tier while the algorithm order is preserved inside
+    // each tier.
+    ranked = prioritizeCanonicalCandidates(ranked);
 
     // Phase 1.14G — susunan + kiraan (12) DIKEKALKAN. Overlay kanonikal HANYA
     // untuk kohort dalaman; awam mendapat laluan legasi tepat sama (tiada bacaan
