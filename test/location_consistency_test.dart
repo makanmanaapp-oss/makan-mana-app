@@ -80,6 +80,7 @@ class _RecordingService extends CloudSuggestionService {
     double? lng,
     int? radius,
     String? languageCode,
+    String? query,
     int cursor = 0,
   }) async {
     exploreLat = lat;
