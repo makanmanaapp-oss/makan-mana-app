@@ -101,11 +101,16 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
               _buildDiagnosticPanel(context, page),
             // Label lokasi jujur (kongsi sumber lokasi dengan Home).
             _buildNearLocationLabel(context, l),
-            // 4. Bar carian premium (controller/onChanged/_query KEKAL).
+            // 4. Bar carian premium — local UX + server full-pool search.
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
               child: TextField(
-                onChanged: (v) => setState(() => _query = v),
+                onChanged: (v) {
+                  setState(() => _query = v);
+                  ref
+                      .read(explorePaginationProvider.notifier)
+                      .setSearchQuery(v);
+                },
                 style: TextStyle(color: palette.text),
                 decoration: InputDecoration(
                   hintText: l.t('searchHint'),
@@ -526,10 +531,11 @@ class ExplorePlaceCard extends ConsumerWidget {
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(22),
-          // Seluruh kad boleh diketik — destinasi & route KEKAL.
+          // Route with canonical identity whenever the server proved one.
           onTap: () {
             ref.read(currentSuggestionProvider.notifier).state = place;
-            context.push('/restaurant/${place.placeId}');
+            final routeId = place.canonicalPlaceId ?? place.placeId;
+            context.push('/restaurant/$routeId');
           },
           child: Padding(
             padding: const EdgeInsets.all(12),
