@@ -10,9 +10,14 @@ import {db} from "../config/firebase";
 import {DUMMY_PLACES} from "../data/dummyPlaces";
 import {paginateRanked} from "../domain/algorithm2/sessionEngine";
 import {resolveCohortAuthorization} from "../domain/places/canonical/canonicalReadResolver";
+import {
+  dedupeCanonicalCandidates,
+  searchCanonicalCandidates,
+} from "../domain/places/canonical/canonicalCandidatePool";
 import {resolveRolloutForRequest} from "../services/rolloutService";
 import {algorithm2LiveEligible as isAlgorithm2LiveEligible, ownerDiagnosticsAllowed} from "../domain/rollout/liveEligibility";
 import {applyCanonicalOverlay} from "../services/canonicalReadService";
+import {getAreaCandidatePool} from "../services/areaCandidatePoolService";
 import {getExpandedPool} from "../services/expandedPoolService";
 import {searchNearby} from "../services/placesService";
 import {scoreAndRank} from "../services/scoringService";
@@ -23,12 +28,15 @@ const mapsApiKey = defineSecret("GOOGLE_MAPS_API_KEY");
 const DEFAULT_LAT = 3.1478;
 const DEFAULT_LNG = 101.6953;
 const DEFAULT_RADIUS_M = 3000;
+const MAX_SEARCH_QUERY = 160;
 
 interface GetNearbyInput {
   lat?: number;
   lng?: number;
   radius?: number;
   languageCode?: string;
+  /** Explore Search — server searches the FULL area pool, not only loaded cards. */
+  query?: string;
   /** Phase 1.14G — klien boleh MEMAKSA legasi (override kecemasan). Hanya
    * boleh MENURUNKAN ke legasi; tidak pernah menaik-taraf keistimewaan. */
   forceLegacy?: boolean;
@@ -37,8 +45,10 @@ interface GetNearbyInput {
 }
 
 /**
- * Senarai tempat berdekatan untuk Home (hero pick + grid).
- * Ringan: tiada kiraan spin, tiada sesi — hampir selalu hit cache 7 hari.
+ * Senarai tempat berdekatan untuk Home (hero pick + grid) dan Explore.
+ * Live Algorithm 2 cohorts use the same database-first AreaCandidatePool as
+ * Suggestions when AREA_COVERAGE_POOL_ENABLED=true, so Control Center-published
+ * restaurants participate BEFORE safety/ranking instead of as a late overlay.
  */
 export const getNearbyPlaces = onCall(
   {secrets: [mapsApiKey]},
@@ -53,9 +63,11 @@ export const getNearbyPlaces = onCall(
     const lng = input.lng ?? DEFAULT_LNG;
     const radiusM = input.radius ?? DEFAULT_RADIUS_M;
     const languageCode = input.languageCode ?? "ms";
+    const query = typeof input.query === "string"
+      ? input.query.trim().slice(0, MAX_SEARCH_QUERY)
+      : "";
     // LOCATION CONSISTENCY — echo lokasi yang PELAYAN benar-benar guna (untuk
-    // silang-sah Home/Explore) + telemetri bila klien TIDAK hantar koordinat
-    // (fallback KL — kes pepijat yang perlu dikesan).
+    // silang-sah Home/Explore) + telemetri bila klien TIDAK hantar koordinat.
     const requestLocation = {
       latGrid: Number(lat.toFixed(3)),
       lngGrid: Number(lng.toFixed(3)),
@@ -70,9 +82,8 @@ export const getNearbyPlaces = onCall(
     let candidates: PlaceCandidate[];
     let source = "places_v1";
     const apiKey = mapsApiKey.value();
-    // Phase 2.2A/2.6B — kohort + keputusan rollout AUTHORITATIF. Explore expanded pool
-    // + pagination + unified scoring guna kelayakan LIVE (owner + beta_allowlist),
-    // BUKAN owner-only. Diagnostik/debug kekal owner-only (diagnosticsAllowed).
+    // Phase 2.2A/2.6B — kohort + keputusan rollout AUTHORITATIF. Explore + Home
+    // use the same live eligibility as Suggestions. Debug remains owner-only.
     const cohort = resolveCohortAuthorization(
       {uid, token: request.auth?.token as Record<string, unknown> | undefined},
       {ownerAllowlist: ADMIN_UIDS},
@@ -85,11 +96,41 @@ export const getNearbyPlaces = onCall(
     const forceLegacy = input.forceLegacy === true;
     const useExpandedPool = !forceLegacy &&
       algorithm2FlagActive("expandedPool", algorithm2LiveEligible);
+    const areaCoverageOn = process.env.AREA_COVERAGE_POOL_ENABLED === "true" &&
+      !forceLegacy && algorithm2LiveEligible;
+
     if (apiKey) {
       try {
-        if (useExpandedPool) {
+        if (areaCoverageOn) {
+          const area = await getAreaCandidatePool({
+            lat,
+            lng,
+            radiusMeters: radiusM,
+            languageCode,
+            apiKey,
+            now: Date.now(),
+          });
+          candidates = area.pool.candidates.length > 0
+            ? area.pool.candidates
+            : await searchNearby({lat, lng, radiusMeters: radiusM, languageCode, apiKey});
+          source = area.usedFallback ? "area_pool_fallback" : "area_pool";
+          logger.info("getNearbyPlaces.areaCoverage", {
+            cohortId: rollout.cohortId,
+            areaPoolTotal: area.pool.candidates.length,
+            knownCanonicalCount: area.pool.knownCanonicalCount,
+            exactRadiusCount: area.pool.exactRadiusCount,
+            activePlaceCount: area.pool.activePlaceCount,
+            newlyDiscoveredCount: area.pool.newlyDiscoveredCount,
+            discoveryPerformed: area.pool.discoveryPerformed,
+            discoveryReason: area.pool.discoveryReason,
+            providerQueryCount: area.providerQueryCount,
+            usedFallback: area.usedFallback,
+          });
+        } else if (useExpandedPool) {
           const pool = await getExpandedPool({lat, lng, radiusMeters: radiusM, languageCode, apiKey, now: Date.now()});
-          candidates = pool.candidates.length > 0 ? pool.candidates : await searchNearby({lat, lng, radiusMeters: radiusM, languageCode, apiKey});
+          candidates = pool.candidates.length > 0
+            ? pool.candidates
+            : await searchNearby({lat, lng, radiusMeters: radiusM, languageCode, apiKey});
         } else {
           candidates = await searchNearby({
             lat,
@@ -113,7 +154,7 @@ export const getNearbyPlaces = onCall(
       source = "dummy";
     }
 
-    // Skor ikut profil supaya hero pick Home konsisten dengan spin.
+    // Skor ikut profil supaya hero pick Home konsisten dengan Spin.
     const profileSnap = await db
       .collection("user_profiles")
       .doc(uid)
@@ -121,8 +162,7 @@ export const getNearbyPlaces = onCall(
     const profile = profileSnap.data() ?? {};
 
     // Phase 2.3 — pemarkahan BERSATU (v2) untuk kohort supaya Home Nearby +
-    // Explore konsisten dengan Home AI Pick + Spin (versi pemarkahan sama).
-    // Awam / bukan kohort → legasi scoreAndRank (tidak berubah).
+    // Explore konsisten dengan Home MakanMana Pilih + Spin.
     const useUnified = !forceLegacy && unifiedScoringActive(algorithm2LiveEligible);
     let ranked: PlaceCandidate[];
     let scoringVersion = "legacy_scoreAndRank_v1";
@@ -138,16 +178,12 @@ export const getNearbyPlaces = onCall(
       const recCtx = buildRecCtxFromHydration({
         uid, plan: "free", language: languageCode,
         lat: input.lat ?? null, lng: input.lng ?? null, radiusMeters: radiusM,
-        mood: null, localHour, // Home Nearby/Explore bukan dipacu mood
+        mood: null, localHour,
         profile, brain: brainSnap.data() ?? {}, fitness: fitnessSnap.data() ?? {},
         meals: mealsSnap.docs.map((d) => d.data()),
       });
-      // Explore/Home-Nearby fix — ini permukaan LAYARI (browse), BUKAN "makan
-      // sekarang". JANGAN tapis-keras tempat TUTUP: kad Explore sudah melabel
-      // "Closed now" sendiri. excludeClosed:true dahulu menyebabkan pool ~31
-      // mengecut ke ~8 pada waktu malam (hanya yang buka) → punca "Explore ~8".
-      // excludeClosed:false → semua ~31 canonical dipapar (buka + tutup berlabel).
-      // (Spin/getSuggestions kekal excludeClosed:true kerana ia "makan sekarang".)
+      // Explore/Home-Nearby ialah permukaan browse, bukan "makan sekarang".
+      // Closed restaurants remain visible and labelled; Spin keeps excludeClosed.
       const res = rankUnified(candidates, recCtx, {
         excludeClosed: false, subFlags: scoringSubFlags(algorithm2LiveEligible),
       });
@@ -163,12 +199,13 @@ export const getNearbyPlaces = onCall(
       });
     }
 
-    // Phase 1.14G — susunan + kiraan (12) DIKEKALKAN. Overlay kanonikal HANYA
-    // untuk kohort dalaman; awam mendapat laluan legasi tepat sama (tiada bacaan
-    // server-only, tiada medan diagnostik).
-    // Phase 2.2 — Explore pagination (kohort + bendera + cursor DIBERI sahaja).
-    // Halaman deterministik dari pool ter-rank sedia ada (TIADA kueri provider
-    // baharu; cache-first). Awam / tiada cursor = tingkah laku 12 kad asal.
+    // Explore Search MUST run over the full ranked pool before slicing to 12.
+    // Exact canonical-name matches are deterministic and come first, but every
+    // candidate has already passed the normal retrieval/radius/ranking pipeline.
+    if (query) {
+      ranked = searchCanonicalCandidates(ranked, query);
+    }
+
     const paginate =
       input.cursor !== undefined &&
       !forceLegacy &&
@@ -179,11 +216,10 @@ export const getNearbyPlaces = onCall(
       const ovP = await applyCanonicalOverlay(page.pageItems, {
         cohortEligible: algorithm2LiveEligible, forceLegacy, includeDebug: diagnosticsAllowed,
       });
-      // Medan pagination (nextCursor/endOfResults/poolSize) untuk SEMUA pengguna
-      // LIVE (owner + beta). canonicalDiagnostics (debug owner) HANYA diagnosticsAllowed.
+      const places = dedupeCanonicalCandidates(ovP.results.map((r) => r.candidate));
       return {
         status: "OK", source,
-        places: ovP.results.map((r) => r.candidate),
+        places,
         nextCursor: page.nextCursor,
         endOfResults: page.endOfResults,
         poolSize: ranked.length,
@@ -192,6 +228,7 @@ export const getNearbyPlaces = onCall(
             cohort: cohort.maskedIdentity, source: cohort.source,
             canonicalCount: ovP.canonicalCount, legacyCount: ovP.legacyCount,
             paginated: true, cursor: input.cursor,
+            searchActive: Boolean(query),
             flags: algorithm2FlagSummary(algorithm2LiveEligible),
             requestLocation,
             scoringVersion,
@@ -201,18 +238,15 @@ export const getNearbyPlaces = onCall(
       };
     }
 
-    // Phase 1.14G/2.6B — susunan + kiraan (12) DIKEKALKAN. Overlay kanonikal untuk
-    // pengguna LIVE (owner + beta); awam legasi. Debug/diagnostik owner-only.
     const top = ranked.slice(0, 12);
     const overlay = await applyCanonicalOverlay(top, {
       cohortEligible: algorithm2LiveEligible,
       forceLegacy,
       includeDebug: diagnosticsAllowed,
     });
-    const places = overlay.results.map((r) => r.candidate);
+    const places = dedupeCanonicalCandidates(overlay.results.map((r) => r.candidate));
 
     if (!diagnosticsAllowed) {
-      // Awam + beta: bentuk respons (places sahaja) — TIADA diagnostik owner.
       return {status: "OK", source, places};
     }
     return {
@@ -225,6 +259,7 @@ export const getNearbyPlaces = onCall(
         canonicalCount: overlay.canonicalCount,
         legacyCount: overlay.legacyCount,
         forceLegacy,
+        searchActive: Boolean(query),
         requestLocation,
         scoringVersion,
         unifiedScoring: unifiedDiag,
