@@ -6,6 +6,10 @@
  * HANYA bila liputan tidak cukup/basi, kemudian SIMPAN calon baharu (preserve
  * old) supaya pangkalan data tumbuh: 37 → 52 → 88 → 140 → 220+.
  *
+ * FIRST-PARTY published MakanMana places are merged live before the discovery
+ * decision. They are not copied into area_place_cache, so an unpublish/update is
+ * reflected by the canonical publication source instead of a stale area copy.
+ *
  * SELAMAT:
  *  - Idempoten: upsert per placeId; tempat diketahui TIDAK dipadam bila provider
  *    berhenti memulangkannya (Part 3).
@@ -13,9 +17,10 @@
  *  - Fallback ke expandedPool bila lapisan liputan gagal (Part 33; TIADA dummy).
  *  - Gerbang: dipanggil HANYA bila kohort layak + bendera areaCoveragePool ON.
  */
-import { db, FieldValue } from "../config/firebase";
-import { PlaceCandidate } from "../types/place";
-import { getExpandedPool } from "./expandedPoolService";
+import {db, FieldValue} from "../config/firebase";
+import {PlaceCandidate} from "../types/place";
+import {getExpandedPool} from "./expandedPoolService";
+import {mergePublishedMakanManaCandidates} from "./publishedCanonicalCandidateService";
 import {
   AreaCandidatePool,
   AreaCoverageStatus,
@@ -100,9 +105,9 @@ function coverageStatusOf(
   cellIds: string[],
   cellDocs: Map<string, CellDoc>,
   now: number,
-): { status: AreaCoverageStatus; cooldownActive: boolean } {
+): {status: AreaCoverageStatus; cooldownActive: boolean} {
   const seen = cellIds.filter((id) => cellDocs.has(id));
-  if (seen.length === 0) return { status: "UNKNOWN", cooldownActive: false };
+  if (seen.length === 0) return {status: "UNKNOWN", cooldownActive: false};
   let anyStale = false;
   let cooldownActive = false;
   for (const id of seen) {
@@ -111,9 +116,9 @@ function coverageStatusOf(
     if (age > CELL_FRESH_MS) anyStale = true;
     if (now - (d.lastDiscoveryAt ?? 0) < DISCOVERY_COOLDOWN_MS) cooldownActive = true;
   }
-  if (seen.length < cellIds.length) return { status: "PARTIAL", cooldownActive };
-  if (anyStale) return { status: "STALE", cooldownActive };
-  return { status: "HEALTHY", cooldownActive };
+  if (seen.length < cellIds.length) return {status: "PARTIAL", cooldownActive};
+  if (anyStale) return {status: "STALE", cooldownActive};
+  return {status: "HEALTHY", cooldownActive};
 }
 
 /**
@@ -125,15 +130,29 @@ export async function getAreaCandidatePool(req: AreaPoolRequest): Promise<AreaPo
     const cellIds = enumerateCellsForRadius(req.lat, req.lng, req.radiusMeters);
     const cellDocs = await readCells(cellIds);
 
-    // 1) DIKETAHUI dari simpanan kekal (union calon semua sel; dedup di merge).
-    const knownByKey = new Map<string, AreaPlace>();
+    // 1) DIKETAHUI dari simpanan kekal. Before the discovery decision, merge
+    // live first-party publications so a freshly published place is immediately
+    // part of the authoritative area supply even when the provider cache is warm.
+    const cachedById = new Map<string, PlaceCandidate>();
     for (const id of cellIds) {
       const d = cellDocs.get(id);
       if (!d?.candidates) continue;
-      for (const c of d.candidates) {
-        const ap = toAreaPlace(c, "registry");
-        if (ap) knownByKey.set(`${ap.canonicalPlaceId ?? ap.placeId}`, ap);
-      }
+      for (const candidate of d.candidates) cachedById.set(candidate.placeId, candidate);
+    }
+    const firstPartyMerged = await mergePublishedMakanManaCandidates(
+      [...cachedById.values()],
+      {
+        centerLat: req.lat,
+        centerLng: req.lng,
+        radiusMeters: req.radiusMeters,
+        nowMs: req.now,
+      },
+    );
+
+    const knownByKey = new Map<string, AreaPlace>();
+    for (const c of firstPartyMerged.candidates) {
+      const ap = toAreaPlace(c, "registry");
+      if (ap) knownByKey.set(`${ap.canonicalPlaceId ?? ap.placeId}`, ap);
     }
     const known = [...knownByKey.values()];
 
@@ -145,7 +164,7 @@ export async function getAreaCandidatePool(req: AreaPoolRequest): Promise<AreaPo
       newlyDiscoveredCount: 0, now: req.now,
     });
 
-    const { status, cooldownActive } = coverageStatusOf(cellIds, cellDocs, req.now);
+    const {status, cooldownActive} = coverageStatusOf(cellIds, cellDocs, req.now);
     const decision = decideAreaDiscovery({
       knownActiveCount: knownPoolPre.activePlaceCount,
       coverageStatus: status,
@@ -159,7 +178,8 @@ export async function getAreaCandidatePool(req: AreaPoolRequest): Promise<AreaPo
     let newlyDiscovered = 0;
     let providerQueryCount = 0;
 
-    // 2) Penemuan jurang HANYA bila diputuskan.
+    // 2) Penemuan jurang HANYA bila diputuskan. ExpandedPool already includes
+    // the same live canonical source; mergeAreaPlaces dedupes canonical identity.
     if (decision.discover) {
       const exp = await getExpandedPool({
         lat: req.lat, lng: req.lng, radiusMeters: req.radiusMeters,
@@ -173,8 +193,9 @@ export async function getAreaCandidatePool(req: AreaPoolRequest): Promise<AreaPo
       merged = res.merged;
       newlyDiscovered = res.newCount;
 
-      // 3) SIMPAN — tumbuh + preserve old. Upsert calon ke sel masing-masing.
-      if (newlyDiscovered > 0 || known.length === 0) {
+      // 3) SIMPAN provider discovery sahaja. Canonical publications are not
+      // copied into this cache because publication/head is their source of truth.
+      if (newlyDiscovered > 0 || cachedById.size === 0) {
         await persistDiscovered(merged, req.now);
       } else {
         // Tandakan lastDiscoveryAt (cooldown) walau tiada baru.
@@ -189,7 +210,7 @@ export async function getAreaCandidatePool(req: AreaPoolRequest): Promise<AreaPo
       discoveryPerformed: decision.discover, discoveryReason: decision.reason,
       newlyDiscoveredCount: newlyDiscovered, now: req.now,
     });
-    return { pool, usedFallback: false, fallbackReason: null, providerQueryCount };
+    return {pool, usedFallback: false, fallbackReason: null, providerQueryCount};
   } catch (e) {
     // Part 33 — fallback selamat; TIADA dummy. Recommendation availability kekal.
     const reason = e instanceof Error ? e.message.slice(0, 80) : "coverage_error";
@@ -218,15 +239,15 @@ async function fallbackPool(req: AreaPoolRequest, reason: string): Promise<AreaP
   };
 }
 
-/** Upsert calon ke dokumen sel (per placeId; preserve old; bounded). */
+/** Upsert calon provider ke dokumen sel (per placeId; preserve old; bounded). */
 async function persistDiscovered(merged: readonly AreaPlace[], now: number): Promise<void> {
   // Kumpulkan calon mengikut sel geohash (resolusi database — guna cell tempat).
   const byCell = new Map<string, PlaceCandidate[]>();
   for (const p of merged) {
-    if (!p.candidate) continue;
+    if (!p.candidate || p.candidate.dataSource === "canonical") continue;
     const cellId = storageCellForPlace(p.lat, p.lng); // sel simpanan tetap
     const arr = byCell.get(cellId) ?? [];
-    arr.push({ ...p.candidate, lat: p.lat, lng: p.lng });
+    arr.push({...p.candidate, lat: p.lat, lng: p.lng});
     byCell.set(cellId, arr);
   }
   const batch = db.batch();
@@ -237,8 +258,8 @@ async function persistDiscovered(merged: readonly AreaPlace[], now: number): Pro
     const list = [...dedup.values()].slice(0, MAX_CANDIDATES_PER_CELL);
     batch.set(
       db.collection(C_AREA).doc(cellId),
-      { cellId, candidates: list, lastDiscoveryAt: now, updatedAt: now },
-      { merge: true },
+      {cellId, candidates: list, lastDiscoveryAt: now, updatedAt: now},
+      {merge: true},
     );
   }
   await batch.commit();
@@ -248,7 +269,7 @@ async function persistDiscovered(merged: readonly AreaPlace[], now: number): Pro
 async function touchCells(cellIds: string[], now: number): Promise<void> {
   const batch = db.batch();
   for (const id of cellIds) {
-    batch.set(db.collection(C_AREA).doc(id), { lastDiscoveryAt: now }, { merge: true });
+    batch.set(db.collection(C_AREA).doc(id), {lastDiscoveryAt: now}, {merge: true});
   }
   await batch.commit();
   void FieldValue; // (reserved for future metrics increments)

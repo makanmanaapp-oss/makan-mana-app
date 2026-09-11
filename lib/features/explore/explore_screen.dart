@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,12 +9,13 @@ import '../../app/localization/app_localizations.dart';
 import '../../app/theme.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/providers.dart';
-import '../cms/cms_content.dart';
-import '../cms/cms_slot.dart';
 import '../../core/location/location_display.dart';
 import '../../core/providers/makanmana_user_context_provider.dart';
+import '../../core/services/canonical_place_search_service.dart';
 import '../../core/widgets/place_image.dart';
 import '../../models/place_summary.dart';
+import '../cms/cms_content.dart';
+import '../cms/cms_slot.dart';
 import '../home/home_palette.dart';
 import 'explore_flags.dart';
 import 'explore_pagination_controller.dart';
@@ -20,9 +23,10 @@ import 'explore_pagination_controller.dart';
 /// Explore: tempat sebenar berdekatan (cache pelayan 7 hari) +
 /// carian nama + penapis cuisine. Fallback dummy semasa loading.
 ///
-/// Redesign (Image 2): tajuk besar + pil Trending, bar carian premium, cip
-/// kategori merah-aktif, dan kad premium dengan NAMA PENUH sehingga 2 baris.
-/// Semua penyedia/callback/pagination/route KEKAL (lapisan paparan sahaja).
+/// Search now combines the currently loaded Explore page with a bounded,
+/// server-mediated first-party canonical search. A newly published MakanMana
+/// place therefore does not need to wait for provider discovery or pagination
+/// before an exact-name search can find it.
 class ExploreScreen extends ConsumerStatefulWidget {
   const ExploreScreen({super.key});
 
@@ -33,6 +37,10 @@ class ExploreScreen extends ConsumerStatefulWidget {
 class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   String? _cuisineFilter;
   String _query = '';
+  List<PlaceSummary> _remoteSearch = const [];
+  bool _searchLoading = false;
+  Timer? _searchDebounce;
+  int _searchEpoch = 0;
 
   @override
   void initState() {
@@ -40,6 +48,113 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     // Phase 2.2A — muat halaman pertama (incremental pagination).
     Future.microtask(
         () => ref.read(explorePaginationProvider.notifier).loadFirst());
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    super.dispose();
+  }
+
+  void _onSearchChanged(String value) {
+    final clean = value.trim();
+    _searchDebounce?.cancel();
+    final epoch = ++_searchEpoch;
+    setState(() {
+      _query = clean;
+      if (clean.isEmpty) {
+        _remoteSearch = const [];
+        _searchLoading = false;
+      } else if (clean.length >= 2) {
+        _searchLoading = true;
+      }
+    });
+    if (clean.length < 2) return;
+
+    _searchDebounce = Timer(const Duration(milliseconds: 280), () async {
+      final page = ref.read(explorePaginationProvider);
+      final loc = page.location;
+      final service = CanonicalPlaceSearchService(
+        firebaseReady: ref.read(firebaseReadyProvider),
+      );
+      final result = await service.search(
+        query: clean,
+        lat: loc?.lat,
+        lng: loc?.lng,
+        limit: 20,
+      );
+      if (!mounted || epoch != _searchEpoch) return;
+      setState(() {
+        _remoteSearch = result ?? const [];
+        _searchLoading = false;
+      });
+    });
+  }
+
+  String _searchKey(PlaceSummary place) =>
+      (place.canonicalPlaceId?.trim().isNotEmpty ?? false)
+          ? 'c:${place.canonicalPlaceId}'
+          : 'p:${place.placeId}';
+
+  String _norm(String value) => value
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9\s]'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+
+  int _queryRank(PlaceSummary place, String query) {
+    final q = _norm(query);
+    final name = _norm(place.name);
+    final cuisine = _norm(place.cuisine);
+    final address = _norm(place.address);
+    if (name == q) return 500;
+    if (name.startsWith(q)) return 400;
+    if (name.contains(q)) return 300;
+    if (cuisine == q) return 220;
+    if (cuisine.contains(q)) return 180;
+    if (address.contains(q)) return 120;
+    final tokens = q.split(' ').where((token) => token.isNotEmpty).toList();
+    if (tokens.length > 1 &&
+        tokens.every((token) => '$name $cuisine $address'.contains(token))) {
+      return 100;
+    }
+    return 0;
+  }
+
+  List<PlaceSummary> _searchResults(
+    List<PlaceSummary> loaded,
+    List<PlaceSummary> remote,
+    String query,
+  ) {
+    final byKey = <String, PlaceSummary>{};
+    for (final place in loaded) {
+      if (_queryRank(place, query) > 0) byKey[_searchKey(place)] = place;
+    }
+    // Canonical server result wins the same canonical identity. Also remove a
+    // conservative exact-name/address local duplicate when ids differ.
+    for (final place in remote) {
+      final remoteName = _norm(place.name);
+      final remoteAddress = _norm(place.address);
+      final duplicateKeys = byKey.entries
+          .where((entry) =>
+              _norm(entry.value.name) == remoteName &&
+              (remoteAddress.isEmpty || _norm(entry.value.address) == remoteAddress))
+          .map((entry) => entry.key)
+          .toList();
+      for (final key in duplicateKeys) {
+        byKey.remove(key);
+      }
+      byKey[_searchKey(place)] = place;
+    }
+    final out = byKey.values.where((place) => _queryRank(place, query) > 0).toList();
+    out.sort((a, b) {
+      final rank = _queryRank(b, query).compareTo(_queryRank(a, query));
+      if (rank != 0) return rank;
+      final distance = a.distanceKm.compareTo(b.distanceKm);
+      if (distance != 0) return distance;
+      return a.name.compareTo(b.name);
+    });
+    return out;
   }
 
   @override
@@ -57,18 +172,13 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
         ? ref.watch(dummySuggestionServiceProvider).nearby(limit: 12)
         : page.places;
 
-    final cuisines = all.map((p) => p.cuisine).toSet().toList()..sort();
+    final searchBase = _query.isNotEmpty
+        ? _searchResults(all, _remoteSearch, _query)
+        : all;
+    final cuisines = searchBase.map((p) => p.cuisine).toSet().toList()..sort();
     var places = _cuisineFilter == null
-        ? all
-        : all.where((p) => p.cuisine == _cuisineFilter).toList();
-    if (_query.isNotEmpty) {
-      final q = _query.toLowerCase();
-      places = places
-          .where((p) =>
-              p.name.toLowerCase().contains(q) ||
-              p.cuisine.toLowerCase().contains(q))
-          .toList();
-    }
+        ? searchBase
+        : searchBase.where((p) => p.cuisine == _cuisineFilter).toList();
 
     return Scaffold(
       backgroundColor: palette.background,
@@ -101,11 +211,12 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
               _buildDiagnosticPanel(context, page),
             // Label lokasi jujur (kongsi sumber lokasi dengan Home).
             _buildNearLocationLabel(context, l),
-            // 4. Bar carian premium (controller/onChanged/_query KEKAL).
+            // 4. Bar carian premium. Local loaded-page results are immediate;
+            // canonical server search is debounced and merged by stable identity.
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
               child: TextField(
-                onChanged: (v) => setState(() => _query = v),
+                onChanged: _onSearchChanged,
                 style: TextStyle(color: palette.text),
                 decoration: InputDecoration(
                   hintText: l.t('searchHint'),
@@ -114,6 +225,16 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                       Icon(Icons.search, size: 22, color: palette.subtext),
                   prefixIconConstraints:
                       const BoxConstraints(minWidth: 48, minHeight: 48),
+                  suffixIcon: _searchLoading
+                      ? const Padding(
+                          padding: EdgeInsets.all(14),
+                          child: SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : null,
                   filled: true,
                   fillColor: palette.card,
                   contentPadding:
@@ -135,8 +256,8 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
             ),
             // WAVE 5 — curated/editorial CMS slot. Marked as sponsored so
             // editorial content is never mistaken for an organic result. The
-            // restaurant list below is UNCHANGED: ranking, search and the
-            // recommendation algorithm are not touched.
+            // restaurant list below is UNCHANGED: ranking and recommendation
+            // algorithm are not touched by text search.
             const Padding(
               padding: EdgeInsets.fromLTRB(20, 4, 20, 0),
               child: CmsSlot(
@@ -255,7 +376,10 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     final palette = HomePalette.of(context);
     Widget centered(Widget child) =>
         ListView(children: [const SizedBox(height: 120), Center(child: child)]);
-    if (noData && !isDemo) {
+    if (_query.isNotEmpty && _searchLoading) {
+      return centered(const CircularProgressIndicator(strokeWidth: 2));
+    }
+    if (noData && !isDemo && _query.isEmpty) {
       if (!page.initialized || page.loading) {
         return centered(const CircularProgressIndicator(strokeWidth: 2));
       }
@@ -296,6 +420,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
       'EXPLORE loc=${loc?.maskedLatLng() ?? "?"}  radiusM=${loc?.radiusMeters ?? "?"}',
       'cell=${loc?.locationGrid ?? "?"}  cacheKey=${loc?.cacheKey ?? "?"}  src=${loc?.source ?? "?"}',
       'SERVER used=${serverLoc == null ? "(n/a)" : serverLoc.toString()}',
+      'canonicalSearch=${_remoteSearch.length} loading=$_searchLoading',
       'diag=${diag.isEmpty ? "(none — public/legacy path)" : diag.toString()}',
     ];
     return Container(

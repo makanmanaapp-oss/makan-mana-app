@@ -6,11 +6,17 @@
  * gabung + nyahduplikasi (provider id + alias) → cache v3. TIDAK PERNAH melebihi
  * 3 kueri provider. searchNearby itu sendiri cache-first (7 hari), jadi warm = 0
  * panggilan provider. Cuaca tidak direka; berat skor tidak berubah.
+ *
+ * FIRST-PARTY: published MakanMana Master Place Registry candidates are merged
+ * AFTER the provider cache read and BEFORE ranking. They are intentionally not
+ * persisted into the 7-day provider cache, so a fresh Control Center publish is
+ * visible immediately instead of waiting for provider-cache expiry.
  */
-import { db, FieldValue } from "../config/firebase";
-import { searchNearby } from "./placesService";
-import { PlaceCandidate } from "../types/place";
-import { mergeDedupe, planProviderQueries } from "../domain/algorithm2/sessionEngine";
+import {db, FieldValue} from "../config/firebase";
+import {searchNearby} from "./placesService";
+import {PlaceCandidate} from "../types/place";
+import {mergeDedupe, planProviderQueries} from "../domain/algorithm2/sessionEngine";
+import {mergePublishedMakanManaCandidates} from "./publishedCanonicalCandidateService";
 
 const C_POOL = "places_pool_v3";
 const POOL_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -27,6 +33,7 @@ export interface ExpandedPoolResult {
     cacheHit: boolean;
     cacheAgeMs: number | null;
     schemaVersion: 3;
+    firstPartyCanonicalCount: number;
   };
 }
 
@@ -36,35 +43,55 @@ function cellId(lat: number, lng: number, radiusMeters: number): string {
 }
 
 /** Pusat gelang bersebelahan (tidak-bertindih) berdasarkan radius. */
-function ringCenters(lat: number, lng: number, radiusMeters: number): Array<{ lat: number; lng: number }> {
+function ringCenters(lat: number, lng: number, radiusMeters: number): Array<{lat: number; lng: number}> {
   const d = (radiusMeters / 111000) * 1.2; // ~offset satu radius
   return [
-    { lat, lng }, // pusat
-    { lat: lat + d, lng }, // utara
-    { lat, lng: lng + d }, // timur
+    {lat, lng}, // pusat
+    {lat: lat + d, lng}, // utara
+    {lat, lng: lng + d}, // timur
   ];
 }
 
+async function withFirstParty(
+  providerCandidates: readonly PlaceCandidate[],
+  opts: {lat: number; lng: number; radiusMeters: number; now: number},
+): Promise<{candidates: PlaceCandidate[]; canonicalCount: number}> {
+  return mergePublishedMakanManaCandidates(providerCandidates, {
+    centerLat: opts.lat,
+    centerLng: opts.lng,
+    radiusMeters: opts.radiusMeters,
+    nowMs: opts.now,
+  });
+}
+
 export async function getExpandedPool(
-  opts: { lat: number; lng: number; radiusMeters: number; languageCode: string; apiKey: string; now: number },
+  opts: {lat: number; lng: number; radiusMeters: number; languageCode: string; apiKey: string; now: number},
 ): Promise<ExpandedPoolResult> {
   const id = cellId(opts.lat, opts.lng, opts.radiusMeters);
   const ref = db.collection(C_POOL).doc(id);
   const snap = await ref.get();
 
-  // Cache v3 dahulu.
+  // Cache v3 dahulu. First-party candidates tetap dibaca live supaya publication
+  // baharu tidak tersekat di belakang TTL cache provider 7 hari.
   if (snap.exists) {
     const d = snap.data() ?? {};
     const expiresAt = (d.expiresAt as number | undefined) ?? 0;
     const cached = (d.candidates as PlaceCandidate[] | undefined) ?? [];
     if (expiresAt > opts.now && cached.length >= Math.min(TARGET_UNIQUE, 25)) {
+      const firstParty = await withFirstParty(cached, opts);
+      const rawCount = cached.length + firstParty.canonicalCount;
       return {
-        candidates: cached,
+        candidates: firstParty.candidates,
         diagnostics: {
-          providerCalls: 0, rawCount: cached.length, uniqueCount: cached.length,
-          duplicateCount: 0, sourceBatchCount: (d.sourceBatches as number | undefined) ?? 1,
-          cacheHit: true, cacheAgeMs: opts.now - ((d.createdAt as number | undefined) ?? opts.now),
+          providerCalls: 0,
+          rawCount,
+          uniqueCount: firstParty.candidates.length,
+          duplicateCount: Math.max(0, rawCount - firstParty.candidates.length),
+          sourceBatchCount: (d.sourceBatches as number | undefined) ?? 1,
+          cacheHit: true,
+          cacheAgeMs: opts.now - ((d.createdAt as number | undefined) ?? opts.now),
           schemaVersion: 3,
+          firstPartyCanonicalCount: firstParty.canonicalCount,
         },
       };
     }
@@ -78,15 +105,20 @@ export async function getExpandedPool(
   for (const c of centers) {
     if (providerCalls >= 3) break; // had keras
     const batch = await searchNearby({
-      lat: c.lat, lng: c.lng, radiusMeters: opts.radiusMeters,
-      languageCode: opts.languageCode, apiKey: opts.apiKey,
+      lat: c.lat,
+      lng: c.lng,
+      radiusMeters: opts.radiusMeters,
+      languageCode: opts.languageCode,
+      apiKey: opts.apiKey,
     });
     providerCalls++;
     batches.push(batch);
   }
-  const rawCount = batches.reduce((n, b) => n + b.length, 0);
-  const merged = mergeDedupe(batches);
+  const providerRawCount = batches.reduce((n, b) => n + b.length, 0);
+  const providerMerged = mergeDedupe(batches);
 
+  // Cache remains provider-only. First-party publications are the authoritative
+  // live source and are re-merged on every read.
   await ref.set({
     schemaVersion: 3,
     cell: id,
@@ -94,20 +126,28 @@ export async function getExpandedPool(
     expiresAt: opts.now + POOL_TTL_MS,
     earlyRefreshAt: opts.now + POOL_TTL_MS / 7,
     providerQueryCount: providerCalls,
-    rawCount,
-    uniqueCount: merged.length,
+    rawCount: providerRawCount,
+    uniqueCount: providerMerged.length,
     sourceBatches: batches.length,
-    candidates: merged,
-    placeIds: merged.map((p) => p.placeId),
+    candidates: providerMerged,
+    placeIds: providerMerged.map((p) => p.placeId),
     updatedAt: FieldValue.serverTimestamp(),
   });
 
+  const firstParty = await withFirstParty(providerMerged, opts);
+  const rawCount = providerRawCount + firstParty.canonicalCount;
   return {
-    candidates: merged,
+    candidates: firstParty.candidates,
     diagnostics: {
-      providerCalls, rawCount, uniqueCount: merged.length,
-      duplicateCount: rawCount - merged.length, sourceBatchCount: batches.length,
-      cacheHit: false, cacheAgeMs: null, schemaVersion: 3,
+      providerCalls,
+      rawCount,
+      uniqueCount: firstParty.candidates.length,
+      duplicateCount: Math.max(0, rawCount - firstParty.candidates.length),
+      sourceBatchCount: batches.length,
+      cacheHit: false,
+      cacheAgeMs: null,
+      schemaVersion: 3,
+      firstPartyCanonicalCount: firstParty.canonicalCount,
     },
   };
 }

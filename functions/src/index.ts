@@ -6,6 +6,7 @@ setGlobalOptions({region: REGION, maxInstances: 10});
 
 export {getSuggestions} from "./callable/getSuggestions";
 export {getNearbyPlaces} from "./callable/getNearbyPlaces";
+export {searchCanonicalPlaces} from "./callable/searchCanonicalPlaces";
 export {submitFeedback} from "./callable/submitFeedback";
 export {seedDefaultAlgoConfig} from "./callable/seedDefaultAlgoConfig";
 export {updateBrainMetrics} from "./scheduled/updateBrainMetrics";
@@ -134,6 +135,8 @@ export {
   syncCouponsToControlCenterEvery5Hours,
 } from "./controlCenter/couponMirrorSync";
 export {controlCenterCouponAdminBridge} from "./controlCenter/couponAdminBridge";
+// Permanent MakanMana Master Place Registry publication authority.
+export {controlCenterMasterPlaceAdminBridge} from "./controlCenter/masterPlaceAdminBridge";
 
 // Upgrade 1D + Wave 2 — Firebase-authenticated merchant proposal bridge.
 export {
