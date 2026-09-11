@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import {test} from "node:test";
 
 import {PublicRestaurantProfileV2} from "../../../merchant/publicRestaurantProfile";
 import {
@@ -86,14 +86,32 @@ test("permanently closed first-party publication cannot become a candidate", () 
   );
 });
 
-test("proven provider alias is replaced by the canonical first-party candidate", () => {
+test("proven provider alias is replaced by canonical identity while provider evidence survives", () => {
   const canonical = candidate({
     placeId: "CCM-test",
     canonicalPlaceId: "CCM-test",
     name: "MakanMana Test Kitchen Puncak Alam",
+    rating: 0,
+    userRatingCount: 0,
+    priceLevel: 0,
+    priceEstimate: "",
+    photoUrl: null,
+    openingPeriods: null,
+    isOpen: true,
+    negativeSignals: ["price_unknown", "hours_unknown"],
     dataSource: "canonical",
   });
-  const provider = candidate({placeId: "google-abc", name: "MakanMana Test Kitchen Puncak Alam"});
+  const provider = candidate({
+    placeId: "google-abc",
+    name: "MakanMana Test Kitchen Puncak Alam",
+    rating: 4.7,
+    userRatingCount: 431,
+    priceLevel: 2,
+    priceEstimate: "RM15 - RM35",
+    photoUrl: "https://example.com/provider.jpg",
+    openingPeriods: [{openMinuteOfWeek: 0, closeMinuteOfWeek: 10080}],
+    isOpen: false,
+  });
   const unrelated = candidate({placeId: "google-other", name: "Kedai Lain", lat: 3.24});
 
   const merged = mergeCanonicalPreferred(
@@ -103,6 +121,16 @@ test("proven provider alias is replaced by the canonical first-party candidate",
   );
 
   assert.deepEqual(merged.map((item) => item.placeId), ["google-other", "CCM-test"]);
+  const winner = merged[1];
+  assert.equal(winner.dataSource, "canonical");
+  assert.equal(winner.rating, 4.7);
+  assert.equal(winner.userRatingCount, 431);
+  assert.equal(winner.priceLevel, 2);
+  assert.equal(winner.photoUrl, "https://example.com/provider.jpg");
+  assert.deepEqual(winner.openingPeriods, provider.openingPeriods);
+  assert.equal(winner.isOpen, false);
+  assert.ok(!(winner.negativeSignals ?? []).includes("price_unknown"));
+  assert.ok(!(winner.negativeSignals ?? []).includes("hours_unknown"));
 });
 
 test("conservative exact-name geo fallback prevents an unaliased duplicate", () => {
