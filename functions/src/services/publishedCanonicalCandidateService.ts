@@ -1,3 +1,5 @@
+import type {DocumentReference, DocumentSnapshot} from "firebase-admin/firestore";
+
 import {db} from "../config/firebase";
 import {projectPublicRestaurantProfileV2} from "../domain/merchant/publicRestaurantProfile";
 import {
@@ -23,10 +25,10 @@ function text(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-async function getDocsByRefs<T>(refs: T[], reader: (items: T[]) => Promise<FirebaseFirestore.DocumentSnapshot[]>): Promise<FirebaseFirestore.DocumentSnapshot[]> {
-  const out: FirebaseFirestore.DocumentSnapshot[] = [];
+async function getDocsByRefs(refs: DocumentReference[]): Promise<DocumentSnapshot[]> {
+  const out: DocumentSnapshot[] = [];
   for (let i = 0; i < refs.length; i += GET_ALL_CHUNK) {
-    out.push(...await reader(refs.slice(i, i + GET_ALL_CHUNK)));
+    out.push(...await db.getAll(...refs.slice(i, i + GET_ALL_CHUNK)));
   }
   return out;
 }
@@ -60,7 +62,7 @@ export async function readPublishedMakanManaCandidateSource(opts: {
 
   const canonicalIds = registry.docs.map((doc) => doc.id);
   const headRefs = canonicalIds.map((id) => db.collection(C_HEAD).doc(id));
-  const headSnaps = await getDocsByRefs(headRefs, (refs) => db.getAll(...refs));
+  const headSnaps = await getDocsByRefs(headRefs);
   const publicationByCanonical = new Map<string, string>();
   for (let i = 0; i < headSnaps.length; i++) {
     const activePublicationId = text(headSnaps[i].data()?.activePublicationId);
@@ -72,7 +74,7 @@ export async function readPublishedMakanManaCandidateSource(opts: {
   const publicationEntries = [...publicationByCanonical.entries()];
   const publicationRefs = publicationEntries.map(([, publicationId]) =>
     db.collection(C_PUBLICATION).doc(publicationId));
-  const publicationSnaps = await getDocsByRefs(publicationRefs, (refs) => db.getAll(...refs));
+  const publicationSnaps = await getDocsByRefs(publicationRefs);
 
   const candidates: PlaceCandidate[] = [];
   const nowMs = opts.nowMs ?? Date.now();
