@@ -6,6 +6,7 @@
  * SELEPAS ini dalam perkhidmatan sesi. Modul TULEN (tiada I/O).
  */
 import { PlaceCandidate } from "../../types/place";
+import { isDirectCanonicalCandidate } from "../places/canonical/canonicalCandidatePool";
 import { RecommendationUserContext } from "./recommendationContext";
 import { applyHardSafety, HardSafetyResult, SafetyFilterReason } from "./safetyFilter";
 import { rankCandidatesV2, ScoredCandidate, SCORING_VERSION } from "./scoringModel";
@@ -70,6 +71,27 @@ export interface UnifiedRankResult {
   diagnostics: UnifiedRankDiagnostics;
 }
 
+/**
+ * Bounded source-trust tie break. A current direct MakanMana registry candidate
+ * may beat a provider candidate only when the underlying relevance scores are
+ * already very close. Hard safety runs before this and can never be bypassed.
+ */
+export const CURATED_SOURCE_TIE_BREAK_BONUS = 0.015;
+
+export function preferCuratedComparable(
+  scored: readonly ScoredCandidate[],
+): ScoredCandidate[] {
+  return [...scored].sort((left, right) => {
+    const leftAdjusted = left.score +
+      (isDirectCanonicalCandidate(left.place) ? CURATED_SOURCE_TIE_BREAK_BONUS : 0);
+    const rightAdjusted = right.score +
+      (isDirectCanonicalCandidate(right.place) ? CURATED_SOURCE_TIE_BREAK_BONUS : 0);
+    const adjustedGap = rightAdjusted - leftAdjusted;
+    if (adjustedGap !== 0) return adjustedGap;
+    return right.score - left.score;
+  });
+}
+
 /** Degradasi konteks mengikut sub-bendera (rollback berbutir tanpa dakwaan palsu). */
 export function applySubFlags(
   ctx: RecommendationUserContext,
@@ -107,7 +129,14 @@ export function rankUnified(
     excludeClosed: opts.excludeClosed,
   });
 
-  const { ranked, scored } = rankCandidatesV2(safety.eligible, ctx);
+  const base = rankCandidatesV2(safety.eligible, ctx);
+  const scored = preferCuratedComparable(base.scored);
+  const ranked = scored.map((s) => ({
+    ...s.place,
+    matchScore: s.matchScore,
+    matchReasonKeys: s.reasons.slice(0, 3),
+    negativeSignals: s.negativeSignals,
+  }));
 
   // Explainability OFF → jangan pulangkan sebab/isyarat (rollback berbutir).
   const outRanked = subFlags.explain
