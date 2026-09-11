@@ -65,7 +65,6 @@ function businessAllowsRecommendation(state: string): boolean {
   const normalized = normalizePlaceSearchText(state);
   return ![
     "permanently closed",
-    "permanently_closed",
     "closed permanently",
     "inactive",
     "blocked",
@@ -128,10 +127,35 @@ function samePhysicalPlace(left: PlaceCandidate, right: PlaceCandidate): boolean
   return haversineMeters(left.lat, left.lng, right.lat, right.lng) <= GEO_DEDUPE_METERS;
 }
 
+function preserveProviderEvidence(canonical: PlaceCandidate, provider: PlaceCandidate): PlaceCandidate {
+  const canonicalHoursKnown = Array.isArray(canonical.openingPeriods) && canonical.openingPeriods.length > 0;
+  return {
+    ...canonical,
+    rating: canonical.rating > 0 ? canonical.rating : provider.rating,
+    userRatingCount: canonical.userRatingCount > 0
+      ? canonical.userRatingCount
+      : provider.userRatingCount,
+    priceLevel: canonical.priceLevel > 0 ? canonical.priceLevel : provider.priceLevel,
+    priceEstimate: canonical.priceEstimate || provider.priceEstimate,
+    photoUrl: canonical.photoUrl ?? provider.photoUrl ?? null,
+    openingPeriods: canonicalHoursKnown
+      ? canonical.openingPeriods
+      : provider.openingPeriods ?? null,
+    isOpen: canonicalHoursKnown ? canonical.isOpen : provider.isOpen,
+    negativeSignals: [
+      ...(canonical.negativeSignals ?? []).filter((signal) =>
+        !(signal === "price_unknown" && provider.priceLevel > 0) &&
+        !(signal === "hours_unknown" && Array.isArray(provider.openingPeriods) && provider.openingPeriods.length > 0)),
+    ],
+  };
+}
+
 /**
  * Merge provider/area candidates with first-party published candidates BEFORE
  * ranking. A proven alias (or conservative exact-name + <=120m fallback) is
  * replaced by the first-party canonical candidate, never returned twice.
+ * Curated identity/content wins while provider rating/photo/hours evidence is
+ * retained only where the canonical publication has no equivalent measurement.
  */
 export function mergeCanonicalPreferred(
   providerCandidates: readonly PlaceCandidate[],
@@ -147,9 +171,23 @@ export function mergeCanonicalPreferred(
   const emittedProvider = new Set<string>();
   for (const provider of providerCandidates) {
     const mapped = aliasToCanonical[provider.placeId] ?? provider.canonicalPlaceId;
-    if (mapped && canonicalById.has(mapped)) continue;
-    if (canonicalById.has(provider.placeId)) continue;
-    if ([...canonicalById.values()].some((canonical) => samePhysicalPlace(provider, canonical))) continue;
+    if (mapped && canonicalById.has(mapped)) {
+      canonicalById.set(mapped, preserveProviderEvidence(canonicalById.get(mapped)!, provider));
+      continue;
+    }
+    if (canonicalById.has(provider.placeId)) {
+      canonicalById.set(provider.placeId, preserveProviderEvidence(canonicalById.get(provider.placeId)!, provider));
+      continue;
+    }
+    const physicalEntry = [...canonicalById.entries()].find(([, canonical]) =>
+      samePhysicalPlace(provider, canonical));
+    if (physicalEntry) {
+      canonicalById.set(
+        physicalEntry[0],
+        preserveProviderEvidence(physicalEntry[1], provider),
+      );
+      continue;
+    }
     if (emittedProvider.add(provider.placeId)) out.push(provider);
   }
 
