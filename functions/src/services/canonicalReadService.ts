@@ -34,6 +34,51 @@ interface ResolvedCanonical {
   view: CanonicalPlaceView | null;
 }
 
+async function readCanonicalView(
+  canonicalId: string,
+  providerPlaceId: string,
+): Promise<ResolvedCanonical> {
+  const [regSnap, headSnap] = await Promise.all([
+    db.collection(C_REGISTRY).doc(canonicalId).get(),
+    db.collection(C_HEAD).doc(canonicalId).get(),
+  ]);
+  if (!regSnap.exists || !headSnap.exists) return { aliasResolved: true, view: null };
+  const activePubId = str(headSnap.data()?.activePublicationId);
+  if (!activePubId) return { aliasResolved: true, view: null };
+  const pubSnap = await db.collection(C_PUB).doc(activePubId).get();
+  if (!pubSnap.exists) return { aliasResolved: true, view: null };
+  const p = pubSnap.data() ?? {};
+  if (p.blocked === true || p.publicationStatus !== "published") {
+    return { aliasResolved: true, view: null };
+  }
+  const lat = num(p.lat) ?? num(p.latitude);
+  const lng = num(p.lng) ?? num(p.longitude);
+  if (lat === undefined || lng === undefined) return { aliasResolved: true, view: null };
+
+  const view: CanonicalPlaceView = {
+    canonicalPlaceId: canonicalId,
+    providerPlaceId,
+    title: str(p.title) ?? str(p.name) ?? "",
+    address: str(p.address) ?? null,
+    lat,
+    lng,
+    ratingState: str(p.ratingState) ?? "rating_hidden",
+    priceState: str(p.priceState) ?? "price_unknown",
+    hoursState: str(p.hoursState) ?? "hours_unknown",
+    businessState: str(p.businessState) ?? str(p.businessStatus) ?? "status_unknown",
+    halalState: str(p.halalState) ?? str(p.halalStatus) ?? "halal_unknown",
+    publicationId: activePubId,
+    publicationVersion: num(p.versionNumber) ?? num(p.publicationVersion) ?? 1,
+  };
+  return { aliasResolved: true, view };
+}
+
+/** Baca calon yang SUDAH membawa identiti kanonikal terus. */
+export async function readCanonicalForDirectId(canonicalId: string): Promise<ResolvedCanonical> {
+  if (!canonicalId) return { aliasResolved: false, view: null };
+  return readCanonicalView(canonicalId, canonicalId);
+}
+
 /** Selesaikan providerId → kanonikal + penerbitan aktif (BACA server-only). */
 export async function readCanonicalForProvider(providerId: string): Promise<ResolvedCanonical> {
   if (!providerId) return { aliasResolved: false, view: null };
@@ -60,40 +105,7 @@ export async function readCanonicalForProvider(providerId: string): Promise<Reso
   }
   if (!canonicalId) return { aliasResolved: false, view: null };
 
-  // 2) registry + head + publication aktif.
-  const [regSnap, headSnap] = await Promise.all([
-    db.collection(C_REGISTRY).doc(canonicalId).get(),
-    db.collection(C_HEAD).doc(canonicalId).get(),
-  ]);
-  if (!regSnap.exists || !headSnap.exists) return { aliasResolved: true, view: null };
-  const activePubId = str(headSnap.data()?.activePublicationId);
-  if (!activePubId) return { aliasResolved: true, view: null };
-  const pubSnap = await db.collection(C_PUB).doc(activePubId).get();
-  if (!pubSnap.exists) return { aliasResolved: true, view: null };
-  const p = pubSnap.data() ?? {};
-  if (p.blocked === true || p.publicationStatus !== "published") {
-    return { aliasResolved: true, view: null };
-  }
-  const lat = num(p.lat);
-  const lng = num(p.lng);
-  if (lat === undefined || lng === undefined) return { aliasResolved: true, view: null };
-
-  const view: CanonicalPlaceView = {
-    canonicalPlaceId: canonicalId,
-    providerPlaceId: providerId,
-    title: str(p.title) ?? "",
-    address: str(p.address) ?? null,
-    lat,
-    lng,
-    ratingState: str(p.ratingState) ?? "rating_hidden",
-    priceState: str(p.priceState) ?? "price_unknown",
-    hoursState: str(p.hoursState) ?? "hours_unknown",
-    businessState: str(p.businessState) ?? "status_unknown",
-    halalState: str(p.halalState) ?? "halal_unknown",
-    publicationId: activePubId,
-    publicationVersion: num(p.versionNumber) ?? 1,
-  };
-  return { aliasResolved: true, view };
+  return readCanonicalView(canonicalId, providerId);
 }
 
 export interface CanonicalOverlaySummary {
@@ -104,7 +116,7 @@ export interface CanonicalOverlaySummary {
 
 /**
  * Terapkan overlay kanonikal ke atas SENARAI calon (kohort sahaja). Kekalkan
- * susunan + kiraan. Bacaan selari (bounded oleh saiz senarai kecil ≤12).
+ * susunan + kiraan. Bacaan selari (bounded oleh saiz halaman/sesi).
  */
 export async function applyCanonicalOverlay(
   candidates: readonly PlaceCandidate[],
@@ -124,16 +136,19 @@ export async function applyCanonicalOverlay(
   }
 
   // Toleran-ralat: kegagalan bacaan kanonikal → legasi (tidak pernah merosakkan
-  // permintaan kohort). Ini menguatkuasakan "canonical failure → legacy fallback".
-  const safeRead = async (providerId: string): Promise<ResolvedCanonical> => {
+  // permintaan kohort). Calon direct Registry TIDAK perlu alias provider.
+  const safeRead = async (candidate: PlaceCandidate): Promise<ResolvedCanonical> => {
     try {
-      return await readCanonicalForProvider(providerId);
+      if (candidate.canonicalPlaceId && candidate.canonicalPlaceId === candidate.placeId) {
+        return await readCanonicalForDirectId(candidate.placeId);
+      }
+      return await readCanonicalForProvider(candidate.placeId);
     } catch (e) {
       console.error("canonicalRead: fallback legasi atas ralat:", e instanceof Error ? e.message : e);
       return { aliasResolved: false, view: null };
     }
   };
-  const resolved = await Promise.all(candidates.map((c) => safeRead(c.placeId)));
+  const resolved = await Promise.all(candidates.map((c) => safeRead(c)));
   const results = candidates.map((c, i) =>
     overlayCanonicalCandidate(c, resolved[i].view, {
       cohortEligible: true,
