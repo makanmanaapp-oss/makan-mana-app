@@ -47,6 +47,29 @@ test("dedupe prefers direct canonical registry candidate over provider alias", (
   assert.equal(result[0].name, "MakanMana Test Kitchen Puncak Alam");
 });
 
+test("dedupe removes an exact-name provider rediscovery within 35m even before alias exists", () => {
+  const canonical = candidate("CCM-abc", "MakanMana Test Kitchen Puncak Alam", {
+    canonicalPlaceId: "CCM-abc",
+    dataSource: "canonical",
+    lat: 3.23890,
+    lng: 101.42793,
+  });
+  const provider = candidate("google-later", "makanmana test kitchen puncak alam", {
+    lat: 3.23891,
+    lng: 101.42794,
+    rating: 4.9,
+  });
+  const otherBranch = candidate("google-other", "MakanMana Test Kitchen Puncak Alam", {
+    lat: 3.2400,
+    lng: 101.4290,
+  });
+
+  const result = dedupeCanonicalCandidates([provider, canonical, otherBranch]);
+  assert.equal(result.length, 2);
+  assert.equal(result[0].placeId, "CCM-abc");
+  assert.equal(result[1].placeId, "google-other");
+});
+
 test("search exact canonical name returns it first from the full pool", () => {
   const nearProvider = candidate("google-near", "Puncak Alam Cafe", {
     rating: 4.9,
