@@ -1,4 +1,7 @@
 import {PlaceCandidate} from "../../../types/place";
+import {haversineMeters} from "../dedup/geo";
+
+const SAME_PLACE_EXACT_NAME_DISTANCE_M = 35;
 
 /** Stable identity used on public discovery surfaces. */
 export function canonicalCandidateKey(candidate: PlaceCandidate): string {
@@ -14,11 +17,29 @@ export function isDirectCanonicalCandidate(candidate: PlaceCandidate): boolean {
   return Boolean(canonical && canonical === candidate.placeId);
 }
 
+function normalized(value: string): string {
+  return value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function exactNameNearby(a: PlaceCandidate, b: PlaceCandidate): boolean {
+  if (normalized(a.name) !== normalized(b.name)) return false;
+  if (typeof a.lat !== "number" || typeof a.lng !== "number" ||
+      typeof b.lat !== "number" || typeof b.lng !== "number" ||
+      !Number.isFinite(a.lat) || !Number.isFinite(a.lng) ||
+      !Number.isFinite(b.lat) || !Number.isFinite(b.lng)) return false;
+  return haversineMeters(a.lat, a.lng, b.lat, b.lng) <= SAME_PLACE_EXACT_NAME_DISTANCE_M;
+}
+
 /**
  * Dedupe provider/canonical aliases without changing unrelated ordering.
- * When two rows resolve to the same canonical identity, prefer the direct
- * MakanMana registry candidate so stale provider data cannot replace curated
- * identity/location data. Safety/ranking still decides where the identity sits.
+ * Prefer direct MakanMana registry identity. As a conservative safety net for a
+ * provider copy discovered before an alias is written, exact normalized name +
+ * <=35m is treated as the same premises only when one side is direct canonical.
  */
 export function dedupeCanonicalCandidates(
   candidates: readonly PlaceCandidate[],
@@ -29,28 +50,33 @@ export function dedupeCanonicalCandidates(
   for (const candidate of candidates) {
     const key = canonicalCandidateKey(candidate);
     const existingIndex = indexByKey.get(key);
-    if (existingIndex === undefined) {
-      indexByKey.set(key, out.length);
-      out.push(candidate);
+    if (existingIndex !== undefined) {
+      const existing = out[existingIndex];
+      if (isDirectCanonicalCandidate(candidate) && !isDirectCanonicalCandidate(existing)) {
+        out[existingIndex] = candidate;
+      }
       continue;
     }
 
-    const existing = out[existingIndex];
-    if (isDirectCanonicalCandidate(candidate) && !isDirectCanonicalCandidate(existing)) {
-      out[existingIndex] = candidate;
+    // Provider may be rediscovered before its alias is known. Do not fuzzy
+    // match names: require exact normalized name, tight geo, and a direct
+    // canonical side to avoid merging nearby branches.
+    const nearDuplicateIndex = out.findIndex((existing) =>
+      (isDirectCanonicalCandidate(existing) || isDirectCanonicalCandidate(candidate)) &&
+      exactNameNearby(existing, candidate));
+    if (nearDuplicateIndex >= 0) {
+      const existing = out[nearDuplicateIndex];
+      if (isDirectCanonicalCandidate(candidate) && !isDirectCanonicalCandidate(existing)) {
+        out[nearDuplicateIndex] = candidate;
+      }
+      continue;
     }
+
+    indexByKey.set(key, out.length);
+    out.push(candidate);
   }
 
   return out;
-}
-
-function normalized(value: string): string {
-  return value
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, " ");
 }
 
 /**
