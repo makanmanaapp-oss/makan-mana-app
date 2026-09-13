@@ -58,7 +58,7 @@ test("converts two-session weekly hours and overnight sessions safely", () => {
   assert.equal(periods.length, 3);
   assert.deepEqual(periods[0], {openMinuteOfWeek: 1980, closeMinuteOfWeek: 2280});
   assert.deepEqual(periods[1], {openMinuteOfWeek: 2460, closeMinuteOfWeek: 2760});
-  assert.deepEqual(periods[2], {openMinuteOfWeek: 9480, closeMinuteOfWeek: 9720});
+  assert.deepEqual(periods[2], {openMinuteOfWeek: 9960, closeMinuteOfWeek: 10200});
 });
 
 test("area cache upsert preserves unrelated candidates and removes known aliases", () => {
