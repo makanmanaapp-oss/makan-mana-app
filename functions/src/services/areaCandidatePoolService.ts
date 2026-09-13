@@ -8,7 +8,7 @@
  */
 import { db, FieldValue } from "../config/firebase";
 import { PlaceCandidate } from "../types/place";
-import { dedupeCanonicalCandidates } from "../domain/places/canonical/canonicalCandidatePool";
+import { dedupeCanonicalCandidates, orderCanonicalFirst } from "../domain/places/canonical/canonicalCandidatePool";
 import { getExpandedPool } from "./expandedPoolService";
 import {
   AreaCandidatePool,
@@ -213,7 +213,23 @@ async function persistDiscovered(merged: readonly AreaPlace[], now: number): Pro
   }
   const batch = db.batch();
   for (const [cellId, cands] of byCell) {
-    const list = dedupeCanonicalCandidates(cands).slice(0, MAX_CANDIDATES_PER_CELL);
+    // INTERIM SCALE GUARD (2026-09-13).
+    //
+    // The cap is a Firestore document-size limit, not a statement about how
+    // many restaurants exist. But `dedupeCanonicalCandidates` preserves
+    // INSERTION order, so before this a published registry restaurant that
+    // happened to land at index 400+ was sliced away and then written back
+    // with `set`, permanently removing it from that cell's discovery.
+    //
+    // Ordering direct-canonical candidates first means the authoritative
+    // registry is never the thing that gets dropped. Provider candidates are
+    // rediscoverable; a curated restaurant that silently vanishes is not.
+    //
+    // This does NOT make the cell unbounded — see AREA_CACHE_SCALABILITY_DESIGN.md
+    // for the sharded schema that removes the cap. It only guarantees that the
+    // cap can never cost us a registry restaurant in the meantime.
+    const list = orderCanonicalFirst(dedupeCanonicalCandidates(cands))
+      .slice(0, MAX_CANDIDATES_PER_CELL);
     batch.set(
       db.collection(C_AREA).doc(cellId),
       { cellId, candidates: list, lastDiscoveryAt: now, updatedAt: now },

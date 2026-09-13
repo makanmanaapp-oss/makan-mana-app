@@ -115,3 +115,21 @@ export function searchCanonicalCandidates(
     })
     .map((row) => row.candidate);
 }
+
+/**
+ * Stable partition: direct-canonical (registry) candidates first, everything
+ * else after, each group keeping its existing relative order.
+ *
+ * Deliberately a partition and not a sort — dedupe order carries ranking
+ * meaning for provider candidates, and a comparator would scramble it.
+ */
+export function orderCanonicalFirst(
+  candidates: readonly PlaceCandidate[],
+): PlaceCandidate[] {
+  const canonical: PlaceCandidate[] = [];
+  const rest: PlaceCandidate[] = [];
+  for (const candidate of candidates) {
+    (isDirectCanonicalCandidate(candidate) ? canonical : rest).push(candidate);
+  }
+  return [...canonical, ...rest];
+}
