@@ -96,8 +96,18 @@ class ExplorePaginationController extends StateNotifier<ExplorePaginationState> 
     await _fetch(reset: true);
   }
 
+  /// Load the next page — WITH or WITHOUT an active search.
+  ///
+  /// This used to bail whenever `_query` was non-empty, which capped search at
+  /// whatever the first server page held (12). The server already searches the
+  /// FULL ranked pool and only then paginates, so a query has always been safe
+  /// to page through; the guard was the entire cap.
+  ///
+  /// `_fetch` carries the query and the cursor together and refuses to apply a
+  /// response whose query no longer matches, so paging a search cannot mix in
+  /// results from a previous one.
   Future<void> loadMore() async {
-    if (state.loading || state.endOfResults || _query.isNotEmpty) return;
+    if (state.loading || state.endOfResults) return;
     await _fetch(reset: false);
   }
 
