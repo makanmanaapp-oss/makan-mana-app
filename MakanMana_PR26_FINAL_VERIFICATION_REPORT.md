@@ -21,7 +21,7 @@ Center login boundary.
 | RULES | **DONE** — ruleset advanced, 8/8 deny tests pass |
 | INDEXES | **NOT DEPLOYED** (none required) |
 | SCALABLE STORAGE LIVE | **PASS** — candidate documents written in production |
-| TEST KITCHEN | **BLOCKED** — command queued, no runner to execute it (see 0C) |
+| TEST KITCHEN | **BLOCKED** — runner endpoint has no job secret (see 0D) |
 | PRODUCTION AAB | **NOT TOUCHED** |
 | PLAY RELEASE | **NOT TOUCHED** |
 
@@ -61,6 +61,119 @@ Post-cutover smoke: Explore renders, Spin returns a real suggestion, zero
 `severity>=ERROR` logs on either callable, 0 FATAL EXCEPTION on device.
 
 **Rollback status: NOT REQUIRED.** No failure occurred. Rollback targets above.
+
+---
+
+## 0D. DUPLICATE CANCELLATION DONE — RUNNER BLOCKED (2026-09-13)
+
+### Phase A — pre-mutation reverify: PASS
+
+All three commands still `queued`, `attempt_count=0`, `completed_at`,
+`next_attempt_at`, `last_attempt_at` all null, same `target_system=firebase`,
+same `command_type`, same `resource_type`, same `resource_id`, same actor
+`addc150b-d9df-43ce-bdfa-c5cf2e5329eb`, and **identical payloads**
+(md5 `c561bed04ebfd3907d5d9f5739ea4b6b`, 8660 bytes). Nothing had started.
+
+### Phase B — two duplicates cancelled via the audited lifecycle: PASS
+
+`control_center_command_lifecycle(p_action => 'cancel', ...)`. No rows deleted.
+
+| id | status | completed_at | next_attempt_at |
+|---|---|---|---|
+| `c5fc14fd-e59f-434d-8fba-73010a24038f` **KEPT** | `queued` | null | null |
+| `b145ad7c-ec6e-4708-a56f-eaff9cffd2db` | **`cancelled`** | 13:40:04.512Z | null |
+| `5e90b11a-6c14-4b2d-8b02-4a121b58f611` | **`cancelled`** | 13:40:13.807Z | null |
+
+Audit evidence — `audit_logs` contains **two** `command.cancelled` rows
+(13:40:04.512Z and 13:40:13.807Z), resource_type `place_registry_master`,
+resource_id `65df6d95-…`, reason *"Cancel duplicate Test Kitchen publish
+command; preserve earliest queued request for one-off execution."*
+
+The kept command was not altered.
+
+### Phase C — queue scope proof: PASS
+
+Query used the claim function's exact criteria
+(`status='queued' AND coalesce(next_attempt_at, now()) <= now() AND attempt_count < 5`),
+across **all** target systems:
+
+```
+TOTAL CLAIMABLE QUEUED COMMANDS (all targets): 1
+  target=firebase  id=c5fc14fd-e59f-434d-8fba-73010a24038f
+  type=place.publish_master_registry  resource=65df6d95-…
+```
+
+The kept Test Kitchen command was the **sole** claimable command anywhere. No
+unrelated command could have been touched.
+
+### Phase D/E — one-off runner: **FAILED, and not for a reason a retry fixes**
+
+One POST to `/api/internal/commands/run`. Response:
+
+```
+HTTP 503  {"ok":false,"error":"Internal job secret is not configured."}
+```
+
+That message comes from `verifyBearer(request, process.env.CONTROL_CENTER_JOB_SECRET, …)`:
+
+```ts
+if (!expected) return { ok: false, status: 503, error: missingMessage };
+...
+if (!presented || !safeEqual(presented, expected))
+  return { ok: false, status: 401, error: "Unauthorized internal request." };
+```
+
+**503 means the SERVER's own `CONTROL_CENTER_JOB_SECRET` is falsy at runtime.**
+A wrong or empty token from the caller returns **401**, not 503. So this is not a
+credential mistake on my side — the running deployment has no job secret.
+
+Corroborating: `vercel env pull --environment=production` returns **empty values
+for every sensitive variable** (`CONTROL_CENTER_JOB_SECRET`,
+`CONTROL_CENTER_SYNC_SECRET`, `MERCHANT_BRIDGE_SECRET`,
+`FIREBASE_MASTER_PLACE_BRIDGE_URL`, and both `ADMIN_*_ENABLED` flags). The flags
+cannot truly be empty — the Publish button worked — so the CLI is writing
+placeholders for sensitive values rather than decrypting them. That makes the
+pull useless as a way to obtain the secret, and it is consistent with the server
+itself not having one.
+
+**The runner endpoint is therefore unusable by anyone, not just by me.** That is
+the real reason nothing has drained the queue since 2026-08-27 — deeper than the
+missing cron reported in 0C.
+
+Also noted: the deployment currently serving `makanmana-control-center.vercel.app`
+is `dpl_2JiYfuvZpGiXYFMWeTdBJWJHorSK`, created **2026-09-11** — not the
+`dpl_8TbmZZTgnqH5V7T6ZxY1nCkZDEst` deployed on 2026-09-13. Something re-promoted
+an older deployment. Worth checking, as an older build may predate env changes.
+
+### State after the failed pass — intact
+
+| id | status | attempts |
+|---|---|---|
+| `c5fc14fd-…` KEPT | **`queued`** | 0 |
+| `b145ad7c-…` | `cancelled` | 0 |
+| `5e90b11a-…` | `cancelled` | 0 |
+
+Auth failed before any claim, so the kept command was not consumed and is still
+executable the moment the runner works. Nothing unrelated ran.
+
+### What unblocks it — owner action, outside my authorization
+
+1. Set a real value for **`CONTROL_CENTER_JOB_SECRET`** in Vercel production
+   (it appears unset/empty at runtime), then redeploy the Control Center so the
+   running deployment picks it up.
+2. Check why `dpl_2JiYfuvZpGiXYFMWeTdBJWJHorSK` (Sep 11) is serving instead of
+   the Sep 13 deployment.
+3. Then one POST to `/api/internal/commands/run`, which will claim exactly the
+   one kept command.
+
+I did **not** set the env var, rotate any secret, or redeploy the Control
+Center — none of that is authorized. Temporary env files were deleted; nothing
+was committed.
+
+### Phases G/H/I — NOT RUN
+
+Publication has not executed, so canonicalPlaceId, publicationId, the scalable
+candidate document and the entire Samsung Test Kitchen E2E remain untested.
 
 ---
 
