@@ -21,7 +21,7 @@ Center login boundary.
 | RULES | **DONE** — ruleset advanced, 8/8 deny tests pass |
 | INDEXES | **NOT DEPLOYED** (none required) |
 | SCALABLE STORAGE LIVE | **PASS** — candidate documents written in production |
-| TEST KITCHEN | **BLOCKED** — publish never enqueued (see 0B) |
+| TEST KITCHEN | **BLOCKED** — command queued, no runner to execute it (see 0C) |
 | PRODUCTION AAB | **NOT TOUCHED** |
 | PLAY RELEASE | **NOT TOUCHED** |
 
@@ -64,7 +64,75 @@ Post-cutover smoke: Explore renders, Spin returns a real suggestion, zero
 
 ---
 
-## 0B. TEST KITCHEN PUBLICATION — BLOCKED (2026-09-13, post-deploy)
+## 0C. TEST KITCHEN PUBLICATION — COMMAND FIRED BUT NEVER EXECUTED
+
+**Correction to 0B below: the click DID fire.** 0B was accurate when written
+(12:30Z); the owner's click landed at 12:44-12:45Z, after that check.
+
+### The commands exist
+
+`admin_commands`, `command_type = place.publish_master_registry`,
+`resource_id = 65df6d95-e940-4f9a-850d-091e725c41ac`:
+
+| id | created | status | error |
+|---|---|---|---|
+| `c5fc14fd-e59f-434d-8fba-73010a24038f` | 12:44:49.425Z | **queued** | none |
+| `b145ad7c-ec6e-4708-a56f-eaff9cffd2db` | 12:44:50.966Z | **queued** | none |
+| `5e90b11a-6c14-4b2d-8b02-4a121b58f611` | 12:45:32.702Z | **queued** | none |
+
+Three, from what the owner reports as one click — the form has no pending state
+or submit-disable, so it is double-submittable.
+
+### Root cause: nothing drains the queue
+
+Publication is asynchronous. `publishMasterPlaceFormAction` only *enqueues*;
+execution requires `processConfiguredCommands`, whose sole caller is
+`POST /api/internal/commands/run`, gated by `CONTROL_CENTER_JOB_SECRET`.
+
+- **No cron in the repo** — no `vercel.json`, no `crons` key anywhere.
+- **No Vercel cron** — `vercel crons ls` returns *"No cron jobs found"*.
+- **No UI action** calls the runner.
+- The runner *would* handle this type: `http-command-adapter.ts` routes
+  `place.publish_master_registry` to `getMasterPlaceBridgeConfig()`.
+
+So the queue is drained only by an external POST that nothing currently makes.
+The 4 historical commands (last succeeding 2026-08-27) were drained by
+something no longer running.
+
+**This is not specific to this publish.** Every authoritative command type —
+user admin, coupon, AI brain, social moderation, promotion, CMS, master place —
+enqueues into the same table and depends on the same absent runner.
+
+### Why the UI was silent
+
+The form action **succeeded**. It enqueued and returned. There is no success or
+error UX, and nothing to report anyway, because the work happens later. Unchanged
+UI was not evidence of failure — as the owner noted.
+
+### If the queue is drained, what happens
+
+`resolveCanonicalId` falls back to `CCM-${hash(masterRegistryId)}`, derived from
+the stable Supabase row id, so all three commands resolve to the **same**
+canonicalPlaceId. Consequences:
+
+- ONE canonical restaurant in `place_registry` — **no duplicate Test Kitchen**;
+- ONE `place_publication_heads/{canonical}`, `activePublicationId` set by
+  whichever command runs last;
+- **THREE** `place_publications` docs, because `publicationId =
+  CCMASTER-${hash(requestId)}` keys on requestId, not on identity;
+- ONE candidate document at `area_place_cache/{cell}/candidates/{canonical}`.
+
+Untidy but not identity-corrupting. Deduplicating the queued commands to one
+before draining would avoid the two spare publication rows.
+
+### Nothing was mutated
+
+No retry, no queue drain, no SQL, no direct Firestore write, no secret pulled to
+disk. Production deployment state from section 0 unchanged.
+
+---
+
+## 0B. (superseded by 0C) TEST KITCHEN PUBLICATION — as assessed at 12:30Z
 
 Asked to continue from Phase 11 after publication. **The publication did not
 happen.** Stopped here rather than proceeding; Phases 12-23 all depend on it.
