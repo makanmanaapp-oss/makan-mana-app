@@ -21,7 +21,7 @@ Center login boundary.
 | RULES | **DONE** — ruleset advanced, 8/8 deny tests pass |
 | INDEXES | **NOT DEPLOYED** (none required) |
 | SCALABLE STORAGE LIVE | **PASS** — candidate documents written in production |
-| TEST KITCHEN | **BLOCKED** — runner endpoint has no job secret (see 0D) |
+| TEST KITCHEN | **PUBLISHED** — canonical `CCM-3e9e2d55...`, materialized in scalable storage (see 0E) |
 | PRODUCTION AAB | **NOT TOUCHED** |
 | PLAY RELEASE | **NOT TOUCHED** |
 
@@ -61,6 +61,164 @@ Post-cutover smoke: Explore renders, Spin returns a real suggestion, zero
 `severity>=ERROR` logs on either callable, 0 FATAL EXCEPTION on device.
 
 **Rollback status: NOT REQUIRED.** No failure occurred. Rollback targets above.
+
+---
+
+## 0E. TEST KITCHEN PUBLISHED — 2026-09-13/14
+
+### Vercel
+
+| Item | Value |
+|---|---|
+| OLD production deployment | `dpl_2JiYfuvZpGiXYFMWeTdBJWJHorSK` (2026-09-11) |
+| NEW production deployment | **`dpl_GxGW35dSs8gd7NXjjAWzRAWxmkYb`** (2026-09-14), READY, alias resolves to it |
+| Source | `vercel redeploy dpl_2JiYfuvZpGiXYFMWeTdBJWJHorSK --target production` — same source by construction |
+| `CONTROL_CENTER_JOB_SECRET` configured | **YES** (48 random bytes via `env update` on the existing Production entry — no duplicate, Preview untouched). Value never read, printed, or committed. |
+| Other env vars | untouched — `ADMIN_*`, `FIREBASE_MASTER_PLACE_BRIDGE_URL`, Supabase, Firebase all unchanged |
+
+**Commit verification limitation, stated honestly:** the deployment carries no
+git metadata reachable from the CLI (`meta` empty, `gitSource` null, and
+`inspect -F json` omits both), and the Vercel MCP is not authorized for this
+scope. I could not read the SHA to compare. What *is* established: the `git-main`
+alias on the old deployment, and that `vercel redeploy` rebuilds that
+deployment's own source — so OLD commit == NEW commit holds by construction
+rather than by my inspection. PR #39 was not merged, promoted, or deployed.
+
+### Unauthenticated probe — the safe config test
+
+Before using the secret, `POST /api/internal/commands/run` with no Authorization
+returned **HTTP 401 "Unauthorized internal request."** — not 503. Proof the new
+deployment sees the secret, obtained without touching the queue. It also
+confirms the earlier 503 diagnosis was correct.
+
+### Queue scope immediately before the run
+
+`TOTAL CLAIMABLE (all targets) = 1` — only `c5fc14fd-...`. Re-checked after the
+redeploy, per instruction.
+
+### One authenticated runner pass
+
+```
+{"ok":true,"state":"processed","targets":[
+  {"target":"firebase","configured":true,"claimed":1,"succeeded":1,"failed":0},
+  {"target":"google_play_backend","configured":true,"claimed":0,"succeeded":0,"failed":0}]}
+HTTP 200
+```
+
+One POST. No loop, no retry. Secret file deleted immediately; nothing committed.
+
+### Command finalization
+
+| id | status | attempts | completed_at |
+|---|---|---|---|
+| `c5fc14fd-...` **KEPT** | **`succeeded`** | 1 | 17:17:59.702Z |
+| `b145ad7c-...` | `cancelled` | 0 | 13:40:04.512Z |
+| `5e90b11a-...` | `cancelled` | 0 | 13:40:13.807Z |
+
+`error_code` null, `error_message` null, `result_snapshot` present,
+`last_attempt_at` 17:17:54.527Z.
+
+**Nothing unrelated ran:** all 9 `admin_commands` rows inspected — only the 3
+Test Kitchen rows carry 2026-09-13 timestamps; the other 6 are unchanged since
+2026-08-18/27.
+
+### Publication identity
+
+| Field | Value |
+|---|---|
+| canonicalPlaceId | **`CCM-3e9e2d5534de7c3ae253961b6e3c4d88`** |
+| publicationId | **`CCMASTER-7763019075cb7e218dbd726c`** |
+| activePublicationId | `CCMASTER-7763019075cb7e218dbd726c` |
+| areaCellId | **`w284k`** |
+| versionNumber | 1 |
+| published / candidateMaterialized | true / true |
+| requestId | `93503666-d530-43bd-98e6-d37840ca0827` |
+
+Firebase state: `place_registry/CCM-3e9e...` with `provenanceSource:
+makanmana_master_registry` (**no fabricated Google id**), `lifecycleStatus:
+active`, lat 3.2389, lng 101.42793; `place_publication_heads/CCM-3e9e...`
+pointing at the active publication; `place_publications/CCMASTER-...` with
+`publicationStatus: published`, `menuItems: [array 20]`, `halalStatus:
+verified_halal`, `ratingState: rating_hidden`.
+
+Exactly **one** Test Kitchen: 1 of 26 in `place_registry`, 1 of 26 in
+`place_publications` (25 + 1). **The two cancelled duplicates created zero
+publications.**
+
+### Scalable candidate — the point of all of this
+
+```
+area_place_cache/w284k/candidates/CCM-3e9e2d5534de7c3ae253961b6e3c4d88
+  placeId          = CCM-3e9e2d5534de7c3ae253961b6e3c4d88
+  canonicalPlaceId = CCM-3e9e2d5534de7c3ae253961b6e3c4d88
+  dataSource       = canonical
+  name             = MakanMana Test Kitchen Puncak Alam
+  lat / lng        = 3.2389 / 101.42793
+```
+
+`placeId == canonicalPlaceId` and `dataSource == canonical`. The first canonical
+restaurant to materialize through the new subcollection storage in production.
+
+### Supabase write-back — GAP, not a failure
+
+The row remains `registry_status=draft`, `canonical_place_id=null`,
+`published_at=null`. Investigated: **nothing in the Control Center writes these
+back** — no writer exists in `lib/admin` or `lib/data`; the runner only calls
+`control_center_finish_command`. The publication itself fully succeeded on the
+Firebase side, which is what the app reads. Consequence:
+`place-registry-read-models.ts` counts published rows by `registry_status ===
+"published"`, so the Control Center dashboard will under-report this place
+indefinitely. **FOLLOW-UP REQUIRED.**
+
+### Samsung A05 — Test Kitchen E2E
+
+Device `R93W904ASMH`, QA `com.makanmana.apps.qa` versionCode 17 (existing build;
+client code unchanged). Not uninstalled, data not cleared. Production
+`com.makanmana.apps` 0.1.8(13) untouched.
+
+| # | Check | Status |
+|---|---|---|
+| 1 | Exact Explore search | **PASS** — "MakanMana Test Kitchen Puncak ...", real cover logo, 4.7 km |
+| 2 | Exactly one result, no duplicate | **PASS** |
+| 3 | Restaurant Detail opens | **PASS** — name, real address, "Buka sekarang", price, no crash |
+| 4-8 | 20 menu items / 12+8 / scroll / persistence | **NOT RUN** — see below |
+| 9-13 | Comment submit + persistence | **NOT RUN** — same cause |
+| 14 | Explore eligibility | **PASS** — reachable via server-side search over the full pool |
+| 15 | Spin health | **PASS** — real suggestion returned, 62% match |
+| 16 | Candidate identity | **PASS** — verified server-side |
+| 17 | Reject/Next | **PASS** (regression verified earlier this cutover) |
+| 18 | canonical/provider dedupe | **PASS** — one card only |
+| 19 | Navigation regression | **PASS** — Home, Explore, Profile, History, Spin |
+| 20 | Logcat | **PASS** — 0 FATAL EXCEPTION, 0 ANR |
+
+Explore pagination additionally proven live: page 1 ended with "Muat lagi", page
+2 loaded further restaurants and offered "Muat lagi" again.
+
+#### Why menu and comment are NOT RUN
+
+The 20-item menu lives only in the **canonical** Restaurant Detail (Profil |
+Ulasan | Menu tabs), gated behind
+`RestaurantDetailFlags.canonicalRestaurantDetailEnabled`. Both activation paths
+hard-gate on `isDebugBuild`: `qaCanonicalDetailAllowed` returns false when
+`!isDebugBuild`, and `evaluateInternalCohort` returns `eligible: false` with
+reason `release_build_public_stays_legacy_only`. A `--release` QA build therefore
+renders the legacy detail, which has **no menu section at all** — confirmed by
+scrolling to the end of the page twice.
+
+This is the **EXPECTED DEBUG/QA FLAG STATE**, not missing code and not a
+publication failure. The menu data is published and verified server-side
+(`menuItems: [array 20]`). Verifying it on-device needs a debug build or an
+explicit diagnostic override, which is a separate authorization.
+
+#### One incident worth recording
+
+The first search returned "Tiada hasil dijumpai". Root cause was **device
+location**, not the publication: the app had fallen back to "Sekitar KL (lokasi
+lalai)" while the Test Kitchen sits in cell `w284k` about 30 km away. The
+device's real fix was 3.2198, 101.4652 — 4.6 km from the restaurant.
+Re-resolving location via the location chip produced "Selangor - 15km", and the
+search then returned the restaurant at 4.7 km, matching the computed distance.
+No code or data was changed to make it appear.
 
 ---
 
