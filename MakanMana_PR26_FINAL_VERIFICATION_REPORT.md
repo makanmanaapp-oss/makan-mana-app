@@ -3,7 +3,9 @@
 Branch `fix/pr26-ui-unlimited-discovery-20260913`, base `cd4a04f0` (merged PR #26).
 Statuses are only PASS / FAIL / BLOCKED / NOT RUN / PARTIAL / DEFERRED.
 
-**NOTHING IN THIS BRANCH IS DEPLOYED.**
+**PRODUCTION DEPLOYMENT EXECUTED 2026-09-13** (owner-authorized: Firestore rules
++ exactly three Functions). Test Kitchen chain remains BLOCKED at the Control
+Center login boundary.
 
 ---
 
@@ -15,15 +17,50 @@ Statuses are only PASS / FAIL / BLOCKED / NOT RUN / PARTIAL / DEFERRED.
 | AUTOMATED TESTS | **PASS** |
 | SAMSUNG DEVICE | **PASS** (20/20 checks) |
 | SCALABILITY | **PASS** |
-| FUNCTION DEPLOYMENT | **PENDING OWNER AUTHORIZATION** |
-| RULES / INDEXES | **PENDING OWNER AUTHORIZATION** (rules only; no indexes needed) |
-| TEST KITCHEN | **DEFERRED** |
+| FUNCTION DEPLOYMENT | **DONE** — 3 of 3, verified by revision |
+| RULES | **DONE** — ruleset advanced, 8/8 deny tests pass |
+| INDEXES | **NOT DEPLOYED** (none required) |
+| SCALABLE STORAGE LIVE | **PASS** — candidate documents written in production |
+| TEST KITCHEN | **BLOCKED** — Control Center login required |
 | PRODUCTION AAB | **NOT TOUCHED** |
 | PLAY RELEASE | **NOT TOUCHED** |
 
 This is **not** a claim that MakanMana is 100% ready. Final production
 verification and the Test Kitchen canonical E2E happen only after deployment is
 authorized.
+
+---
+
+## 0. PRODUCTION DEPLOYMENT — 2026-09-13
+
+| Item | Value |
+|---|---|
+| Firestore ruleset BEFORE | `24ac23e9-3646-4626-9878-d83e165cc7a4` |
+| Firestore ruleset AFTER | **`f5bcafe3-46fd-4261-9661-19a7cf394b5a`** |
+| Indexes deployed | **NONE** |
+| Storage rules deployed | **NONE** |
+| getSuggestions | `00049-vom` -> **`00050-kof`** |
+| getNearbyPlaces | `00023-xeb` -> **`00024-rel`** |
+| controlCenterMasterPlaceAdminBridge | `00002-dah` -> **`00003-vof`** |
+| nextSuggestion | `00013-tot` -> `00013-tot` **UNCHANGED** |
+| Services changed | **exactly 3** of 141 (full snapshot diffed) |
+
+Rules verified against the LIVE ruleset with the Firebase Rules API `:test`
+method: 8/8 DENY expectations met on
+`/area_place_cache/{cell}/candidates/{id}` for get, list, create, update,
+delete (authenticated), get and create (anonymous), and the parent document.
+The candidate store is not public-readable or public-writable.
+
+Scalable storage proven live: a normal radius change triggered discovery
+(`discoveryPerformed=true, newlyDiscoveredCount=14, areaPoolTotal=109`), which
+wrote `area_place_cache/w284z/candidates` with 6 documents where
+**`docId == placeId`** on every one. The pre-existing 27-entry legacy array on
+that cell was NOT rewritten, and legacy-only cell `w22rk` still reads normally.
+
+Post-cutover smoke: Explore renders, Spin returns a real suggestion, zero
+`severity>=ERROR` logs on either callable, 0 FATAL EXCEPTION on device.
+
+**Rollback status: NOT REQUIRED.** No failure occurred. Rollback targets above.
 
 ---
 

@@ -1,7 +1,11 @@
 # Scalable area cache — implementation report
 
 Branch `fix/pr26-ui-unlimited-discovery-20260913`.
-**Nothing in here is deployed.** See §Deployment.
+
+**DEPLOYED TO PRODUCTION 2026-09-13** under owner authorization — Firestore rules
+plus exactly three Functions, nothing else. See §12 for the production evidence.
+Sections 1–11 describe the design as authored; §12 records what actually shipped
+and what is proven live.
 
 ---
 
@@ -230,3 +234,114 @@ match /area_place_cache/{cacheKey} {
 **NOTHING DEPLOYED.** The four PR #26 functions currently in production are
 unchanged and still serving. The scalable storage is inert until the three
 functions above are deployed and the rules block ships with them.
+
+---
+
+# 12. PRODUCTION DEPLOYMENT — EXECUTED 2026-09-13
+
+Owner-authorized scope: Firestore rules + exactly three Functions. Nothing else.
+
+## Rules
+
+| | |
+|---|---|
+| Command | `firebase deploy --project makanmana-c59f3 --only firestore:rules` |
+| Ruleset BEFORE | `24ac23e9-3646-4626-9878-d83e165cc7a4` (2026-09-07T21:42:55Z) |
+| Ruleset AFTER | **`f5bcafe3-46fd-4261-9661-19a7cf394b5a`** (2026-09-13T09:15:03Z) |
+| Indexes | **NOT deployed** — log shows only "released rules"; `firestore.indexes.json` was read for validation, never applied |
+| Storage rules | **NOT deployed** |
+
+### The new path is server-only — tested against the LIVE ruleset
+
+Firebase Rules API `:test` against ruleset `f5bcafe3…`, path
+`/area_place_cache/w22rk/candidates/PLC-testkitchen`:
+
+| Case | Expected | Result |
+|---|---|---|
+| get (authenticated) | DENY | PASS |
+| list (authenticated) | DENY | PASS |
+| create (authenticated) | DENY | PASS |
+| update (authenticated) | DENY | PASS |
+| delete (authenticated) | DENY | PASS |
+| get (anonymous) | DENY | PASS |
+| create (anonymous) | DENY | PASS |
+| parent doc get (authenticated) | DENY | PASS |
+
+**8/8.** The candidate store is not public-readable or public-writable.
+
+## Functions
+
+`firebase deploy --project makanmana-c59f3 --only "functions:getSuggestions,functions:getNearbyPlaces,functions:controlCenterMasterPlaceAdminBridge"`
+
+| Function | BEFORE | AFTER |
+|---|---|---|
+| getSuggestions | `getsuggestions-00049-vom` | **`getsuggestions-00050-kof`** |
+| getNearbyPlaces | `getnearbyplaces-00023-xeb` | **`getnearbyplaces-00024-rel`** |
+| controlCenterMasterPlaceAdminBridge | `controlcentermasterplaceadminbridge-00002-dah` | **`controlcentermasterplaceadminbridge-00003-vof`** |
+| **nextSuggestion** | `nextsuggestion-00013-tot` | **`nextsuggestion-00013-tot` — UNCHANGED** |
+
+Full 141-service revision snapshot diffed before vs after: **exactly three services
+changed**, the three authorized. 141 services before, 141 after.
+
+### Why nextSuggestion was correctly excluded
+
+Its transitive closure DOES contain `canonicalCandidatePool.ts`, which this branch
+touched — but that change has **zero removed lines**; it only adds the
+`orderCanonicalFirst` export. `nextSuggestion` reaches the file solely through
+`unifiedRanking.ts` importing `isDirectCanonicalCandidate`, which is unchanged,
+and `orderCanonicalFirst` is called only from `areaCandidatePoolService.ts`,
+which `nextSuggestion` does not import. Runtime behaviour is identical.
+
+## Live proof the scalable storage is working
+
+Discovery was triggered by a normal user action (radius change on the QA device),
+not by a synthetic write:
+
+```
+getNearbyPlaces.areaCoverage  discoveryPerformed=true
+  discoveryReason=coverage_partial  newlyDiscoveredCount=14
+  areaPoolTotal=109  knownCanonicalCount=134
+```
+
+Resulting production state, cell `w284z`:
+
+```
+area_place_cache/w284z            schemaVersion=2  candidateCount=6
+area_place_cache/w284z/candidates  -> 6 documents
+   ChIJ7yn4o11CzDERgQssbdadK-8   Tokyo Food Restaurant
+   ChIJA0oepFBCzDERTQX4dabTLTc   McDonald's Rawang DT
+   ChIJD2XaoZJCzDERJ2q_XqP6-Oc   Starbucks Coffee, Pandu Lalu
+   ChIJVVVVFVNCzDER4S_wusQ6htw   Restoran R Cheng
+   ChIJYeJN71lCzDERIf1Vx7NiWuA   Restoran Nesan Curry House
+   ChIJlX7-zFNCzDEROUkzKVgZDaI   De' Abang Rawang
+```
+
+- **`docId == placeId` on every document** — the deterministic
+  `canonicalCandidateKey` contract, live.
+- No duplicate identity.
+- No `slice(0,400)` anywhere in the write path.
+- **Legacy array NOT rewritten or grown**: `w284z` still carries its pre-existing
+  27-entry array untouched; the new write added only metadata + subcollection.
+- **Legacy-only cells still read**: `w22rk` has no `schemaVersion`, its 2-entry
+  array intact, and Explore renders normally from it.
+
+### Precision on `candidateCount`
+
+During migration `candidateCount` is the **subcollection** total, not the merged
+logical total. Cell `w284z` reports `candidateCount=6` while also holding 27
+legacy entries. The reader unions both and dedupes, so the user-visible pool is
+correct; the two converge only after backfill. Do not read `candidateCount` as
+"every restaurant in this cell" until the cell is backfilled.
+
+## Smoke after cutover
+
+- Explore renders, legacy cells readable, no permission-denied.
+- Spin returns a real suggestion (McDonald's Kota Damansara DT, 59%).
+- `severity>=ERROR` logs for getNearbyPlaces and getSuggestions since cutover: **none**.
+- 0 FATAL EXCEPTION on device.
+
+## Not done
+
+Backfill of pre-existing cells has **not** been run. `backfillCellCandidates` is
+operator-invoked and idempotent; until it runs, older cells serve from the legacy
+array through the dual read.
