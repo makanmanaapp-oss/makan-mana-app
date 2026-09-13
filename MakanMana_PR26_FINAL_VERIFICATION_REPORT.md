@@ -25,9 +25,9 @@ Center login boundary.
 | PRODUCTION AAB | **NOT TOUCHED** |
 | PLAY RELEASE | **NOT TOUCHED** |
 
-This is **not** a claim that MakanMana is 100% ready. Final production
-verification and the Test Kitchen canonical E2E happen only after deployment is
-authorized.
+This is **not** a claim that MakanMana is 100% ready. The deployment half is
+done and evidenced; the Test Kitchen canonical E2E is blocked at the Control
+Center login boundary and has not run.
 
 ---
 
@@ -67,7 +67,7 @@ Post-cutover smoke: Explore renders, Spin returns a real suggestion, zero
 ## 1. Owner decision package
 
 **Branch** `fix/pr26-ui-unlimited-discovery-20260913`
-**HEAD** `1c1de61` (+ this report)
+**HEAD** `d5dd80a`
 
 ### Changed files and why
 
@@ -77,7 +77,7 @@ Post-cutover smoke: Explore renders, Spin returns a real suggestion, zero
 | `functions/src/domain/places/coverage/__tests__/areaCacheStorage.test.ts` | NEW. 26 tests incl. #401 and #1000 proven individually. |
 | `functions/src/services/areaCandidatePoolService.ts` | Writes one document per candidate; paged subcollection read; merges both generations; legacy array frozen; idempotent backfill added. |
 | `functions/src/controlCenter/masterPlaceAdminBridge.ts` | Publication writes the candidate document in the same transaction, so a published restaurant lands in authoritative storage. |
-| `firestore.rules` | Explicit nested block for the subcollection. Rules do NOT cascade without a recursive wildcard. **PREPARED, NOT DEPLOYED.** |
+| `firestore.rules` | Explicit nested block for the subcollection. Rules do NOT cascade without a recursive wildcard. **DEPLOYED 2026-09-13.** |
 | `functions/src/domain/places/canonical/canonicalCandidatePool.ts` | (earlier commit) `orderCanonicalFirst`, now demoted to legacy-array/backfill ordering. |
 | `lib/features/explore/explore_pagination_controller.dart` | (earlier commit) search pagination unblocked. |
 | `lib/features/settings/settings_screen.dart` | (earlier commit) restored Notification Settings entry. |
@@ -130,22 +130,23 @@ neither changed module. Verified by closure over all 130 exports in
   wildcard, and the existing match has none.
 - **Indexes:** **none.** `__name__` ordering is served automatically.
 
-> **OWNER AUTHORIZATION REQUIRED FOR PRODUCTION RULE DEPLOY.**
+> Authorization received and rules deployed 2026-09-13. Ruleset `24ac23e9` -> `f5bcafe3`.
 
 ### Rollback plan
 
-1. **Functions:** redeploy the three from `cd4a04f0`, or roll Cloud Run back to
+1. **Functions:** roll Cloud Run back to the pre-cutover revisions
    `getsuggestions-00049-vom`, `getnearbyplaces-00023-xeb`,
-   `controlcentermasterplaceadminbridge-00002-dah` (the revisions currently live).
-2. **Rules:** re-deploy the previous `firestore.rules`. The subcollection then
-   falls to the catch-all, which is also deny.
+   `controlcentermasterplaceadminbridge-00002-dah`.
+2. **Rules:** re-release ruleset `24ac23e9-3646-4626-9878-d83e165cc7a4`, or
+   re-deploy the previous `firestore.rules`. The subcollection then falls to the
+   catch-all, which is also deny.
 3. **Data:** nothing is deleted by this change. The legacy array is frozen, not
    removed, so the old reader still finds the pre-migration snapshot. Candidates
    discovered after cutover live only in the subcollection — rollback means
    returning to the pre-migration snapshot, which is a smaller and honest
    promise than "loses nothing".
 
-### Commands that WOULD be run after authorization — NOT EXECUTED
+### Commands actually executed 2026-09-13 (backfill still NOT run)
 
 ```
 # 1. functions (exactly three, never a broad deploy)
