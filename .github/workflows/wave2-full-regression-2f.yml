@@ -33,9 +33,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git fetch origin feature/merchant-business-foundation --depth=1
 
-          changed="$(git diff --name-only origin/feature/merchant-business-foundation...HEAD)"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base_ref="${{ github.event.pull_request.base.sha }}"
+          else
+            git fetch origin feature/merchant-business-foundation --depth=1
+            base_ref="origin/feature/merchant-business-foundation"
+          fi
+
+          changed="$(git diff --name-only "$base_ref"...HEAD)"
           printf '%s\n' "$changed"
 
           if grep -Eq '^(firestore\.rules|firestore\.indexes\.json)$' <<<"$changed"; then
@@ -82,10 +88,21 @@ jobs:
       - name: Test Restaurant Profile V2 mobile boundary
         run: flutter test test/merchant_restaurant_profile_v2_test.dart
       - name: Build Android debug APK only
-        run: flutter build apk --debug
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter build apk --debug 2>&1 | tee android-debug-build.log
+      - name: Upload Android build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-build-log
+          path: android-debug-build.log
+          if-no-files-found: ignore
+          retention-days: 2
 
   flutter-differential:
-    name: Full Flutter differential regression vs locked baseline
+    name: Full Flutter differential regression vs current base
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
@@ -98,11 +115,18 @@ jobs:
         with:
           channel: stable
           cache: true
-      - name: Compare baseline and Wave 2 failure sets
+      - name: Compare base and PR failure sets
         shell: bash
         run: |
           set -euo pipefail
-          HEAD_SHA="$GITHUB_SHA"
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE_SHA="$WAVE2_BASE_SHA"
+            HEAD_SHA="$GITHUB_SHA"
+          fi
 
           cat > /tmp/parse_flutter_machine.py <<'PY'
           import json
@@ -166,14 +190,14 @@ jobs:
             cat "/tmp/${label}_failures.txt" || true
           }
 
-          run_suite "$WAVE2_BASE_SHA" baseline
+          run_suite "$BASE_SHA" baseline
           run_suite "$HEAD_SHA" wave2
 
           baseline_done="$(cat /tmp/baseline_done_count.txt)"
           wave2_done="$(cat /tmp/wave2_done_count.txt)"
 
           if [ "$wave2_done" -lt "$baseline_done" ]; then
-            echo "Wave 2 test run completed fewer tests than the locked baseline."
+            echo "PR test run completed fewer tests than the current base."
             exit 1
           fi
 
@@ -183,13 +207,28 @@ jobs:
             > /tmp/new_wave2_failures.txt
 
           if [ -s /tmp/new_wave2_failures.txt ]; then
-            echo "NEW failures introduced by Wave 2:"
+            echo "NEW failures introduced by this PR:"
             cat /tmp/new_wave2_failures.txt
             exit 1
           fi
 
-          echo "No new Flutter test failures introduced by Wave 2."
-          echo "Existing baseline failures remain tracked separately and are not hidden."
+          echo "No new Flutter test failures introduced by this PR."
+          echo "Existing base failures remain tracked separately and are not hidden."
+      - name: Collect Flutter differential diagnostics
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p wave2-diagnostics
+          cp /tmp/baseline.jsonl /tmp/baseline.stderr /tmp/baseline_failures.txt /tmp/baseline_done_count.txt wave2-diagnostics/ 2>/dev/null || true
+          cp /tmp/wave2.jsonl /tmp/wave2.stderr /tmp/wave2_failures.txt /tmp/wave2_done_count.txt /tmp/new_wave2_failures.txt wave2-diagnostics/ 2>/dev/null || true
+      - name: Upload Flutter differential diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-differential-diagnostics
+          path: wave2-diagnostics/
+          if-no-files-found: ignore
+          retention-days: 2
 
   functions-regression:
     name: Functions build and full domain tests
@@ -212,4 +251,15 @@ jobs:
       - name: TypeScript production build
         run: npm run build
       - name: Run full domain test suite
-        run: npm test
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee functions-domain-tests.log
+      - name: Upload Functions test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: functions-domain-test-log
+          path: functions/functions-domain-tests.log
+          if-no-files-found: ignore
+          retention-days: 2
