@@ -231,22 +231,24 @@ void main() {
   group('source guard — logic preserved + diagnostics gated', () {
     final src =
         File('lib/features/explore/explore_screen.dart').readAsStringSync();
-    test('providers / filters / pagination preserved', () {
+    test('providers / filters / pagination + server search preserved', () {
       for (final n in const [
         'explorePaginationProvider',
         'loadFirst()',
         'loadMore()',
         '.refresh()',
         '_cuisineFilter',
-        'onChanged: (v) => setState(() => _query = v)',
+        'setState(() => _query = v)',
+        '.setSearchQuery(v)',
         'dummySuggestionServiceProvider',
       ]) {
         expect(src.contains(n), isTrue, reason: 'hilang: $n');
       }
     });
-    test('card tap → existing Restaurant Detail route (unchanged)', () {
-      expect(src.contains("context.push('/restaurant/\${place.placeId}')"),
+    test('card tap → Restaurant Detail route using canonical identity when proven', () {
+      expect(src.contains('final routeId = place.canonicalPlaceId ?? place.placeId;'),
           isTrue);
+      expect(src.contains("context.push('/restaurant/\$routeId')"), isTrue);
       expect(src.contains('currentSuggestionProvider.notifier).state = place'),
           isTrue);
     });

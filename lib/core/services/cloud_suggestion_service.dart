@@ -237,14 +237,14 @@ class CloudSuggestionService {
     }
   }
 
-  /// Phase 2.2A — halaman Explore (kohort + bendera). Menghantar `cursor`;
-  /// pulangkan halaman + kursor seterusnya. Awam/tiada-kohort: pelayan pulangkan
-  /// 12 kad biasa tanpa nextCursor (endOfResults=true) — selamat.
+  /// Phase 2.2A — halaman Explore (kohort + bendera). Menghantar `cursor` dan
+  /// query carian opsyenal; pelayan mencari FULL area pool sebelum pagination.
   Future<PlacesPage?> getNearbyPlacesPage({
     double? lat,
     double? lng,
     int? radius,
     String? languageCode,
+    String? query,
     int cursor = 0,
   }) async {
     if (!firebaseReady) return null;
@@ -253,12 +253,14 @@ class CloudSuggestionService {
         'getNearbyPlaces',
         options: HttpsCallableOptions(timeout: const Duration(seconds: 15)),
       );
+      final cleanQuery = query?.trim();
       final res = await callable.call<Map<Object?, Object?>>({
         'lat': lat,
         'lng': lng,
         'radius': radius,
         'languageCode': languageCode,
         'cursor': cursor,
+        if (cleanQuery != null && cleanQuery.isNotEmpty) 'query': cleanQuery,
       });
       final data = Map<String, dynamic>.from(res.data);
       final places = (data['places'] as List? ?? [])

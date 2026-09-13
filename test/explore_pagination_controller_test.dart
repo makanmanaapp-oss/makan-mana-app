@@ -36,6 +36,7 @@ class _FakeService extends CloudSuggestionService {
     double? lng,
     int? radius,
     String? languageCode,
+    String? query,
     int cursor = 0,
   }) async {
     calls++;

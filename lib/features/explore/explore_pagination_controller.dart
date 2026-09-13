@@ -1,9 +1,11 @@
 /// Phase 2.2A — kawalan pagination Explore (incremental load).
 ///
 /// Halaman 12 setiap kali; kursor legap; nyahduplikasi merentas halaman; pengawal
-/// permintaan serentak; keadaan loading/hujung/ralat. Awam/non-kohort: pelayan
-/// pulangkan 12 + endOfResults=true → tiada butang "Load more" (selamat).
+/// permintaan serentak; keadaan loading/hujung/ralat. Carian dihantar ke server
+/// supaya nama Registry boleh ditemui walaupun belum berada dalam 12 kad pertama.
 library;
+
+import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -14,7 +16,7 @@ import '../../models/place_summary.dart';
 
 /// Phase 2.2B — pengecam binaan KELIHATAN untuk pengesahan peranti sebenar.
 /// Bump nilai ini setiap rebuild supaya pemilik boleh sahkan APK baharu.
-const String kAlgo2BuildId = 'A2-2.4-AI-BRAIN';
+const String kAlgo2BuildId = 'A2-REGISTRY-SEARCH-20260912';
 
 @immutable
 class ExplorePaginationState {
@@ -39,8 +41,7 @@ class ExplorePaginationState {
   final Map<String, dynamic> diagnostics;
   final int? poolSize;
 
-  /// LOCATION CONSISTENCY — konteks lokasi yang DIGUNA untuk fetch semasa
-  /// (untuk panel diagnostik: lat/lng bertopeng, radius, cell, cacheKey).
+  /// LOCATION CONSISTENCY — konteks lokasi yang DIGUNA untuk fetch semasa.
   final LocationRequestContext? location;
 
   ExplorePaginationState copyWith({
@@ -78,13 +79,17 @@ class ExplorePaginationController extends StateNotifier<ExplorePaginationState> 
         final pk = prev?.valueOrNull?.cacheKey;
         final nk = next.valueOrNull?.cacheKey;
         if (nk != null && pk != null && nk != pk) {
-          refresh();
+          unawaited(refresh());
         }
       },
     );
   }
 
   final Ref _ref;
+  String _query = '';
+  Timer? _searchDebounce;
+  int _requestGeneration = 0;
+  bool _disposed = false;
 
   Future<void> loadFirst() async {
     if (state.initialized || state.loading) return;
@@ -92,37 +97,66 @@ class ExplorePaginationController extends StateNotifier<ExplorePaginationState> 
   }
 
   Future<void> loadMore() async {
-    if (state.loading || state.endOfResults) return; // concurrent + end guard
+    if (state.loading || state.endOfResults || _query.isNotEmpty) return;
     await _fetch(reset: false);
   }
 
+  /// Search is server-backed and debounced. Increment generation immediately so
+  /// an older in-flight page cannot overwrite the new query state.
+  void setSearchQuery(String value) {
+    final clean = value.trim();
+    if (clean == _query) return;
+    _query = clean;
+    _requestGeneration++;
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 280), () {
+      if (_disposed) return;
+      unawaited(refresh());
+    });
+  }
+
   Future<void> refresh() async {
-    state = const ExplorePaginationState(); // clean new snapshot
+    state = const ExplorePaginationState();
     await _fetch(reset: true);
   }
 
+  String _identityKey(PlaceSummary place) {
+    final canonical = place.canonicalPlaceId?.trim();
+    return canonical != null && canonical.isNotEmpty ? canonical : place.placeId;
+  }
+
   Future<void> _fetch({required bool reset}) async {
+    final generation = ++_requestGeneration;
+    final queryAtStart = _query;
     state = state.copyWith(loading: true, error: false);
-    // LOCATION CONSISTENCY HOTFIX — lat/lng/radius dari konteks AUTHORITATIF
-    // yang SAMA dengan Home & Spin. Sebelum ini controller ini TIDAK menghantar
-    // lat/lng → pelayan default ke KL (punca Explore ≠ Home).
+
     final loc = await _ref.read(locationContextProvider.future);
+    if (_disposed || generation != _requestGeneration) return;
+
     final page = await _ref.read(cloudSuggestionServiceProvider).getNearbyPlacesPage(
           lat: loc.lat,
           lng: loc.lng,
           radius: loc.radiusMeters > 0 ? loc.radiusMeters : 3000,
+          query: queryAtStart,
           cursor: reset ? 0 : state.cursor,
         );
+    if (_disposed || generation != _requestGeneration || queryAtStart != _query) {
+      return;
+    }
     if (page == null) {
       state = state.copyWith(
           loading: false, error: true, initialized: true, location: loc);
       return;
     }
-    // Dedupe by placeId across accumulated pages.
-    final existing = reset ? <String>{} : state.places.map((p) => p.placeId).toSet();
+
+    // Canonical identity, not raw provider ID, is the dedupe key. This prevents
+    // a later Google/provider alias from creating a second restaurant card.
+    final existing = reset
+        ? <String>{}
+        : state.places.map(_identityKey).toSet();
     final merged = reset ? <PlaceSummary>[] : [...state.places];
     for (final p in page.places) {
-      if (existing.add(p.placeId)) merged.add(p);
+      if (existing.add(_identityKey(p))) merged.add(p);
     }
     state = state.copyWith(
       places: merged,
@@ -134,6 +168,14 @@ class ExplorePaginationController extends StateNotifier<ExplorePaginationState> 
       poolSize: page.poolSize,
       location: loc,
     );
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _requestGeneration++;
+    _searchDebounce?.cancel();
+    super.dispose();
   }
 }
 

@@ -33,9 +33,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git fetch origin feature/merchant-business-foundation --depth=1
 
-          changed="$(git diff --name-only origin/feature/merchant-business-foundation...HEAD)"
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base_ref="${{ github.event.pull_request.base.sha }}"
+          else
+            git fetch origin feature/merchant-business-foundation --depth=1
+            base_ref="origin/feature/merchant-business-foundation"
+          fi
+
+          changed="$(git diff --name-only "$base_ref"...HEAD)"
           printf '%s\n' "$changed"
 
           if grep -Eq '^(firestore\.rules|firestore\.indexes\.json)$' <<<"$changed"; then
@@ -64,7 +70,7 @@ jobs:
           echo "Wave 2 source safety locks PASS"
 
   flutter-wave2-critical:
-    name: Flutter Wave 2 boundary + analyze + Android debug build
+    name: Flutter Wave 2 boundary + analyze + Android QA debug build
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
@@ -81,11 +87,11 @@ jobs:
         run: flutter analyze --no-fatal-warnings --no-fatal-infos
       - name: Test Restaurant Profile V2 mobile boundary
         run: flutter test test/merchant_restaurant_profile_v2_test.dart
-      - name: Build Android debug APK only
-        run: flutter build apk --debug
+      - name: Build Android QA debug APK only
+        run: flutter build apk --debug --flavor qa
 
   flutter-differential:
-    name: Full Flutter differential regression vs locked baseline
+    name: Full Flutter differential regression vs current base
     runs-on: ubuntu-latest
     timeout-minutes: 50
     steps:
@@ -98,11 +104,18 @@ jobs:
         with:
           channel: stable
           cache: true
-      - name: Compare baseline and Wave 2 failure sets
+      - name: Compare base and PR failure sets
         shell: bash
         run: |
           set -euo pipefail
-          HEAD_SHA="$GITHUB_SHA"
+
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE_SHA="$WAVE2_BASE_SHA"
+            HEAD_SHA="$GITHUB_SHA"
+          fi
 
           cat > /tmp/parse_flutter_machine.py <<'PY'
           import json
@@ -166,14 +179,14 @@ jobs:
             cat "/tmp/${label}_failures.txt" || true
           }
 
-          run_suite "$WAVE2_BASE_SHA" baseline
+          run_suite "$BASE_SHA" baseline
           run_suite "$HEAD_SHA" wave2
 
           baseline_done="$(cat /tmp/baseline_done_count.txt)"
           wave2_done="$(cat /tmp/wave2_done_count.txt)"
 
           if [ "$wave2_done" -lt "$baseline_done" ]; then
-            echo "Wave 2 test run completed fewer tests than the locked baseline."
+            echo "PR test run completed fewer tests than the current base."
             exit 1
           fi
 
@@ -183,13 +196,13 @@ jobs:
             > /tmp/new_wave2_failures.txt
 
           if [ -s /tmp/new_wave2_failures.txt ]; then
-            echo "NEW failures introduced by Wave 2:"
+            echo "NEW failures introduced by this PR:"
             cat /tmp/new_wave2_failures.txt
             exit 1
           fi
 
-          echo "No new Flutter test failures introduced by Wave 2."
-          echo "Existing baseline failures remain tracked separately and are not hidden."
+          echo "No new Flutter test failures introduced by this PR."
+          echo "Existing base failures remain tracked separately and are not hidden."
 
   functions-regression:
     name: Functions build and full domain tests
