@@ -115,17 +115,19 @@ test("11. a redelivered event yields the same mirror eventId (idempotent)", () =
   assert.ok(triggers.includes("if (!eventId) throw new Error("));
 });
 
-// Required test 12 — conflicting payload under the same eventId must fail closed.
-test("12. the same eventId with a conflicting payload is rejected by the receipt contract", () => {
-  // The Firebase side always sends the deterministic id; the authoritative guard
-  // lives in the migration 0038 receipt contract, which is asserted here.
-  const migration = readFileSync(
-    resolve(process.cwd(), "../../makanmana-control-center-WAVE3/supabase/migrations/0038_wave3_content_engagement_mirror.sql"),
-    "utf8",
-  ).toLowerCase();
-  assert.ok(migration.includes("sync event id was reused with a different payload"));
-  assert.ok(migration.includes("v_hash := encode(digest(p_records::text, 'sha256'), 'hex')"));
-  assert.ok(migration.includes("'state','duplicate'"));
+// Required test 12 — sender-side receipt contract must remain deterministic.
+// The receiver-side conflicting-payload/hash enforcement belongs to the private
+// Control Center migration suite. This repository must never depend on a sibling
+// checkout path, because unit CI runs from a standalone clone.
+test("12. the same raw event keeps the same receipt id and transport fails closed on receiver rejection", () => {
+  const eventId = mirrorEventId("social_post", "evt-conflict-1");
+  assert.ok(eventId);
+  assert.equal(eventId, mirrorEventId("social_post", "evt-conflict-1"));
+  assert.notEqual(eventId, mirrorEventId("social_post", "evt-conflict-2"));
+  assert.ok(transport.includes("eventId: params.eventId"));
+  assert.ok(transport.includes("records: params.records"));
+  assert.ok(transport.includes("if (!response.ok)"));
+  assert.ok(transport.includes("Control Center engagement mirror rejected"));
 });
 
 // Required tests 13/14 — reconciliation remains (now drift repair only).
