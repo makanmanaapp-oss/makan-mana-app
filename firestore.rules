@@ -353,6 +353,16 @@ service cloud.firestore {
 
     match /area_place_cache/{cacheKey} {
       allow read, write: if false;
+
+      // SCALABLE AREA CACHE — candidates moved out of the parent document into
+      // a subcollection. Firestore rules do NOT cascade into subcollections
+      // unless the match uses a recursive wildcard, and the rule above does
+      // not, so without this block the new path would be governed only by the
+      // catch-all. Stated explicitly so the server-only posture is visible
+      // here rather than inferred from somewhere else in the file.
+      match /candidates/{candidateId} {
+        allow read, write: if false;
+      }
     }
 
     // ---------- PART 1 (Phase 1.11): Pembetulan & Laporan Pengguna ----------

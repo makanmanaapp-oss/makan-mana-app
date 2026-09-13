@@ -9,6 +9,35 @@ import {
   buildMasterRegistryCandidate,
   upsertMasterRegistryCandidate,
 } from "../domain/places/canonical/masterRegistryCandidate";
+import {
+  AREA_CACHE_SCHEMA_VERSION,
+  candidateDocId,
+} from "../domain/places/coverage/areaCacheStorage";
+import {PlaceCandidate} from "../types/place";
+
+/**
+ * SCALABLE STORAGE — a published restaurant is written as its own candidate
+ * document, not only into the capped legacy array.
+ *
+ * Without this, publishing would land a canonical restaurant exclusively in
+ * generation-1 storage, and it would depend on array survival for the rest of
+ * its life. Same transaction as the cell write, so a publication is still all
+ * or nothing.
+ */
+function writeCanonicalCandidateDoc(
+  tx: FirebaseFirestore.Transaction,
+  areaRef: FirebaseFirestore.DocumentReference,
+  candidate: PlaceCandidate,
+  now: number,
+): void {
+  const id = candidateDocId(candidate);
+  if (!id) return;
+  tx.set(
+    areaRef.collection("candidates").doc(id),
+    {candidate, updatedAt: now},
+    {merge: true},
+  );
+}
 
 const CONTROL_CENTER_ADMIN_BRIDGE_SECRET = defineSecret("CONTROL_CENTER_ADMIN_BRIDGE_SECRET");
 const LEDGER = "control_center_master_place_commands";
@@ -199,7 +228,9 @@ async function publishMasterPlace(resourceId: string, payload: Plain, requestId:
         candidates: materializedCandidates,
         registryUpdatedAt: now,
         updatedAt: now,
+        schemaVersion: AREA_CACHE_SCHEMA_VERSION,
       }, {merge: true});
+      writeCanonicalCandidateDoc(tx, areaRef, candidate, now);
       return {
         canonicalPlaceId,
         publicationId,
@@ -308,7 +339,9 @@ async function publishMasterPlace(resourceId: string, payload: Plain, requestId:
       candidates: materializedCandidates,
       registryUpdatedAt: now,
       updatedAt: now,
+      schemaVersion: AREA_CACHE_SCHEMA_VERSION,
     }, {merge: true});
+    writeCanonicalCandidateDoc(tx, areaRef, candidate, now);
 
     tx.set(db.collection("place_migration_audit").doc(`cc_master_${hash(requestId).slice(0, 24)}`), {
       type: "control_center_master_registry_publish",
