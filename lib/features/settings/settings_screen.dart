@@ -124,6 +124,26 @@ class SettingsScreen extends ConsumerWidget {
             onTap: () => context.push(RoutePaths.themePicker),
           ),
 
+          // ---------- Notifikasi (PROMPT 4) ----------
+          // RECONCILE 2026-09-13: entri ini hilang dalam garis Wave 3+. Skrin
+          // dan laluannya masih wujud dan masih boleh dicapai dari Activity,
+          // jadi ini kehilangan SATU pintu masuk yang diluluskan, bukan ciri
+          // mati — Tetapan ialah tempat pengguna pergi mencari tetapan.
+          sectionLabel(l.t('notifSettingsTitle')),
+          ListTile(
+            tileColor: context.tCard,
+            shape: tileShape(),
+            leading: const Icon(Icons.notifications_none,
+                color: AppColors.primaryRed),
+            title: Text(l.t('notifSettingsTitle')),
+            subtitle: Text(l.t('notifSettingsSubtitle'),
+                style: const TextStyle(fontSize: 12)),
+            trailing: const Icon(Icons.chevron_right, size: 20),
+            onTap: firebaseReady
+                ? () => context.push(RoutePaths.notificationSettings)
+                : null,
+          ),
+
           // ---------- Bahasa & Pelan ----------
           sectionLabel(l.t('languageLabel')),
           ListTile(
