@@ -21,7 +21,7 @@ Center login boundary.
 | RULES | **DONE** — ruleset advanced, 8/8 deny tests pass |
 | INDEXES | **NOT DEPLOYED** (none required) |
 | SCALABLE STORAGE LIVE | **PASS** — candidate documents written in production |
-| TEST KITCHEN | **BLOCKED** — Control Center login required |
+| TEST KITCHEN | **BLOCKED** — publish never enqueued (see 0B) |
 | PRODUCTION AAB | **NOT TOUCHED** |
 | PLAY RELEASE | **NOT TOUCHED** |
 
@@ -61,6 +61,78 @@ Post-cutover smoke: Explore renders, Spin returns a real suggestion, zero
 `severity>=ERROR` logs on either callable, 0 FATAL EXCEPTION on device.
 
 **Rollback status: NOT REQUIRED.** No failure occurred. Rollback targets above.
+
+---
+
+## 0B. TEST KITCHEN PUBLICATION — BLOCKED (2026-09-13, post-deploy)
+
+Asked to continue from Phase 11 after publication. **The publication did not
+happen.** Stopped here rather than proceeding; Phases 12-23 all depend on it.
+
+### What DID happen
+
+The coordinates were saved.
+
+| Field | Value |
+|---|---|
+| `latitude` | **3.2389** |
+| `longitude` | **101.42793** |
+| `updated_at` | **2026-09-13 12:27:26Z** |
+| `menu_items` | 20 (unchanged) |
+| `halal_status` / `price_range` / `phone` | unchanged |
+
+### What did NOT happen
+
+| Check | Expected after publish | Actual |
+|---|---|---|
+| `registry_status` | `published` | **`draft`** |
+| `canonical_place_id` | non-null | **null** |
+| `published_at` | timestamp | **null** |
+| `firebase_id` | non-null | **null** |
+| `admin_commands` rows for `place.publish_master_registry` | >= 1 | **0 — none, ever** |
+| Firebase ledger `control_center_master_place_commands` | >= 1 | **0 entries** |
+| Firestore `place_registry` | 26 | **25 (unchanged)** |
+| Firestore `place_publications` | 26 | **25 (unchanged)** |
+| Firestore `place_publication_heads` | 26 | **25 (unchanged)** |
+| "Test Kitchen" anywhere in Firestore | present | **0 matches in any collection** |
+
+### Diagnosis
+
+`requestMasterPlacePublish` ends in `enqueueAuthoritativeCommand({commandType:
+"place.publish_master_registry", ...})`. The `admin_commands` table holds 4
+historical commands across other types, the most recent succeeding on
+2026-08-27 — so the mechanism itself works. There has never been a
+`place.publish_master_registry` row. The publish path was therefore **never
+entered**; this is not a failure downstream of it.
+
+Two explanations fit the evidence, and I cannot separate them from outside the
+authenticated session:
+
+1. **Publish was pressed before the coordinates were saved.**
+   `requestMasterPlacePublish` throws *"Master registry place requires valid
+   coordinates before publication"* and enqueues nothing. Consistent with
+   `updated_at` being the save. A retry after saving would now pass that guard.
+2. **The Publish button is disabled.**
+   `externalEnabled = writesEnabled && externalActionsEnabled &&
+   hasConfiguredMasterPlaceBridge()`. If `ADMIN_PRODUCTION_WRITES_ENABLED` or
+   `ADMIN_EXTERNAL_ACTIONS_ENABLED` is not `"true"`, the button renders greyed
+   and the sidebar reads *"Safe mode — Production writes locked"*.
+
+Both env names exist in Vercel production; their values are encrypted and were
+**not** read.
+
+### What the owner needs to check
+
+In the Control Center, on the Test Kitchen record:
+
+1. Sidebar footer — does it read **"Writes enabled"** or **"Safe mode"**?
+   Safe mode means the button is disabled and no amount of clicking will work.
+2. If writes are enabled: press **"Publish Approved Data to App"** again now
+   that the coordinates are saved, and report any red error text.
+
+**Nothing was mutated in production during this investigation.** No retry was
+attempted, no SQL publish, no direct Firestore write, no fabricated
+canonicalPlaceId. Deployment state from section 0 is unchanged.
 
 ---
 
