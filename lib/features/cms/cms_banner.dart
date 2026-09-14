@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -80,7 +81,14 @@ class CmsBannerCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (media != null)
+              // B1 — the real image.
+              //
+              // The area is reserved ONLY when there is a url to load. Media
+              // with no usable url (signing failed, or none was uploaded) is
+              // known before layout, so the card collapses to a clean text card
+              // instead of reserving a large empty rectangle — which is exactly
+              // what this slot used to render for every banner.
+              if (media != null && media.hasImage)
                 // A fixed aspect box so the layout never jumps while loading,
                 // and the image can never dictate the card's height.
                 AspectRatio(
@@ -88,7 +96,22 @@ class CmsBannerCard extends StatelessWidget {
                   child: Semantics(
                     label: media.altText.isNotEmpty ? media.altText : content.title,
                     image: true,
-                    child: Container(color: mm.softFill),
+                    child: CachedNetworkImage(
+                      key: Key('cms-banner-image-${content.contentId}'),
+                      imageUrl: media.readUrl!,
+                      // Keyed on the STORAGE PATH, not the url: the signed url
+                      // carries a fresh expiry every fetch, so keying on it
+                      // would re-download the same picture on every visit.
+                      cacheKey: media.cacheKey,
+                      fit: BoxFit.cover,
+                      fadeInDuration: const Duration(milliseconds: 200),
+                      // Both states are the same calm fill the card already
+                      // used. Never a broken-image glyph or an error box: a
+                      // banner that cannot load its picture should look like a
+                      // plain card, not like a fault.
+                      placeholder: (_, __) => Container(color: mm.softFill),
+                      errorWidget: (_, __, ___) => Container(color: mm.softFill),
+                    ),
                   ),
                 ),
               Padding(

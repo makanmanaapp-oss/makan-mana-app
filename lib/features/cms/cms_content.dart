@@ -35,6 +35,7 @@ class CmsMedia {
     required this.width,
     required this.height,
     required this.altText,
+    required this.readUrl,
   });
 
   final String storagePath;
@@ -42,6 +43,24 @@ class CmsMedia {
   final int width;
   final int height;
   final String altText;
+
+  /// B1 — short-lived signed READ url minted by the server for THIS request.
+  ///
+  /// `cms/` is private and Storage rules deny every client read, so this is the
+  /// only way the image is reachable. Null means the server could not sign one
+  /// this time; the card then renders as text, never as a broken image.
+  final String? readUrl;
+
+  /// Whether there is an image to show right now.
+  bool get hasImage => (readUrl?.trim().isNotEmpty ?? false);
+
+  /// Cache key for the image.
+  ///
+  /// The signed url carries a fresh expiry on every fetch, so using it as the
+  /// key would re-download the same picture on every Home visit. The storage
+  /// path is the stable identity of the object, so it is what the cache is
+  /// keyed on while the url itself rotates.
+  String get cacheKey => storagePath;
 
   /// Aspect ratio for a stable layout box, so a banner never causes a jump
   /// while its image loads. Falls back to a safe wide ratio.
@@ -54,12 +73,14 @@ class CmsMedia {
     if (path.isEmpty) return null;
     final w = (value['width'] as num?)?.toInt() ?? 0;
     final h = (value['height'] as num?)?.toInt() ?? 0;
+    final url = (value['readUrl'] as String?)?.trim();
     return CmsMedia(
       storagePath: path,
       contentType: (value['contentType'] as String?) ?? '',
       width: w,
       height: h,
       altText: (value['altText'] as String?) ?? '',
+      readUrl: (url == null || url.isEmpty) ? null : url,
     );
   }
 }
