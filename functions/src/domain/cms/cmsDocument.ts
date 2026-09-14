@@ -75,6 +75,15 @@ export interface PublicCmsMedia {
   width: number;
   height: number;
   altText: string;
+  /**
+   * B1 — short-lived signed READ url, attached per request by
+   * `attachCmsMediaReadUrls`. It is NEVER stored: `CmsContentInput.media` is a
+   * different type, so the write path structurally cannot persist one.
+   *
+   * Null means "no picture this time" — an unsignable path, a signing outage,
+   * or media that was never uploaded. The app renders the text card either way.
+   */
+  readUrl: string | null;
 }
 
 export interface PublicCmsContent {
@@ -114,6 +123,9 @@ function publicMedia(value: unknown): PublicCmsMedia | null {
     width,
     height,
     altText: str(raw.altText),
+    // Signed separately and per request. A stored value would be a stale url,
+    // so the projection always starts null and is filled in by the caller.
+    readUrl: null,
   };
 }
 

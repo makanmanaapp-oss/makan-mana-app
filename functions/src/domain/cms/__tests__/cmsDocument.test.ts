@@ -90,8 +90,13 @@ test("a field added to storage later cannot leak into the public shape", () => {
 
 test("public media omits byte size — the app has no use for it", () => {
   const pub = toPublicCmsContent("c1", doc());
+  // B1 added `readUrl`. The point of this assertion is unchanged: the exact key
+  // set is pinned so an operational field (byteSize, admin ids) cannot drift
+  // into the public projection unnoticed.
   assert.deepEqual(Object.keys(pub!.media!).sort(),
-    ["altText", "contentType", "height", "storagePath", "width"]);
+    ["altText", "contentType", "height", "readUrl", "storagePath", "width"]);
+  assert.equal(pub!.media!.readUrl, null,
+    "the projection must start unsigned — a stored url would be a stale url");
 });
 
 test("an unrenderable row simply has no public form", () => {
