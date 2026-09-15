@@ -408,4 +408,62 @@ void main() {
     }
     expect(source.contains('makanManaUserContextProvider'), isTrue);
   });
+
+  // ── CTA NAVIGATION — found by runtime QA on 2026-09-16 ──────────────────
+  //
+  // Tapping "Lihat" (/explore) red-screened the Samsung QA build with
+  //   navigator.dart: '!keyReservation.contains(key)': is not true
+  // and pressing back dumped the user out of the app entirely.
+  //
+  // Root cause: /home, /explore, /history and /profile are StatefulShellBranch
+  // ROOTS. `context.push` on a branch root stacks a second copy of that
+  // branch's navigator while the shell still holds the first, so the branch's
+  // GlobalKey is reserved twice. Branch roots must be switched to, not pushed.
+  //
+  // Four of the fifteen allowlisted CTA destinations are branch roots, and
+  // /explore is the most natural CTA a discovery app can have.
+
+  test('CTA-1. the four shell branch roots are recognised', () {
+    for (final root in ['/home', '/explore', '/history', '/profile']) {
+      expect(cmsDestinationIsShellBranchRoot(root), isTrue, reason: root);
+    }
+    // Tolerates the whitespace the operator may have typed.
+    expect(cmsDestinationIsShellBranchRoot('  /explore  '), isTrue);
+  });
+
+  test('CTA-2. a sub-route of a branch is NOT a branch root', () {
+    // These are ordinary pushable pages; treating them as branch roots would
+    // replace the stack and silently break their back button.
+    for (final sub in [
+      '/profile/activity',
+      '/profile/place-reports',
+      '/restaurant/CCM-abc',
+      '/coupon',
+      '/paywall',
+      '/fit/dashboard',
+      '/meal-wallet',
+    ]) {
+      expect(cmsDestinationIsShellBranchRoot(sub), isFalse, reason: sub);
+    }
+  });
+
+  test('CTA-3. prefix collisions do not count as branch roots', () {
+    // '/homework' starts with '/home' but is not the branch.
+    for (final near in ['/homework', '/explorer', '/profiles', '/historical', '']) {
+      expect(cmsDestinationIsShellBranchRoot(near), isFalse, reason: near);
+    }
+    expect(cmsDestinationIsShellBranchRoot(null), isFalse);
+  });
+
+  test('CTA-4. every branch root in the CTA allowlist is handled', () {
+    // If a future branch is added to the router and to the CTA allowlist but
+    // not here, its banner CTA would crash exactly as /explore did.
+    final source = _read('lib/features/cms/cms_banner.dart');
+    expect(source.contains('cmsDestinationIsShellBranchRoot'), isTrue,
+        reason: 'the banner must consult the branch-root rule before navigating');
+    expect(source.contains('context.go('), isTrue,
+        reason: 'a branch root must be switched to with go()');
+    expect(source.contains('context.push('), isTrue,
+        reason: 'a normal page must still be pushed so back returns here');
+  });
 }
