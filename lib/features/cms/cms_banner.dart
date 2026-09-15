@@ -52,7 +52,16 @@ class CmsBannerCard extends StatelessWidget {
     if (!isSafeCtaDestination(content.ctaDestination)) return;
     final destination = content.ctaDestination.trim();
     if (destination.startsWith('/')) {
-      context.push(destination);
+      // A shell branch root is SWITCHED to. Pushing one stacks a second copy of
+      // that branch's navigator over the shell's own and the duplicated
+      // GlobalKey crashes the app — /explore, the most natural CTA this app
+      // has, did exactly that. Everything else is pushed, so back returns to
+      // the banner the customer tapped.
+      if (cmsDestinationIsShellBranchRoot(destination)) {
+        context.go(destination);
+      } else {
+        context.push(destination);
+      }
       return;
     }
     final uri = Uri.tryParse(destination);
