@@ -1,6 +1,9 @@
 import {HttpsError, onCall} from "firebase-functions/v2/https";
+import {getStorage} from "firebase-admin/storage";
 
 import {db} from "../config/firebase";
+import {STORAGE_BUCKET} from "../config/constants";
+import {attachCmsMediaReadUrls} from "../domain/cms/mediaReadUrl";
 import {
   isCmsPlacement,
   PLACEMENT_RESTAURANT_DETAIL,
@@ -78,9 +81,36 @@ export const getCmsContent = onCall(
         plan: await readViewerPlan(uid),
       };
 
-      const content = await readPublicCmsContent({
+      const stored = await readPublicCmsContent({
         placement, viewer, canonicalPlaceId,
       });
+
+      // B1 — mint a short-lived READ url per image. `cms/` stays private and
+      // Storage rules stay deny-all for clients; this is the only way in, and
+      // it is the same server-mediated pattern `group_images/` already uses.
+      //
+      // Signing is best effort BY DESIGN. If it fails the banner still ships
+      // with `readUrl: null` and the app renders the text card, because a
+      // signing outage must look like a missing picture, never like a broken
+      // Home screen.
+      const content = await attachCmsMediaReadUrls(
+        stored,
+        async (storagePath, expiresAtMs) => {
+          const [url] = await getStorage()
+            .bucket(STORAGE_BUCKET)
+            .file(storagePath)
+            .getSignedUrl({version: "v4", action: "read", expires: expiresAtMs});
+          return url;
+        },
+        Date.now(),
+        (storagePath, error) => {
+          console.error("cms media read url failed", {
+            placement,
+            storagePath: storagePath.slice(0, 200),
+            message: error instanceof Error ? error.message.slice(0, 200) : "unknown",
+          });
+        },
+      );
 
       // Collections are only meaningful on discovery surfaces, and the caller
       // asks for them explicitly so Home does not pay for a read it ignores.
