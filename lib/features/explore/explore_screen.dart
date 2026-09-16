@@ -16,6 +16,7 @@ import '../../models/place_summary.dart';
 import '../home/home_palette.dart';
 import 'explore_flags.dart';
 import 'explore_pagination_controller.dart';
+import '../../core/events/event_types.dart';
 
 /// Explore: tempat sebenar berdekatan (cache pelayan 7 hari) +
 /// carian nama + penapis cuisine. Fallback dummy semasa loading.
@@ -147,6 +148,7 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
               child: CmsSlot(
                 placement: CmsPlacement.exploreTop,
                 sponsored: true,
+                sourceScreen: SourceScreen.explore,
               ),
             ),
             // 5. Cip kategori merah-aktif (semantik penapis _cuisineFilter KEKAL).

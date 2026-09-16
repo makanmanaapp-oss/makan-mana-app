@@ -11,6 +11,7 @@ import '../../cms/cms_slot.dart';
 import '../../promotions/promotion.dart';
 import '../../promotions/promotion_section.dart';
 import 'restaurant_detail_view_model.dart';
+import '../../../core/events/event_types.dart';
 
 class RestaurantDetailCallbacks {
   const RestaurantDetailCallbacks({
@@ -295,6 +296,7 @@ class _CanonicalRestaurantDetailBodyState
             CmsSlot(
               placement: CmsPlacement.restaurantDetail,
               canonicalPlaceId: widget.cmsCanonicalPlaceId,
+              sourceScreen: SourceScreen.restaurantDetail,
             ),
             // Restaurant INFORMATION only — community reviews live in their
             // own tab so the two are never visually conflated.

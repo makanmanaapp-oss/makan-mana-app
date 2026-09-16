@@ -1,10 +1,14 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../app/theme.dart';
+import '../../core/events/event_types.dart';
+import '../../core/providers.dart';
 import 'cms_content.dart';
+import 'cms_impression_tracker.dart';
 
 /// WAVE 5 — the CMS banner surface.
 ///
@@ -15,13 +19,22 @@ import 'cms_content.dart';
 /// Uses the app's own palette tokens rather than any colour of its own, so an
 /// operator cannot make a banner clash with (or impersonate) product chrome.
 class CmsBannerList extends StatelessWidget {
-  const CmsBannerList({super.key, required this.items, this.sponsored = false});
+  const CmsBannerList({
+    super.key,
+    required this.items,
+    this.sponsored = false,
+    this.sourceScreen,
+  });
 
   final List<CmsContent> items;
 
   /// Marks the block as promotional. Used on discovery surfaces so editorial
   /// content is never mistaken for an organic recommendation.
   final bool sponsored;
+
+  /// Which surface this block is sitting on, carried into analytics so an
+  /// operator can tell a Home impression from an Explore one.
+  final String? sourceScreen;
 
   @override
   Widget build(BuildContext context) {
@@ -33,25 +46,68 @@ class CmsBannerList extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (final item in items)
-            CmsBannerCard(content: item, sponsored: sponsored),
+            // B5 — wraps, never replaces. The tracker adds no layout, so the
+            // approved card is byte-for-byte what it was; being built here is
+            // still NOT an impression, only being seen is.
+            CmsImpressionTracker(
+              key: Key('cms-impression-${item.contentId}'),
+              contentId: item.contentId,
+              placement: item.placement.wire,
+              sourceScreen: sourceScreen,
+              child: CmsBannerCard(
+                content: item,
+                sponsored: sponsored,
+                sourceScreen: sourceScreen,
+              ),
+            ),
         ],
       ),
     );
   }
 }
 
-class CmsBannerCard extends StatelessWidget {
-  const CmsBannerCard({super.key, required this.content, this.sponsored = false});
+class CmsBannerCard extends ConsumerWidget {
+  const CmsBannerCard({
+    super.key,
+    required this.content,
+    this.sponsored = false,
+    this.sourceScreen,
+  });
 
   final CmsContent content;
   final bool sponsored;
+  final String? sourceScreen;
 
-  Future<void> _open(BuildContext context) async {
+  /// B5 — a CTA activation, recorded only once it is genuinely one.
+  ///
+  /// Called AFTER the destination has passed validation and immediately before
+  /// the app acts on it, so a blocked or malformed CTA never appears in the
+  /// numbers as engagement. The raw destination is deliberately not sent: the
+  /// banner's own id already identifies where it points, and a URL can carry
+  /// query parameters nobody meant to put in an analytics record.
+  void _logCtaTapped(WidgetRef ref, {required bool internal}) {
+    ref.read(eventLoggerProvider).logEvent(
+          EventType.cmsCtaTapped,
+          sourceScreen: sourceScreen,
+          metadata: {
+            'contentId': content.contentId,
+            'placement': content.placement.wire,
+            'ctaKind': internal ? 'internal_route' : 'external_https',
+          },
+        );
+  }
+
+  Future<void> _open(BuildContext context, WidgetRef ref) async {
     // Re-checked at the point of action: a cached payload must never be able to
     // launch something the current rules forbid.
     if (!isSafeCtaDestination(content.ctaDestination)) return;
     final destination = content.ctaDestination.trim();
     if (destination.startsWith('/')) {
+      // Logged before navigating rather than after: `go` replaces this branch's
+      // stack, so anything queued after it may never run. EventLogger is
+      // fire-and-forget and swallows its own errors, so this cannot delay or
+      // block the navigation that follows.
+      _logCtaTapped(ref, internal: true);
       // A shell branch root is SWITCHED to. Pushing one stacks a second copy of
       // that branch's navigator over the shell's own and the duplicated
       // GlobalKey crashes the app — /explore, the most natural CTA this app
@@ -65,12 +121,15 @@ class CmsBannerCard extends StatelessWidget {
       return;
     }
     final uri = Uri.tryParse(destination);
+    // Still not an activation: an unparseable or non-https destination is
+    // refused here, and a refused CTA is not engagement.
     if (uri == null || uri.scheme.toLowerCase() != 'https') return;
+    _logCtaTapped(ref, internal: false);
     await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final mm = context.mm;
     final media = content.media;
 
@@ -86,7 +145,7 @@ class CmsBannerCard extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: content.hasCta ? () => _open(context) : null,
+          onTap: content.hasCta ? () => _open(context, ref) : null,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

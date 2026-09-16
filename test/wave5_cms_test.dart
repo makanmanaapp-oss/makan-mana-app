@@ -224,9 +224,12 @@ void main() {
       expect(home, contains('_greetingKey()'));
       expect(home, contains("l.t('moodTitle')"));
       expect(home, contains("l.t('nearbyTitle')"));
-      // CMS is additive, never a replacement.
-      expect(home, contains('CmsSlot(placement: CmsPlacement.homeTop)'));
-      expect(home, contains('CmsSlot(placement: CmsPlacement.homeMid)'));
+      // CMS is additive, never a replacement. Matched structurally rather than
+      // as one exact line: B5 added a `sourceScreen` argument, which reformats
+      // the call across several lines without changing what it mounts.
+      expect(home, contains('CmsSlot('));
+      expect(home, contains('placement: CmsPlacement.homeTop'));
+      expect(home, contains('placement: CmsPlacement.homeMid'));
     });
 
     test('17. the navigation shell still swipes', () {
