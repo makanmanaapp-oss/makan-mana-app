@@ -232,3 +232,40 @@ test("K. unattributed taps are never negative and never invented", () => {
   assert.equal(unattributedTaps({impressions: 0, ctaTaps: 0, engagedUsers: 0}), 0);
   assert.equal(unattributedTaps({impressions: 1, ctaTaps: NaN, engagedUsers: 0}), 0);
 });
+
+// ── THE INVARIANT AT ITS SOURCE ────────────────────────────────────────────
+
+test("L. the aggregation can never emit engagedUsers > impressions", () => {
+  // The storage clamp is last-resort. THIS is the real guarantee: whatever mix
+  // of events arrives, the intersection is computed from set membership and so
+  // is bounded by the impression set. Exercised over many shapes rather than
+  // asserted once.
+  const shapes: RawCmsEvent[][] = [];
+  for (let viewers = 0; viewers <= 6; viewers++) {
+    for (let tappers = 0; tappers <= 6; tappers++) {
+      for (const overlap of [0, 1, 3, 6]) {
+        const events: RawCmsEvent[] = [];
+        for (let i = 0; i < viewers; i++) events.push(impression(`v${i}`));
+        for (let i = 0; i < tappers; i++) {
+          // `overlap` of the tappers are people who also viewed.
+          events.push(tap(i < overlap ? `v${i}` : `t${i}`));
+        }
+        shapes.push(events);
+      }
+    }
+  }
+  let checked = 0;
+  for (const events of shapes) {
+    const bucket = bucketFor(events);
+    if (!bucket) continue;
+    checked += 1;
+    assert.ok(
+      bucket.counters.engagedUsers <= bucket.counters.impressions,
+      `engaged ${bucket.counters.engagedUsers} > impressions ` +
+      `${bucket.counters.impressions}`,
+    );
+    const rate = cmsExposedUserCtr(bucket.counters);
+    if (rate !== null) assert.ok(rate >= 0 && rate <= 100, `rate ${rate}`);
+  }
+  assert.ok(checked > 100, `only ${checked} shapes exercised`);
+});

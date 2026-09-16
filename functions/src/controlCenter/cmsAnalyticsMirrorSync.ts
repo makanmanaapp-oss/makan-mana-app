@@ -65,6 +65,28 @@ export function readCmsAnalyticsDocument(
   };
 }
 
+/**
+ * Notice an impossible snapshot before it leaves.
+ *
+ * `engagedUsers` is an intersection, so it cannot exceed `impressions` unless
+ * the aggregation itself has regressed. Storage clamps such a row with
+ * `least()` so one bad record does not fail a whole batch — but a clamp alone
+ * would make the defect INVISIBLE, which is the opposite of what a clamp is
+ * for. This is where it becomes visible: the row still goes (losing real data
+ * is worse), and an operator reading the logs can see that it happened.
+ */
+export function reportInconsistentSnapshot(doc: CmsAnalyticsDailyDocument): boolean {
+  if (doc.counters.engagedUsers <= doc.counters.impressions) return false;
+  console.error("cms analytics snapshot is impossible — aggregation defect", {
+    contentId: doc.contentId.slice(0, 120),
+    placement: doc.placement,
+    dayKey: doc.dayKey,
+    impressions: doc.counters.impressions,
+    engagedUsers: doc.counters.engagedUsers,
+  });
+  return true;
+}
+
 async function push(
   records: CmsAnalyticsMirrorRecord[],
   secret: string,
@@ -101,6 +123,7 @@ export const mirrorCmsAnalyticsOnWrite = onDocumentWritten(
       doc.contentId, doc.placement, doc.dayKey, doc.updatedAtMs,
     );
     if (!eventId) return;
+    reportInconsistentSnapshot(doc);
 
     try {
       await push([toCmsAnalyticsMirrorRecord(doc)], secret, eventId);
@@ -148,6 +171,7 @@ export const reconcileCmsAnalyticsMirrorDaily = onSchedule(
           doc.contentId, doc.placement, doc.dayKey, doc.updatedAtMs,
         );
         if (!eventId) continue;
+        reportInconsistentSnapshot(doc);
         try {
           await push([toCmsAnalyticsMirrorRecord(doc)], secret, eventId);
           pushed += 1;
