@@ -16,11 +16,11 @@
  *   2. BOTH metrics are deduplicated per user, per banner, per placement, per
  *      Malaysia business day.
  *
- * That second point is what keeps the rate honest. If impressions were deduped
- * and taps were not, one person who saw a banner once and tapped it five times
- * would produce a 500% click-through rate. Deduplicating both makes the ratio
- * mean "of the people who saw it, how many acted" — a number that cannot exceed
- * 100% and that an operator can actually reason about.
+ * Deduplicating both is necessary but NOT sufficient for an honest rate. The
+ * two are counts of independent sets of people, so `ctaTaps / impressions` can
+ * still exceed 100%; the rate therefore divides by `engagedUsers`, the
+ * intersection. See `cmsExposedUserCtr` for why, and the correctness-gate tests
+ * for the fixtures that produced 300% before it was fixed.
  *
  * Pure: no Firestore, no clock, no randomness. The same events always produce
  * the same counters, which is what lets the nightly reconcile REPAIR a day
@@ -184,6 +184,26 @@ export interface CmsDailyBucket {
 }
 
 /**
+ * A bucket plus WHO is in it.
+ *
+ * Reconciliation needs the membership, not just the totals: after recomputing a
+ * day it must write the same per-user dedupe markers the live trigger uses, or
+ * a trigger that runs afterwards will not know the user was already counted and
+ * will increment on top of the recomputed figure.
+ *
+ * These lists never leave the backend. They are used to write marker documents
+ * whose uid lives in the document id of a private subcollection — the existing
+ * arrangement — and are never projected, mirrored or logged.
+ */
+export interface CmsDailyBucketMembership extends CmsDailyBucket {
+  impressionUsers: string[];
+  tapUsers: string[];
+  engagedUserIds: string[];
+  /** Everyone who appeared in this bucket by either metric. */
+  presentUsers: string[];
+}
+
+/**
  * Fold raw events into day buckets.
  *
  * Deterministic and order-independent: both metrics are deduplicated per user
@@ -195,6 +215,19 @@ export function aggregateCmsEvents(input: {
   events: readonly RawCmsEvent[];
   nowMs: number;
 }): CmsDailyBucket[] {
+  return aggregateCmsEventsWithMembership(input);
+}
+
+/**
+ * The same aggregation, additionally returning WHO is in each bucket.
+ *
+ * `aggregateCmsEvents` is this function with the membership ignored, so the two
+ * can never disagree about a total — there is one implementation, not two.
+ */
+export function aggregateCmsEventsWithMembership(input: {
+  events: readonly RawCmsEvent[];
+  nowMs: number;
+}): CmsDailyBucketMembership[] {
   const buckets = new Map<string, {
     contentId: string;
     placement: string;
@@ -247,6 +280,10 @@ export function aggregateCmsEvents(input: {
       dayKey: bucket.dayKey,
       counters,
       distinctUsers: bucket.users.size,
+      impressionUsers: [...impressionUsers],
+      tapUsers: [...tapUsers],
+      engagedUserIds: [...tapUsers].filter((u) => impressionUsers.has(u)),
+      presentUsers: [...bucket.users],
     };
   });
 }

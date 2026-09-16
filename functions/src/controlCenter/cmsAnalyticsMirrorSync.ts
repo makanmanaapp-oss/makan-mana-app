@@ -32,7 +32,10 @@ import {
 } from "../domain/cms/cmsAnalytics";
 import {CONTROL_CENTER_SYNC_SECRET, pushMirrorBatch} from "./mirrorEventPush";
 
-const RECONCILE_LIMIT = 400;
+/** One page of the reconcile scan. Paged by cursor, not capped in total. */
+const RECONCILE_PAGE = 200;
+/** Runaway stop. Reaching it is reported as a fault, never as a clean run. */
+const RECONCILE_MAX_PAGES = 250;
 
 function num(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
@@ -158,37 +161,70 @@ export const reconcileCmsAnalyticsMirrorDaily = onSchedule(
     const days = [businessDayKey(now - 86_400_000), businessDayKey(now)];
     let pushed = 0;
 
+    const incomplete: string[] = [];
+    let failedPushes = 0;
+
     for (const dayKey of days) {
-      const snap = await db.collection(CMS_ANALYTICS_DAILY_COLLECTION)
-        .where("dayKey", "==", dayKey)
-        .limit(RECONCILE_LIMIT)
-        .get();
+      // CURSOR PAGINATION, not a single capped page. A flat `.limit(400)` meant
+      // that the 401st aggregate of a busy day was never repaired and the job
+      // still reported success — the rows most in need of repair are exactly
+      // the ones a silent cap drops.
+      let cursor: FirebaseFirestore.QueryDocumentSnapshot | null = null;
+      let pages = 0;
 
-      for (const rowDoc of snap.docs) {
-        const doc = readCmsAnalyticsDocument(rowDoc.data() as Record<string, unknown>);
-        if (!doc) continue;
-        const eventId = cmsAnalyticsMirrorEventId(
-          doc.contentId, doc.placement, doc.dayKey, doc.updatedAtMs,
-        );
-        if (!eventId) continue;
-        reportInconsistentSnapshot(doc);
-        try {
-          await push([toCmsAnalyticsMirrorRecord(doc)], secret, eventId);
-          pushed += 1;
-        } catch (error) {
-          console.error("cms analytics mirror reconcile push failed", {
-            docId: rowDoc.id.slice(0, 120),
-            message: error instanceof Error ? error.message.slice(0, 300) : "unknown",
-          });
+      for (;;) {
+        if (pages >= RECONCILE_MAX_PAGES) {
+          incomplete.push(dayKey);
+          break;
         }
-      }
+        let query = db.collection(CMS_ANALYTICS_DAILY_COLLECTION)
+          .where("dayKey", "==", dayKey)
+          // Ordered by document id so the cursor is stable and total: every row
+          // is visited exactly once across pages.
+          .orderBy("__name__")
+          .limit(RECONCILE_PAGE);
+        if (cursor) query = query.startAfter(cursor);
 
-      if (snap.size === RECONCILE_LIMIT) {
-        console.warn("cms analytics mirror reconcile hit its page limit", {
-          dayKey, limit: RECONCILE_LIMIT,
-        });
+        const snap = await query.get();
+        if (snap.empty) break;
+        pages += 1;
+
+        for (const rowDoc of snap.docs) {
+          const doc = readCmsAnalyticsDocument(rowDoc.data() as Record<string, unknown>);
+          if (!doc) continue;
+          const eventId = cmsAnalyticsMirrorEventId(
+            doc.contentId, doc.placement, doc.dayKey, doc.updatedAtMs,
+          );
+          if (!eventId) continue;
+          reportInconsistentSnapshot(doc);
+          try {
+            await push([toCmsAnalyticsMirrorRecord(doc)], secret, eventId);
+            pushed += 1;
+          } catch (error) {
+            failedPushes += 1;
+            console.error("cms analytics mirror reconcile push failed", {
+              docId: rowDoc.id.slice(0, 120),
+              message: error instanceof Error ? error.message.slice(0, 300) : "unknown",
+            });
+          }
+        }
+
+        if (snap.size < RECONCILE_PAGE) break;
+        cursor = snap.docs[snap.docs.length - 1];
       }
     }
-    console.log("cms analytics mirror reconcile", {days, pushed});
+
+    console.log("cms analytics mirror reconcile", {days, pushed, failedPushes});
+
+    if (incomplete.length > 0 || failedPushes > 0) {
+      // Raised rather than logged. Unlike the aggregate reconciler this one
+      // writes nothing locally — an unrepaired mirror row is stale, not
+      // corrupt — but a run that could not finish must not report success.
+      throw new Error(
+        `cms analytics mirror reconcile incomplete: ` +
+        `${incomplete.length > 0 ? `unscanned days ${incomplete.join(", ")}; ` : ""}` +
+        `${failedPushes} push failure(s)`,
+      );
+    }
   },
 );

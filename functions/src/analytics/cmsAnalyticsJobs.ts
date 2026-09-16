@@ -27,10 +27,11 @@ import {
 } from "../domain/analytics/analyticsAggregation";
 import {
   CMS_ANALYTICS_DAILY_COLLECTION,
-  aggregateCmsEvents,
+  aggregateCmsEventsWithMembership,
   cmsAnalyticsDailyDocId,
   emptyCmsCounters,
   toCountableCmsEvent,
+  type CmsDailyBucketMembership,
   type CmsDailyCounters,
   type RawCmsEvent,
 } from "../domain/cms/cmsAnalytics";
@@ -47,6 +48,8 @@ const RECONCILE_PAGE = 500;
  * operator trusting a number the job knew was incomplete.
  */
 const RECONCILE_MAX_PAGES = 200;
+/** Firestore caps a batch at 500 writes; leave headroom. */
+const MARKER_BATCH = 400;
 
 /**
  * Fold one unit of one metric into a day bucket.
@@ -136,7 +139,13 @@ async function applyCmsMetric(params: {
     // lost but whose tap arrived, and then distinctUserCount would understate
     // the sample the rate is judged against.
     if (!presentSnap.exists) {
-      tx.set(dailyRef, {distinctUserCount: FieldValue.increment(1)}, {merge: true});
+      // `updatedAtMs` moves here too. It is the reconcile guard's only signal
+      // that this document changed after a scan began, and a distinct-count
+      // increment is as much a change as a counter one.
+      tx.set(dailyRef, {
+        distinctUserCount: FieldValue.increment(1),
+        updatedAtMs: now,
+      }, {merge: true});
       tx.set(presentRef, {createdAtMs: now});
     }
 
@@ -195,6 +204,65 @@ export interface CmsReconcileResult {
   repaired: number;
   /** True when the page cap stopped the scan before the day was exhausted. */
   truncated: boolean;
+  /**
+   * Buckets the live trigger touched after this scan began. Their repair is
+   * DEFERRED rather than applied, because overwriting would discard an
+   * increment that landed after we read the events.
+   */
+  deferred: number;
+  /** Dedupe markers written so a late trigger cannot count a user twice. */
+  markersWritten: number;
+}
+
+/**
+ * Write the same per-user dedupe markers the live trigger uses.
+ *
+ * WHY RECONCILE MUST DO THIS. After recomputing a day, the aggregate says user
+ * U was counted — but if U's marker is missing, a trigger that runs afterwards
+ * (for an event this scan already included, or a later one from U) sees no
+ * marker and increments on top of the recomputed figure. The counters and the
+ * markers have to agree or the two writers fight.
+ *
+ * Written BEFORE the counters, deliberately. A marker with no counter update is
+ * safe: a pending trigger becomes a no-op and the next reconcile recomputes the
+ * truth from the events, which markers never influence. A counter update with
+ * no marker is the double-count this exists to prevent.
+ *
+ * Batched rather than transactional: markers are idempotent `set`s, so a
+ * partial batch is simply resumed by the next run.
+ */
+async function writeDedupeMarkers(
+  bucket: CmsDailyBucketMembership,
+  nowMs: number,
+): Promise<number> {
+  const dailyRef = db.collection(CMS_ANALYTICS_DAILY_COLLECTION)
+    .doc(cmsAnalyticsDailyDocId(bucket.contentId, bucket.placement, bucket.dayKey));
+  const dedupe = dailyRef.collection(DEDUPE_SUBCOLLECTION);
+
+  const markers: Array<{id: string; data: Record<string, unknown>}> = [];
+  for (const uid of bucket.impressionUsers) {
+    markers.push({id: `impressions__${uid}`, data: {metric: "impressions", createdAtMs: nowMs}});
+  }
+  for (const uid of bucket.tapUsers) {
+    markers.push({id: `ctaTaps__${uid}`, data: {metric: "ctaTaps", createdAtMs: nowMs}});
+  }
+  for (const uid of bucket.engagedUserIds) {
+    markers.push({id: `engaged__${uid}`, data: {createdAtMs: nowMs}});
+  }
+  for (const uid of bucket.presentUsers) {
+    markers.push({id: `present__${uid}`, data: {createdAtMs: nowMs}});
+  }
+
+  let written = 0;
+  for (let i = 0; i < markers.length; i += MARKER_BATCH) {
+    const batch = db.batch();
+    for (const marker of markers.slice(i, i + MARKER_BATCH)) {
+      batch.set(dedupe.doc(marker.id), marker.data, {merge: true});
+    }
+    await batch.commit();
+    written += Math.min(MARKER_BATCH, markers.length - i);
+  }
+  return written;
 }
 
 /**
@@ -209,8 +277,53 @@ export async function reconcileCmsAnalyticsDay(
   dayKey: string,
   nowMs: number,
 ): Promise<CmsReconcileResult> {
+  return runReconcile({dayKey, nowMs});
+}
+
+/**
+ * Test seam. Supplies the scan watermark and the paging limits that the
+ * production entry point takes from the clock and from constants.
+ *
+ * Exists because the two trigger-versus-reconcile interleavings cannot be
+ * reproduced reliably from outside without controlling exactly when the scan is
+ * considered to have started. The LOGIC is not duplicated — this and
+ * `reconcileCmsAnalyticsDay` call the same function.
+ */
+export async function __reconcileForTest(options: {
+  dayKey: string;
+  nowMs: number;
+  scanStartedAtMs?: number;
+  maxPages?: number;
+  pageSize?: number;
+  afterScan?: () => Promise<void>;
+}): Promise<CmsReconcileResult> {
+  return runReconcile(options);
+}
+
+async function runReconcile(options: {
+  dayKey: string;
+  nowMs: number;
+  scanStartedAtMs?: number;
+  maxPages?: number;
+  pageSize?: number;
+  /**
+   * Test-only hook fired between the scan and the writes — the exact window the
+   * dropped-increment race lives in. Without it that interleaving cannot be
+   * reproduced from outside, and a test that merely calls reconcile with a
+   * stale watermark passes whether or not the guard exists.
+   */
+  afterScan?: () => Promise<void>;
+}): Promise<CmsReconcileResult> {
+  const {dayKey, nowMs} = options;
+  const maxPages = options.maxPages ?? RECONCILE_MAX_PAGES;
+  const pageSize = options.pageSize ?? RECONCILE_PAGE;
   const start = businessDayStartMs(dayKey);
   const end = start + 86_400_000;
+
+  // Taken BEFORE the first page is read. Anything the live trigger writes after
+  // this instant is newer than our view of the events, and must not be
+  // overwritten by it.
+  const scanStartedAtMs = options.scanStartedAtMs ?? Date.now();
 
   const rawEvents: RawCmsEvent[] = [];
   let cursor: FirebaseFirestore.QueryDocumentSnapshot | null = null;
@@ -218,7 +331,7 @@ export async function reconcileCmsAnalyticsDay(
   let truncated = false;
 
   for (;;) {
-    if (pages >= RECONCILE_MAX_PAGES) {
+    if (pages >= maxPages) {
       truncated = true;
       break;
     }
@@ -226,7 +339,7 @@ export async function reconcileCmsAnalyticsDay(
       .where("serverTimestampMs", ">=", start)
       .where("serverTimestampMs", "<", end)
       .orderBy("serverTimestampMs")
-      .limit(RECONCILE_PAGE);
+      .limit(pageSize);
     if (cursor) query = query.startAfter(cursor);
 
     const snap = await query.get();
@@ -244,41 +357,88 @@ export async function reconcileCmsAnalyticsDay(
         metadata: raw.metadata,
       });
     }
-    if (snap.size < RECONCILE_PAGE) break;
+    if (snap.size < pageSize) break;
     cursor = snap.docs[snap.docs.length - 1];
   }
 
-  const buckets = aggregateCmsEvents({events: rawEvents, nowMs});
+  // FAIL CLOSED ON AN INCOMPLETE SCAN.
+  //
+  // A truncated scan has only SOME of the day's events, so its totals are an
+  // undercount. Writing them would replace correct figures with partial ones
+  // and call it a repair — logging the truncation afterwards cannot undo that.
+  // Nothing is written, existing aggregates and markers are left exactly as
+  // they were, and the caller raises an error.
+  if (truncated) {
+    return {
+      dayKey,
+      scanned: rawEvents.length,
+      repaired: 0,
+      truncated: true,
+      deferred: 0,
+      markersWritten: 0,
+    };
+  }
+
+  if (options.afterScan) await options.afterScan();
+
+  const buckets = aggregateCmsEventsWithMembership({events: rawEvents, nowMs});
   let repaired = 0;
+  let deferred = 0;
+  let markersWritten = 0;
 
   for (const bucket of buckets) {
     if (bucket.dayKey !== dayKey) continue;
     const ref = db.collection(CMS_ANALYTICS_DAILY_COLLECTION)
       .doc(cmsAnalyticsDailyDocId(bucket.contentId, bucket.placement, bucket.dayKey));
-    const existing = await ref.get();
-    const current = (existing.exists ? existing.data()?.counters : null) ?? {};
 
-    const drifted = (current.impressions ?? 0) !== bucket.counters.impressions ||
-      (current.ctaTaps ?? 0) !== bucket.counters.ctaTaps ||
-      (current.engagedUsers ?? 0) !== bucket.counters.engagedUsers;
-    if (!drifted && existing.exists) continue;
+    // Markers first. A pending trigger for an event this scan already counted
+    // then finds the user marked and becomes a no-op, so it cannot increment
+    // on top of the figure written below.
+    markersWritten += await writeDedupeMarkers(bucket, nowMs);
 
-    // REPLACES the counters rather than incrementing them. The recomputation is
-    // the whole truth for this day, so adding to what is already there would
-    // double every repair.
-    await ref.set({
-      contentId: bucket.contentId,
-      placement: bucket.placement,
-      dayKey: bucket.dayKey,
-      counters: bucket.counters,
-      distinctUserCount: bucket.distinctUsers,
-      reconciledAtMs: nowMs,
-      updatedAtMs: nowMs,
-    }, {merge: true});
-    repaired += 1;
+    const outcome = await db.runTransaction(async (tx) => {
+      const existing = await tx.get(ref);
+      const data = existing.exists ? existing.data() ?? {} : {};
+
+      // THE GUARD. If the live trigger wrote after this scan began, its
+      // increment describes an event this scan never saw. Replacing the
+      // counters would silently drop it, so the repair is deferred to the next
+      // run — which will scan the newer event too.
+      const touchedAtMs = typeof data.updatedAtMs === "number" ? data.updatedAtMs : 0;
+      if (existing.exists && touchedAtMs > scanStartedAtMs) return "deferred" as const;
+
+      const current = (data.counters ?? {}) as Partial<CmsDailyCounters>;
+      const drifted =
+        (current.impressions ?? 0) !== bucket.counters.impressions ||
+        (current.ctaTaps ?? 0) !== bucket.counters.ctaTaps ||
+        (current.engagedUsers ?? 0) !== bucket.counters.engagedUsers ||
+        // Included so a distinct-count-only drift can actually be repaired.
+        // Without it the sample size the console reports could stay wrong
+        // forever while the three counters looked healthy.
+        (typeof data.distinctUserCount === "number" ? data.distinctUserCount : 0)
+          !== bucket.distinctUsers;
+      if (!drifted && existing.exists) return "clean" as const;
+
+      // REPLACES the counters rather than incrementing them. The recomputation
+      // is the whole truth for this day, so adding to what is already there
+      // would double every repair.
+      tx.set(ref, {
+        contentId: bucket.contentId,
+        placement: bucket.placement,
+        dayKey: bucket.dayKey,
+        counters: bucket.counters,
+        distinctUserCount: bucket.distinctUsers,
+        reconciledAtMs: nowMs,
+        updatedAtMs: nowMs,
+      }, {merge: true});
+      return "repaired" as const;
+    });
+
+    if (outcome === "repaired") repaired += 1;
+    else if (outcome === "deferred") deferred += 1;
   }
 
-  return {dayKey, scanned: rawEvents.length, repaired, truncated};
+  return {dayKey, scanned: rawEvents.length, repaired, truncated, deferred, markersWritten};
 }
 
 export const reconcileCmsAnalyticsDaily = onSchedule(
@@ -295,11 +455,25 @@ export const reconcileCmsAnalyticsDaily = onSchedule(
     const yesterday = await reconcileCmsAnalyticsDay(businessDayKey(now - 86_400_000), now);
     const today = await reconcileCmsAnalyticsDay(businessDayKey(now), now);
     console.log("cms analytics reconcile", {yesterday, today});
-    if (yesterday.truncated || today.truncated) {
-      console.error("cms analytics reconcile TRUNCATED — counts may be incomplete", {
-        yesterday: yesterday.truncated,
-        today: today.truncated,
+
+    if (yesterday.deferred || today.deferred) {
+      // Not a failure. The live trigger was writing while we scanned, so those
+      // buckets keep their live figures and the next run repairs them.
+      console.warn("cms analytics reconcile deferred buckets to the next run", {
+        yesterday: yesterday.deferred, today: today.deferred,
       });
+    }
+
+    const truncated = [yesterday, today].filter((r) => r.truncated).map((r) => r.dayKey);
+    if (truncated.length > 0) {
+      // THROWN, not logged. Nothing was written for these days — the aggregates
+      // and markers are untouched — but a day the repairer could not finish is
+      // an operational fault, and a job that reported success would hide it
+      // until somebody happened to read the logs.
+      throw new Error(
+        `cms analytics reconcile could not scan ${truncated.join(", ")} completely; ` +
+        "no aggregate was written for those days",
+      );
     }
   },
 );
