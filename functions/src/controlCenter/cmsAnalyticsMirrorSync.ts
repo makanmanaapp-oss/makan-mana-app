@@ -53,6 +53,7 @@ export function readCmsAnalyticsDocument(
     ? raw.counters as Record<string, unknown> : {};
   counters.impressions = num(stored.impressions);
   counters.ctaTaps = num(stored.ctaTaps);
+  counters.engagedUsers = num(stored.engagedUsers);
 
   return {
     contentId,

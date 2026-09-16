@@ -36,12 +36,26 @@ export const CMS_IMPRESSION_EVENT = "cms_impression";
 export const CMS_CTA_TAPPED_EVENT = "cms_cta_tapped";
 
 export interface CmsDailyCounters {
+  /** Unique users with a QUALIFYING impression in this bucket. */
   impressions: number;
+  /**
+   * Unique users who activated the CTA in this bucket.
+   *
+   * Reported in full and never discarded, even when the same user has no
+   * qualifying impression here — a tap is a real thing a real person did, and
+   * dropping it to make a ratio tidy would be falsifying the record.
+   */
   ctaTaps: number;
+  /**
+   * Unique users who BOTH had a qualifying impression AND tapped, in this same
+   * bucket. This is the CTR numerator, and it is a subset of `impressions` by
+   * construction rather than by hope.
+   */
+  engagedUsers: number;
 }
 
 export function emptyCmsCounters(): CmsDailyCounters {
-  return {impressions: 0, ctaTaps: 0};
+  return {impressions: 0, ctaTaps: 0, engagedUsers: 0};
 }
 
 export const CMS_EVENT_TO_METRIC: Record<string, keyof CmsDailyCounters> = {
@@ -217,7 +231,16 @@ export function aggregateCmsEvents(input: {
 
   return [...buckets.values()].map((bucket) => {
     const counters = emptyCmsCounters();
-    for (const [metric, users] of bucket.seen) counters[metric] = users.size;
+    const impressionUsers = bucket.seen.get("impressions") ?? new Set<string>();
+    const tapUsers = bucket.seen.get("ctaTaps") ?? new Set<string>();
+    counters.impressions = impressionUsers.size;
+    counters.ctaTaps = tapUsers.size;
+    // The intersection, computed rather than assumed. Set membership makes the
+    // subset relationship structural: engagedUsers can never exceed impressions,
+    // whatever order the events arrived in or which of them went missing.
+    let engaged = 0;
+    for (const user of tapUsers) if (impressionUsers.has(user)) engaged += 1;
+    counters.engagedUsers = engaged;
     return {
       contentId: bucket.contentId,
       placement: bucket.placement,
@@ -229,18 +252,63 @@ export function aggregateCmsEvents(input: {
 }
 
 /**
- * Click-through rate as a percentage, or null when there is nothing to divide.
+ * EXPOSED-USER click-through rate as a percentage, or null when there is
+ * nothing to divide.
  *
- * Null is not zero. "Nobody clicked" and "nobody saw it, so there is no rate"
- * are different facts, and showing the second as 0% would tell an operator the
- * banner failed when it was never given the chance.
+ * The numerator is `engagedUsers` — people who both saw the banner here and
+ * acted here — NOT the raw tap count. That choice is the whole correctness
+ * argument. The two user sets are independent, so `ctaTaps / impressions` is
+ * not a rate at all and genuinely exceeds 100%. Three ways it does, all real
+ * and all reproduced in the tests:
+ *
+ *   - a FAST TAP: the CTA fires with no qualifying impression, because the
+ *     one-second dwell was never earned;
+ *   - a LOST impression event whose tap survived;
+ *   - an impression at 23:59 and a tap after Malaysia midnight, which land in
+ *     different buckets by design.
+ *
+ * An earlier version divided the raw counts and clamped the result to 100. That
+ * hid the modelling error rather than fixing it, and a clamped 100% is
+ * indistinguishable from a real one. No tap is discarded to achieve this — the
+ * full count is still reported; see `unattributedTaps`.
+ *
+ * Null is not zero. "Nobody clicked" and "nobody saw it, so there is no rate to
+ * divide" are different facts.
  */
-export function cmsCtr(counters: CmsDailyCounters): number | null {
+export function cmsExposedUserCtr(counters: CmsDailyCounters): number | null {
   if (!Number.isFinite(counters.impressions) || counters.impressions <= 0) return null;
-  const taps = Number.isFinite(counters.ctaTaps) ? counters.ctaTaps : 0;
-  return (taps / counters.impressions) * 100;
+  const engaged = Number.isFinite(counters.engagedUsers)
+    ? Math.max(0, counters.engagedUsers) : 0;
+  // Defence in depth only: the aggregation computes a real intersection, so
+  // this cannot bind unless a stored row was corrupted.
+  const bounded = Math.min(engaged, counters.impressions);
+  return (bounded / counters.impressions) * 100;
 }
 
+/**
+ * Taps in this bucket that have no qualifying impression here.
+ *
+ * Surfaced rather than buried: it is the honest measure of what the rate above
+ * is NOT describing, and a large value is a real signal in its own right —
+ * usually that people are tapping faster than the dwell threshold.
+ */
+export function unattributedTaps(counters: CmsDailyCounters): number {
+  const taps = Number.isFinite(counters.ctaTaps) ? Math.max(0, counters.ctaTaps) : 0;
+  const engaged = Number.isFinite(counters.engagedUsers)
+    ? Math.max(0, counters.engagedUsers) : 0;
+  return Math.max(0, taps - engaged);
+}
+
+/**
+ * Add day buckets together.
+ *
+ * Note what this is NOT: a distinct-user count across days. Someone who returns
+ * on three days counts three times, because that is what a daily aggregate can
+ * support without keeping identities around to deduplicate against — and
+ * keeping them is exactly what this design refuses to do. The subset
+ * relationship survives summation: engagedUsers <= impressions in every term,
+ * so it holds in the total.
+ */
 export function sumCmsCounters(
   all: readonly CmsDailyCounters[],
 ): CmsDailyCounters {
@@ -248,6 +316,7 @@ export function sumCmsCounters(
   for (const c of all) {
     out.impressions += Number.isFinite(c.impressions) ? c.impressions : 0;
     out.ctaTaps += Number.isFinite(c.ctaTaps) ? c.ctaTaps : 0;
+    out.engagedUsers += Number.isFinite(c.engagedUsers) ? c.engagedUsers : 0;
   }
   return out;
 }
@@ -262,7 +331,15 @@ export interface CmsAnalyticsMirrorRecord {
   day_key: string;
   impressions: number;
   cta_taps: number;
+  engaged_users: number;
   distinct_user_count: number;
+  /**
+   * The AGGREGATE's own version stamp, carried so the mirror can REFUSE a stale
+   * snapshot. Without it an out-of-order push silently overwrites a newer total
+   * with an older one and nothing detects it — the trigger and the nightly
+   * reconciler both push, so they genuinely can race.
+   */
+  source_updated_at_ms: number;
   updated_at_ms: number;
 }
 
@@ -279,7 +356,9 @@ export function toCmsAnalyticsMirrorRecord(
     day_key: doc.dayKey,
     impressions: doc.counters.impressions,
     cta_taps: doc.counters.ctaTaps,
+    engaged_users: doc.counters.engagedUsers,
     distinct_user_count: doc.distinctUserCount,
+    source_updated_at_ms: doc.updatedAtMs,
     updated_at_ms: doc.updatedAtMs,
   };
 }

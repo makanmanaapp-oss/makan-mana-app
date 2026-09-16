@@ -15,8 +15,9 @@ import {
   aggregateCmsEvents,
   cmsAnalyticsDailyDocId,
   cmsAnalyticsMirrorEventId,
-  cmsCtr,
   cmsEventOccurredAtMs,
+  cmsExposedUserCtr,
+  unattributedTaps,
   emptyCmsCounters,
   sumCmsCounters,
   toCmsAnalyticsMirrorRecord,
@@ -200,7 +201,8 @@ test("15. the same person tapping repeatedly is one tap", () => {
   const [bucket] = aggregateCmsEvents({events, nowMs: NOW});
   assert.equal(bucket.counters.impressions, 1);
   assert.equal(bucket.counters.ctaTaps, 1);
-  assert.equal(cmsCtr(bucket.counters), 100);
+  assert.equal(bucket.counters.engagedUsers, 1);
+  assert.equal(cmsExposedUserCtr(bucket.counters), 100);
 });
 
 test("16. the rate can never exceed 100%", () => {
@@ -212,7 +214,8 @@ test("16. the rate can never exceed 100%", () => {
   const [bucket] = aggregateCmsEvents({events, nowMs: NOW});
   assert.equal(bucket.counters.impressions, 3);
   assert.equal(bucket.counters.ctaTaps, 3);
-  assert.equal(cmsCtr(bucket.counters), 100);
+  assert.equal(bucket.counters.engagedUsers, 3);
+  assert.equal(cmsExposedUserCtr(bucket.counters), 100);
 });
 
 test("17. replaying the whole day changes nothing — the repair is safe", () => {
@@ -247,7 +250,8 @@ test("19. a tap with no matching impression still counts, and the rate refuses",
   });
   assert.equal(bucket.counters.impressions, 0);
   assert.equal(bucket.counters.ctaTaps, 1);
-  assert.equal(cmsCtr(bucket.counters), null, "no denominator, so no rate");
+  assert.equal(bucket.counters.engagedUsers, 0);
+  assert.equal(cmsExposedUserCtr(bucket.counters), null, "no denominator, so no rate");
 });
 
 test("20. rejected events do not create empty buckets", () => {
@@ -264,27 +268,27 @@ test("20. rejected events do not create empty buckets", () => {
 // ── 6. THE RATE ────────────────────────────────────────────────────────────
 
 test("21. no impressions means no rate, not nought per cent", () => {
-  assert.equal(cmsCtr({impressions: 0, ctaTaps: 0}), null);
-  assert.equal(cmsCtr({impressions: 0, ctaTaps: 5}), null);
-  assert.equal(cmsCtr(emptyCmsCounters()), null);
-  assert.equal(cmsCtr({impressions: NaN, ctaTaps: 1}), null);
-  assert.equal(cmsCtr({impressions: -3, ctaTaps: 1}), null);
+  assert.equal(cmsExposedUserCtr({impressions: 0, ctaTaps: 0, engagedUsers: 0}), null);
+  assert.equal(cmsExposedUserCtr({impressions: 0, ctaTaps: 5, engagedUsers: 0}), null);
+  assert.equal(cmsExposedUserCtr(emptyCmsCounters()), null);
+  assert.equal(cmsExposedUserCtr({impressions: NaN, ctaTaps: 1, engagedUsers: 1}), null);
+  assert.equal(cmsExposedUserCtr({impressions: -3, ctaTaps: 1, engagedUsers: 1}), null);
 });
 
-test("22. a real rate is a percentage", () => {
-  assert.equal(cmsCtr({impressions: 100, ctaTaps: 0}), 0);
-  assert.equal(cmsCtr({impressions: 100, ctaTaps: 25}), 25);
-  assert.equal(cmsCtr({impressions: 3, ctaTaps: 1}), (1 / 3) * 100);
+test("22. a real rate is a percentage of the people who saw it", () => {
+  assert.equal(cmsExposedUserCtr({impressions: 100, ctaTaps: 0, engagedUsers: 0}), 0);
+  assert.equal(cmsExposedUserCtr({impressions: 100, ctaTaps: 25, engagedUsers: 25}), 25);
+  assert.equal(cmsExposedUserCtr({impressions: 3, ctaTaps: 1, engagedUsers: 1}), (1 / 3) * 100);
 });
 
 test("23. totals add up across days", () => {
   assert.deepEqual(
     sumCmsCounters([
-      {impressions: 10, ctaTaps: 1},
-      {impressions: 5, ctaTaps: 2},
-      {impressions: NaN, ctaTaps: 3},
+      {impressions: 10, ctaTaps: 1, engagedUsers: 1},
+      {impressions: 5, ctaTaps: 2, engagedUsers: 2},
+      {impressions: NaN, ctaTaps: 3, engagedUsers: NaN},
     ]),
-    {impressions: 15, ctaTaps: 6},
+    {impressions: 15, ctaTaps: 6, engagedUsers: 3},
   );
   assert.deepEqual(sumCmsCounters([]), emptyCmsCounters());
 });
@@ -296,7 +300,7 @@ test("24. the mirror record is aggregates only — no user ever travels", () => 
     contentId: "banner-1",
     placement: "home_top",
     dayKey: "2026-09-16",
-    counters: {impressions: 120, ctaTaps: 9},
+    counters: {impressions: 120, ctaTaps: 9, engagedUsers: 8},
     distinctUserCount: 118,
     updatedAtMs: NOW,
   });
@@ -306,16 +310,34 @@ test("24. the mirror record is aggregates only — no user ever travels", () => 
     day_key: "2026-09-16",
     impressions: 120,
     cta_taps: 9,
+    engaged_users: 8,
     distinct_user_count: 118,
+    source_updated_at_ms: NOW,
     updated_at_ms: NOW,
   });
   // An allowlist by construction: the record is built field by field, so a
   // field added to the document later cannot leak by being forgotten.
-  const serialised = JSON.stringify(record);
-  for (const forbidden of ["userId", "uid", "users", "events", "dedupe"]) {
-    assert.ok(!serialised.includes(forbidden), forbidden);
+  //
+  // Asserted as an exact KEY SET rather than by searching for forbidden
+  // substrings. A substring check on "users" started failing the moment
+  // `engaged_users` was added — a COUNT of people, which is exactly what this
+  // record is allowed to carry — so it was flagging the safe case while still
+  // being blind to any identity field that happened not to contain the word.
+  assert.deepEqual(Object.keys(record).sort(), [
+    "content_id", "cta_taps", "day_key", "distinct_user_count",
+    "engaged_users", "impressions", "placement", "source_updated_at_ms",
+    "updated_at_ms",
+  ]);
+
+  // Every value is either a number or one of the three identifiers. Nothing
+  // free-form can ride along, which is where a uid would have to hide.
+  for (const [key, value] of Object.entries(record)) {
+    if (["content_id", "placement", "day_key"].includes(key)) {
+      assert.equal(typeof value, "string", key);
+    } else {
+      assert.equal(typeof value, "number", `${key} must be a count, not text`);
+    }
   }
-  assert.equal(Object.keys(record).length, 7);
 });
 
 test("25. the entity type is its own, never the merchant one", () => {

@@ -65,8 +65,16 @@ async function applyCmsMetric(params: {
 }): Promise<"applied" | "duplicate"> {
   const dailyRef = db.collection(CMS_ANALYTICS_DAILY_COLLECTION)
     .doc(cmsAnalyticsDailyDocId(params.contentId, params.placement, params.dayKey));
-  const dedupeRef = dailyRef.collection(DEDUPE_SUBCOLLECTION)
-    .doc(`${params.metric}__${params.userId}`);
+  const dedupe = dailyRef.collection(DEDUPE_SUBCOLLECTION);
+
+  const other: keyof CmsDailyCounters =
+    params.metric === "impressions" ? "ctaTaps" : "impressions";
+  const selfRef = dedupe.doc(`${params.metric}__${params.userId}`);
+  const otherRef = dedupe.doc(`${other}__${params.userId}`);
+  // Marks that this person has already been counted as ENGAGED here, so the
+  // intersection is incremented exactly once no matter which event completes it.
+  const engagedRef = dedupe.doc(`engaged__${params.userId}`);
+  const presentRef = dedupe.doc(`present__${params.userId}`);
 
   return db.runTransaction(async (tx) => {
     // Every read before any write — Firestore requires it, and it also means a
@@ -75,9 +83,13 @@ async function applyCmsMetric(params: {
     if (sourceSnap?.exists && sourceSnap.data()?.cmsAnalyticsAppliedAtMs) {
       return "duplicate" as const;
     }
-    const dedupeSnap = await tx.get(dedupeRef);
-    const alreadyCounted = dedupeSnap.exists;
+    const selfSnap = await tx.get(selfRef);
+    const otherSnap = await tx.get(otherRef);
+    const engagedSnap = await tx.get(engagedRef);
+    const presentSnap = await tx.get(presentRef);
     const dailySnap = await tx.get(dailyRef);
+
+    const alreadyCounted = selfSnap.exists;
     const now = Date.now();
 
     if (!dailySnap.exists) {
@@ -97,12 +109,35 @@ async function applyCmsMetric(params: {
         counters: {[params.metric]: FieldValue.increment(1)},
         updatedAtMs: now,
       }, {merge: true});
-      tx.set(dedupeRef, {metric: params.metric, createdAtMs: now});
-      // Counted once per person per bucket, on their FIRST metric there, so
-      // seeing and then tapping is one person rather than two.
-      if (params.metric === "impressions") {
-        tx.set(dailyRef, {distinctUserCount: FieldValue.increment(1)}, {merge: true});
-      }
+      tx.set(selfRef, {metric: params.metric, createdAtMs: now});
+    }
+
+    // THE INTERSECTION, maintained incrementally.
+    //
+    // A person is engaged once BOTH their qualifying impression and their tap
+    // exist in this bucket. Either event can complete the pair, and they
+    // routinely arrive out of order — a tap can reach the backend before the
+    // impression that preceded it. Whichever lands second closes the pair here,
+    // so `engagedUsers` stays a true subset of `impressions` without depending
+    // on delivery order.
+    // After this transaction this user definitely has `params.metric` recorded
+    // — either it was already there or it was just written — so the pair is
+    // complete exactly when the OTHER metric is also present.
+    if (otherSnap.exists && !engagedSnap.exists) {
+      tx.set(dailyRef, {
+        counters: {engagedUsers: FieldValue.increment(1)},
+        updatedAtMs: now,
+      }, {merge: true});
+      tx.set(engagedRef, {createdAtMs: now});
+    }
+
+    // Counted on a person's FIRST appearance in this bucket by EITHER metric.
+    // Keying it to impressions alone would miss someone whose impression was
+    // lost but whose tap arrived, and then distinctUserCount would understate
+    // the sample the rate is judged against.
+    if (!presentSnap.exists) {
+      tx.set(dailyRef, {distinctUserCount: FieldValue.increment(1)}, {merge: true});
+      tx.set(presentRef, {createdAtMs: now});
     }
 
     if (params.sourceEventRef) {
@@ -224,7 +259,8 @@ export async function reconcileCmsAnalyticsDay(
     const current = (existing.exists ? existing.data()?.counters : null) ?? {};
 
     const drifted = (current.impressions ?? 0) !== bucket.counters.impressions ||
-      (current.ctaTaps ?? 0) !== bucket.counters.ctaTaps;
+      (current.ctaTaps ?? 0) !== bucket.counters.ctaTaps ||
+      (current.engagedUsers ?? 0) !== bucket.counters.engagedUsers;
     if (!drifted && existing.exists) continue;
 
     // REPLACES the counters rather than incrementing them. The recomputation is
