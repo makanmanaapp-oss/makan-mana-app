@@ -1,0 +1,40 @@
+name: B5 QA Debug APK Artifact (No Deploy)
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/b5-qa-debug-artifact.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  android-qa-debug-artifact:
+    name: Build and retain QA debug APK for manual device testing
+    if: github.event.pull_request.number == 29 && github.event.pull_request.head.ref == 'feat/banner-b5-analytics-20260916'
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - name: Checkout exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - name: Setup Flutter stable
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Resolve dependencies
+        run: flutter pub get
+      - name: Build QA debug APK only (never an AAB or Play release)
+        run: flutter build apk --debug --flavor qa
+      - name: Verify QA debug APK exists
+        shell: bash
+        run: test -s build/app/outputs/flutter-apk/app-qa-debug.apk
+      - name: Upload QA debug APK as a private GitHub Actions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: makanmana-b5-qa-debug-${{ github.event.pull_request.head.sha }}
+          path: build/app/outputs/flutter-apk/app-qa-debug.apk
+          if-no-files-found: error
+          retention-days: 7
