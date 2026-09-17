@@ -240,12 +240,24 @@ class CmsBannerCard extends ConsumerWidget {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              content.ctaLabel,
-                              style: TextStyle(
-                                color: mm.chipText,
-                                fontSize: 13.5,
-                                fontWeight: FontWeight.w800,
+                            // Operator-written, so its length is unknown. It
+                            // takes only the width left after the chevron and
+                            // ends in an ellipsis when that is not enough, so
+                            // the chevron can never be pushed out. A label that
+                            // fits keeps its natural width, exactly as before.
+                            // Screen readers still read the full label: the
+                            // ellipsis is visual only.
+                            Flexible(
+                              child: Text(
+                                content.ctaLabel,
+                                maxLines: 1,
+                                softWrap: false,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: mm.chipText,
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w800,
+                                ),
                               ),
                             ),
                             const SizedBox(width: 3),
