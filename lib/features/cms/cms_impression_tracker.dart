@@ -61,15 +61,41 @@ class _CmsImpressionTrackerState extends ConsumerState<CmsImpressionTracker>
   Timer? _timer;
   bool _foregrounded = true;
 
-  /// Whether this banner's route is the one in front. Kept current by
-  /// dependency notifications rather than looked up on every sample.
-  bool _routeInFront = true;
+  /// False while this subtree is offstage (an opaque route covers it).
+  bool _tickersEnabled = true;
+
+  /// Every route this banner sits inside, nearest first: its own page, then
+  /// the route hosting that page's navigator, and so on to the root.
+  List<Route<dynamic>> _enclosingRoutes = const [];
+
+  /// Whether nothing covers the page this banner is on. Checked at EVERY
+  /// level: a dialog on the root navigator covers a page inside a nested
+  /// (shell branch) navigator without making that page's own route
+  /// non-current, and a bottom sheet on the nested navigator does the reverse.
+  bool get _routesInFront =>
+      _tickersEnabled && _enclosingRoutes.every((route) => route.isCurrent);
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _routeInFront = TickerMode.valuesOf(context).enabled &&
-        (ModalRoute.isCurrentOf(context) ?? true);
+    _tickersEnabled = TickerMode.valuesOf(context).enabled;
+    _enclosingRoutes = _routeChain(context);
+  }
+
+  static List<Route<dynamic>> _routeChain(BuildContext context) {
+    final routes = <Route<dynamic>>[];
+    var route = ModalRoute.of(context);
+    while (route != null && !routes.contains(route)) {
+      routes.add(route);
+      // The route that hosts this route's navigator is looked up from that
+      // navigator's Overlay rather than the Navigator itself: an Overlay
+      // rebuild is trivial (its entries are cached widgets), whereas a
+      // Navigator dependency change rebuilds every page it holds.
+      final overlayContext = route.navigator?.overlay?.context;
+      if (overlayContext == null) break;
+      route = ModalRoute.of(overlayContext);
+    }
+    return routes;
   }
 
   @override
@@ -151,9 +177,10 @@ class _CmsImpressionTrackerState extends ConsumerState<CmsImpressionTracker>
   double _visibleFraction() {
     // A page covered by another route is either not painted at all (an opaque
     // route above it takes it offstage, which disables its tickers) or sits
-    // under a barrier or sheet (its route is no longer current). The render
-    // tree still reports geometry in both cases, so these are checked first.
-    if (!_routeInFront) return 0;
+    // under a barrier, dialog or sheet (some enclosing route is no longer
+    // current). The render tree still reports geometry in both cases, so these
+    // are checked first. `isCurrent` is read live on every sample.
+    if (!_routesInFront) return 0;
     final box = context.findRenderObject();
     if (box is! RenderBox) return 0;
     final view = View.maybeOf(context);

@@ -458,6 +458,60 @@ void main() {
       expect(probe.impressions, 0);
     });
 
+    // Home and Explore live in NESTED (shell branch) navigators, and showDialog
+    // defaults to the ROOT navigator. Such a dialog leaves the page's own route
+    // current, so only checking the nearest route would miss it.
+    Widget nestedNavigatorScene(ScrollController c) => Navigator(
+          onGenerateRoute: (_) => MaterialPageRoute<void>(
+              builder: (_) => _scrollScene(c, fixedHeader: 100)),
+        );
+
+    testWidgets('a page in a nested navigator with nothing on top still counts',
+        (t) async {
+      _device(t);
+      final probe = _Probe();
+      final c = ScrollController();
+      await t.pumpWidget(_app(t, probe, nestedNavigatorScene(c)));
+      await t.pump();
+      await _placeBannerTop(t, c, 300);
+      await _hold(t, 1500);
+      expect(probe.impressions, 1);
+    });
+
+    testWidgets(
+        'a dialog on the ROOT navigator over a nested-navigator page '
+        'stops the dwell', (t) async {
+      _device(t);
+      final probe = _Probe();
+      final c = ScrollController();
+      await t.pumpWidget(_app(t, probe, nestedNavigatorScene(c)));
+      await t.pump();
+      await _placeBannerTop(t, c, 300);
+      await _hold(t, 500);
+
+      showDialog<void>(
+        context: t.element(find.byKey(_bannerKey)),
+        useRootNavigator: true,
+        builder: (_) => const Center(
+          child: SizedBox(
+              width: 300,
+              height: 600,
+              child: ColoredBox(color: Color(0xFFFFFFFF))),
+        ),
+      );
+      await _hold(t, 3000);
+      expect(probe.impressions, 0);
+
+      // Closing the dialog uncovers the page; a fresh full second is needed.
+      Navigator.of(t.element(find.byKey(_bannerKey, skipOffstage: false)),
+              rootNavigator: true)
+          .pop();
+      await _hold(t, 900);
+      expect(probe.impressions, 0);
+      await _hold(t, 900);
+      expect(probe.impressions, 1);
+    });
+
     testWidgets('a modal bottom sheet over the banner stops the dwell',
         (t) async {
       _device(t);
