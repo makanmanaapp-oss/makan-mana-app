@@ -30,6 +30,7 @@ import {
   reconcileCmsAnalyticsDaily,
   reconcileCmsAnalyticsDay,
 } from "../../../../analytics/cmsAnalyticsJobs";
+import {aggregateAnalyticsEventOnCreate} from "../../../../analytics/analyticsJobs";
 import {ensureEventServerTimestampMs} from "../../../../analytics/eventServerStamp";
 import {businessDayKey} from "../../../analytics/analyticsAggregation";
 import {
@@ -389,6 +390,53 @@ test("10. the server stamp is written once and never moved", {skip}, async () =>
   const stored = (await ref.get()).data() ?? {};
   assert.equal(stored.serverTimestampMs, first, "the stored value must not move");
 });
+
+test("13. a DELAYED second stamper cannot move the day a count landed in",
+  {skip}, async () => {
+    const contentId = `stamp_delayed_${seq++}`;
+
+    // The production shape, counted by the CMS listener first.
+    const late = await storeEvent(
+      {contentId, userId: "u2", metric: "impressions", omitServerStamp: true});
+    await runTrigger(late);
+    const counted = (await db.collection("events").doc(late).get()).data() ?? {};
+    const countedAt = counted.serverTimestampMs as number;
+    assert.equal(typeof countedAt, "number", "the CMS listener stamped what it counted by");
+    const day = businessDayKey(countedAt);
+
+    // Another user in the same bucket, so the repair has a bucket to overwrite.
+    const other = await storeEvent({contentId, userId: "u1", metric: "impressions", at: countedAt});
+    await runTrigger(other);
+    assert.equal((await readDailyOn(contentId, day)).impressions, 2);
+
+    // NOW the merchant listener runs — late, with a strictly later clock, and
+    // handed the same stampless creation snapshot it always gets. Before the
+    // fix its guard was always true and it overwrote the stamp; at a Malaysia
+    // midnight that moved the event into the next day's scan.
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    await runMerchantTrigger(late);
+
+    const after = (await db.collection("events").doc(late).get()).data() ?? {};
+    assert.equal(after.serverTimestampMs, countedAt,
+      "a late stamper must not move the value the count was bucketed by");
+
+    await reconcileCmsAnalyticsDay(day, Date.now());
+    assert.equal((await readDailyOn(contentId, day)).impressions, 2,
+      "the repair must still find the late-stamped event in the day it was counted");
+  });
+
+/** Run the REAL merchant listener for a stored event, with its creation snapshot. */
+async function runMerchantTrigger(eventId: string) {
+  const ref = db.collection("events").doc(eventId);
+  const stored = await ref.get();
+  const {serverTimestampMs: _ignored, ...creation} = stored.data() ?? {};
+  return (aggregateAnalyticsEventOnCreate as unknown as Trigger).run({
+    params: {eventId},
+    // The creation snapshot never carries the stamp, whatever has since been
+    // written to the document. That is the whole mechanism under test.
+    data: {ref, exists: stored.exists, data: () => creation},
+  });
+}
 
 // ── THE SCHEDULED ENTRYPOINT ───────────────────────────────────────────────
 //
