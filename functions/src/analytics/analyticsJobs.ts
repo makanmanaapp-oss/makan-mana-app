@@ -28,6 +28,7 @@ import {onDocumentCreated, onDocumentDeleted} from "firebase-functions/v2/firest
 import {onSchedule} from "firebase-functions/v2/scheduler";
 
 import {db, FieldValue} from "../config/firebase";
+import {ensureEventServerTimestampMs} from "./eventServerStamp";
 import {
   BUSINESS_TIMEZONE,
   aggregateEvents,
@@ -163,9 +164,16 @@ export const aggregateAnalyticsEventOnCreate = onDocumentCreated(
 
     // Always stamp, even for events with no metric — a consistent server clock
     // on every event is cheaper than deciding later that we wish we had one.
-    if (typeof raw.serverTimestampMs !== "number") {
-      await snap.ref.set({serverTimestampMs: now}, {merge: true});
-    }
+    // This is also the ONLY reason CMS events are visible to the CMS reconcile,
+    // which range-queries this field on events this listener never counts.
+    //
+    // WRITE-ONCE, via the shared helper. `raw` is this listener's creation
+    // snapshot and never carries the field, so the old guarded `set` was
+    // unconditional in practice and clobbered whatever the CMS listener on the
+    // same collection had already written — leaving the day a count landed in
+    // different from the day the repair range-queries it under.
+    // `effectiveAtMs` is what is STORED, not this instance's clock.
+    const effectiveAtMs = await ensureEventServerTimestampMs(snap.ref, now);
 
     const candidate: RawAnalyticsEvent = {
       eventId: event.params.eventId,
@@ -176,7 +184,7 @@ export const aggregateAnalyticsEventOnCreate = onDocumentCreated(
       isPreview: raw.isPreview,
       sourceMode: raw.sourceMode,
       clientTimestamp: raw.clientTimestamp,
-      serverTimestampMs: typeof raw.serverTimestampMs === "number" ? raw.serverTimestampMs : now,
+      serverTimestampMs: effectiveAtMs,
       metadata: raw.metadata,
     };
     if (!isCountableEvent(candidate)) return;

@@ -27,8 +27,11 @@ import {getFirestore} from "firebase-admin/firestore";
 
 import {
   aggregateCmsAnalyticsEventOnCreate,
+  reconcileCmsAnalyticsDaily,
   reconcileCmsAnalyticsDay,
 } from "../../../../analytics/cmsAnalyticsJobs";
+import {ensureEventServerTimestampMs} from "../../../../analytics/eventServerStamp";
+import {businessDayKey} from "../../../analytics/analyticsAggregation";
 import {
   CMS_ANALYTICS_DAILY_COLLECTION,
   CMS_CTA_TAPPED_EVENT,
@@ -70,12 +73,24 @@ async function runTrigger(eventId: string) {
 /** Write an event WITHOUT running its trigger — the pending-handler state. */
 async function storeEvent(params: {
   contentId: string; userId: string; metric: "impressions" | "ctaTaps"; at?: number;
+  /**
+   * Omit `serverTimestampMs` entirely — which is what a REAL event looks like
+   * when it is created.
+   *
+   * The client never writes this field (`event_repository.dart` writes
+   * `timestamp`, not `serverTimestampMs`); it is stamped afterwards by
+   * `aggregateAnalyticsEventOnCreate`, a different listener on this same
+   * collection. Every fixture below supplies it, which is exactly why this
+   * suite could not fail on a divergence between the day a count lands in and
+   * the day the reconcile scan selects it into.
+   */
+  omitServerStamp?: boolean;
 }): Promise<string> {
   const eventId = nextId();
   await db.collection("events").doc(eventId).set({
     eventType: params.metric === "impressions" ? CMS_IMPRESSION_EVENT : CMS_CTA_TAPPED_EVENT,
     userId: params.userId,
-    serverTimestampMs: params.at ?? AT,
+    ...(params.omitServerStamp ? {} : {serverTimestampMs: params.at ?? AT}),
     metadata: {
       contentId: params.contentId,
       placement: PLACEMENT,
@@ -300,4 +315,145 @@ async function reconcileCmsAnalyticsDayForTest(options: {
 }) {
   const {__reconcileForTest} = await import("../../../../analytics/cmsAnalyticsJobs");
   return __reconcileForTest(options);
+}
+
+// ── THE DAY A COUNT LANDS IN vs THE DAY RECONCILE SEARCHES BY ──────────────
+//
+// The live trigger chooses a bucket from ITS OWN wall clock, because the
+// creation snapshot it is handed never carries `serverTimestampMs` — the client
+// does not write it, and the listener that does (`aggregateAnalyticsEventOnCreate`)
+// cannot change a snapshot that was already materialised.
+//
+// `runReconcile` then SELECTS the day's events with a range filter on that same
+// `serverTimestampMs`. A Firestore range filter returns nothing for a document
+// that lacks the field, so an event can be counted by one writer and be
+// invisible to the other — and the repair REPLACES counters rather than adding
+// to them. These tests pin the invariant that makes the two agree.
+
+test("8. an event counted without a server stamp is not erased by the repair",
+  {skip}, async () => {
+    const today = businessDayKey(Date.now());
+    const contentId = `stamp_missing_${seq++}`;
+
+    // A second, ordinary event in the SAME bucket. Without it the bucket would
+    // not appear in the scan at all, reconcile would write nothing, and the
+    // erasure would be invisible — the defect needs a surviving bucket to
+    // overwrite.
+    const stamped = await storeEvent(
+      {contentId, userId: "u1", metric: "impressions", at: Date.now()});
+    await runTrigger(stamped);
+
+    // The production shape: no server stamp at creation time.
+    const unstamped = await storeEvent(
+      {contentId, userId: "u2", metric: "impressions", omitServerStamp: true});
+    await runTrigger(unstamped);
+
+    const counted = await readDailyOn(contentId, today);
+    assert.equal(counted.impressions, 2, "the trigger counted both users");
+
+    await reconcileCmsAnalyticsDay(today, Date.now());
+
+    assert.equal((await readDailyOn(contentId, today)).impressions, 2,
+      "reconcile must not erase a user the trigger legitimately counted");
+  });
+
+test("9. the bucket the trigger chose is the day the STORED stamp resolves to",
+  {skip}, async () => {
+    const contentId = `stamp_agrees_${seq++}`;
+    const eventId = await storeEvent(
+      {contentId, userId: "u1", metric: "impressions", omitServerStamp: true});
+    await runTrigger(eventId);
+
+    const stored = (await db.collection("events").doc(eventId).get()).data() ?? {};
+    assert.equal(typeof stored.serverTimestampMs, "number",
+      "the event must carry the stamp the reconcile range-query selects on");
+
+    // This is the whole contract in one line: the day the count was written
+    // into must be the day a scan of the stored stamp would put it in.
+    const bucketDay = businessDayKey(stored.serverTimestampMs as number);
+    assert.equal((await readDailyOn(contentId, bucketDay)).impressions, 1,
+      "the counted day and the stamped day must be the same day");
+  });
+
+test("10. the server stamp is written once and never moved", {skip}, async () => {
+  const contentId = `stamp_write_once_${seq++}`;
+  const eventId = await storeEvent(
+    {contentId, userId: "u1", metric: "impressions", omitServerStamp: true});
+  const ref = db.collection("events").doc(eventId);
+
+  const first = await ensureEventServerTimestampMs(ref, 1_700_000_000_000);
+  const second = await ensureEventServerTimestampMs(ref, 1_900_000_000_000);
+
+  assert.equal(second, first,
+    "a second stamper must be handed the value already stored, not its own clock");
+  const stored = (await ref.get()).data() ?? {};
+  assert.equal(stored.serverTimestampMs, first, "the stored value must not move");
+});
+
+// ── THE SCHEDULED ENTRYPOINT ───────────────────────────────────────────────
+//
+// These drive `reconcileCmsAnalyticsDaily` THROUGH ITS WRAPPER, not by calling
+// `reconcileCmsAnalyticsDay`. What the wrapper adds is the day selection and
+// the error contract, and only invoking it proves those. It does NOT prove that
+// Cloud Scheduler delivers at 03:41 — nothing local can.
+
+test("11. the scheduled run repairs yesterday AND today in one invocation",
+  {skip}, async () => {
+    const now = Date.now();
+    const today = businessDayKey(now);
+    const yesterday = businessDayKey(now - 86_400_000);
+    const contentId = `sched_days_${seq++}`;
+
+    for (const [day, at] of [[today, now], [yesterday, now - 86_400_000]] as const) {
+      const id = await storeEvent({contentId, userId: "u1", metric: "impressions", at});
+      await runTrigger(id);
+      // Drift the stored figure away from the truth so a repair is observable.
+      await db.collection(CMS_ANALYTICS_DAILY_COLLECTION)
+        .doc(cmsAnalyticsDailyDocId(contentId, PLACEMENT, day))
+        .set({counters: {impressions: 99, ctaTaps: 0, engagedUsers: 0}}, {merge: true});
+    }
+
+    await runScheduled();
+
+    assert.equal((await readDailyOn(contentId, today)).impressions, 1,
+      "today was selected and repaired");
+    assert.equal((await readDailyOn(contentId, yesterday)).impressions, 1,
+      "yesterday was selected and repaired");
+  });
+
+test("12. running the scheduled job again does not double count", {skip}, async () => {
+  const now = Date.now();
+  const today = businessDayKey(now);
+  const contentId = `sched_retry_${seq++}`;
+  const id = await storeEvent({contentId, userId: "u1", metric: "impressions", at: now});
+  await runTrigger(id);
+
+  await runScheduled();
+  const first = await readDailyOn(contentId, today);
+  await runScheduled();
+  const second = await readDailyOn(contentId, today);
+
+  assert.equal(first.impressions, 1);
+  assert.equal(second.impressions, 1, "a retry must not add the same user again");
+  assert.equal(second.distinctUserCount, 1);
+});
+
+/** Read a daily bucket for an explicit day rather than the fixture's fixed one. */
+async function readDailyOn(contentId: string, dayKey: string) {
+  const snap = await db.collection(CMS_ANALYTICS_DAILY_COLLECTION)
+    .doc(cmsAnalyticsDailyDocId(contentId, PLACEMENT, dayKey)).get();
+  const d = snap.data() ?? {};
+  return {
+    exists: snap.exists,
+    impressions: d.counters?.impressions ?? 0,
+    ctaTaps: d.counters?.ctaTaps ?? 0,
+    engagedUsers: d.counters?.engagedUsers ?? 0,
+    distinctUserCount: d.distinctUserCount ?? 0,
+  };
+}
+
+/** Invoke the SCHEDULED function through its wrapper. */
+async function runScheduled() {
+  return (reconcileCmsAnalyticsDaily as unknown as {run: (e: unknown) => Promise<unknown>})
+    .run({scheduleTime: new Date().toISOString(), jobName: "reconcileCmsAnalyticsDaily"});
 }

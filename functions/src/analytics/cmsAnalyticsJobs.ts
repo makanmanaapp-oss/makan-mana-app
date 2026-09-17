@@ -20,6 +20,7 @@ import {onDocumentCreated} from "firebase-functions/v2/firestore";
 import {onSchedule} from "firebase-functions/v2/scheduler";
 
 import {db, FieldValue} from "../config/firebase";
+import {ensureEventServerTimestampMs} from "./eventServerStamp";
 import {
   BUSINESS_TIMEZONE,
   businessDayKey,
@@ -185,10 +186,21 @@ export const aggregateCmsAnalyticsEventOnCreate = onDocumentCreated(
     const countable = toCountableCmsEvent(candidate, now);
     if (!countable) return;
 
+    // THE STORED stamp, not this instance's clock — and stamped only once this
+    // event is known to be countable, so the helper's transaction is not paid
+    // for every unrelated event in this collection.
+    //
+    // `runReconcile` selects a day's events by range filter on this field. If
+    // the day chosen here came from a clock that never reached storage, the
+    // repair would recompute this bucket without this event and REPLACE the
+    // counters with the lower figure. Bucketing by the effective stored value
+    // is what makes the counted day and the reconciled day the same day.
+    const effectiveAtMs = await ensureEventServerTimestampMs(snap.ref, now);
+
     await applyCmsMetric({
       contentId: countable.contentId,
       placement: countable.placement,
-      dayKey: businessDayKey(countable.occurredAtMs),
+      dayKey: businessDayKey(effectiveAtMs),
       metric: countable.metric,
       userId: countable.userId,
       sourceEventRef: snap.ref,
