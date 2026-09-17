@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/events/event_types.dart';
 import '../../core/providers.dart';
 import 'cms_impression_policy.dart';
+import 'cms_visibility_geometry.dart';
 
 /// B5 — the session's impression bookkeeping.
 ///
@@ -14,6 +15,15 @@ import 'cms_impression_policy.dart';
 /// per widget would make every rebuild a fresh impression.
 final cmsImpressionPolicyProvider = Provider<CmsImpressionPolicy>((ref) {
   return CmsImpressionPolicy();
+});
+
+/// Wall-clock milliseconds used to measure dwell.
+///
+/// A seam, not a feature: production always reads the device clock. Widget
+/// tests replace it with the test binding's fake clock, so a one-second dwell
+/// can be driven deterministically through real scrolling and real geometry.
+final cmsImpressionClockProvider = Provider<int Function()>((ref) {
+  return () => DateTime.now().millisecondsSinceEpoch;
 });
 
 /// Wraps one banner and reports it as seen once it genuinely has been.
@@ -50,6 +60,17 @@ class _CmsImpressionTrackerState extends ConsumerState<CmsImpressionTracker>
 
   Timer? _timer;
   bool _foregrounded = true;
+
+  /// Whether this banner's route is the one in front. Kept current by
+  /// dependency notifications rather than looked up on every sample.
+  bool _routeInFront = true;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _routeInFront = TickerMode.valuesOf(context).enabled &&
+        (ModalRoute.isCurrentOf(context) ?? true);
+  }
 
   @override
   void initState() {
@@ -113,7 +134,7 @@ class _CmsImpressionTrackerState extends ConsumerState<CmsImpressionTracker>
       contentId: widget.contentId,
       visibleFraction: fraction,
       foregrounded: _foregrounded,
-      nowMs: DateTime.now().millisecondsSinceEpoch,
+      nowMs: ref.read(cmsImpressionClockProvider)(),
     );
     if (!counted) return;
 
@@ -121,28 +142,25 @@ class _CmsImpressionTrackerState extends ConsumerState<CmsImpressionTracker>
     _logImpression();
   }
 
-  /// How much of this card is on screen right now.
+  /// How much of this card a person can actually see right now.
   ///
-  /// Measured against the window, not the enclosing scrollable: a banner can be
-  /// inside a viewport that is itself pushed off screen by a sheet or a
-  /// keyboard, and only the window tells the truth about what the person can
-  /// actually see.
+  /// Not "inside the window": a banner scrolled under a fixed header or a
+  /// pinned header, behind the keyboard or a system bar, beside a page view, or
+  /// inside an Offstage subtree is inside the window and still unseen. See
+  /// [cmsUnobstructedVisibleFraction] for how the render tree is read.
   double _visibleFraction() {
+    // A page covered by another route is either not painted at all (an opaque
+    // route above it takes it offstage, which disables its tickers) or sits
+    // under a barrier or sheet (its route is no longer current). The render
+    // tree still reports geometry in both cases, so these are checked first.
+    if (!_routeInFront) return 0;
     final box = context.findRenderObject();
-    if (box is! RenderBox || !box.hasSize || !box.attached) return 0;
-    final size = box.size;
-    if (size.height <= 0) return 0;
-
-    final topLeft = box.localToGlobal(Offset.zero);
+    if (box is! RenderBox) return 0;
     final view = View.maybeOf(context);
     if (view == null) return 0;
-    final viewportHeight = view.physicalSize.height / view.devicePixelRatio;
-
-    return visibleFractionOf(
-      childTop: topLeft.dy,
-      childHeight: size.height,
-      viewportTop: 0,
-      viewportHeight: viewportHeight,
+    return cmsUnobstructedVisibleFraction(
+      box,
+      viewable: cmsViewableScreenRect(view),
     );
   }
 

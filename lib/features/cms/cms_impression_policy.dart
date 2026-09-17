@@ -54,7 +54,10 @@ class CmsImpressionPolicy {
   /// Feed one observation. Returns true EXACTLY ONCE per key — on the
   /// observation that completes the dwell.
   ///
-  /// [visibleFraction] is 0..1 of the card's own area that is on screen.
+  /// [visibleFraction] is 0..1 of the card's own area that a person can
+  /// actually see: on screen AND not clipped by a scroll viewport, covered by
+  /// a pinned header, the keyboard or a system bar. See
+  /// `cmsUnobstructedVisibleFraction`.
   bool observe({
     required String placement,
     required String contentId,
