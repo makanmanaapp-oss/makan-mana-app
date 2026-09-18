@@ -218,3 +218,14 @@ export {
   mirrorAnalyticsDailyOnWrite,
   reconcileAnalyticsMirrorDaily,
 } from "./controlCenter/analyticsMirrorSync";
+
+// B5 — CMS banner analytics. A SEPARATE aggregate from merchant analytics: a
+// banner belongs to a placement, not to a restaurant.
+export {
+  aggregateCmsAnalyticsEventOnCreate,
+  reconcileCmsAnalyticsDaily,
+} from "./analytics/cmsAnalyticsJobs";
+export {
+  mirrorCmsAnalyticsOnWrite,
+  reconcileCmsAnalyticsMirrorDaily,
+} from "./controlCenter/cmsAnalyticsMirrorSync";

@@ -16,6 +16,7 @@ import '../../models/place_summary.dart';
 import '../home/home_palette.dart';
 import 'explore_flags.dart';
 import 'explore_pagination_controller.dart';
+import '../../core/events/event_types.dart';
 
 /// Explore: tempat sebenar berdekatan (cache pelayan 7 hari) +
 /// carian nama + penapis cuisine. Fallback dummy semasa loading.
@@ -31,6 +32,8 @@ class ExploreScreen extends ConsumerStatefulWidget {
 }
 
 class _ExploreScreenState extends ConsumerState<ExploreScreen> {
+  static const double _chipStripHeight = 54;
+
   String? _cuisineFilter;
   String _query = '';
 
@@ -70,117 +73,175 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
           .toList();
     }
 
+    // B5 — KEYBOARD / SHORT-VIEWPORT SAFE LAYOUT.
+    //
+    // This used to be one rigid Column: title, location, search, the CMS banner
+    // and the chip strip all had fixed heights, and only the results list could
+    // shrink. A tall banner plus an open keyboard left the list less than zero
+    // space, and the Column overflowed (57 px on a Galaxy A05).
+    //
+    // Only the short identity header (title, location, search) is fixed now.
+    // The banner, the chip strip and the results share ONE scroll view, so no
+    // combination of banner height, keyboard and viewport can overflow, and the
+    // banner CTA and every result stay reachable by scrolling.
+    //
+    // The search field stays OUTSIDE the scroll view on purpose. Inside it,
+    // every keystroke asks to reveal the caret and would drag the results back
+    // up to the field. The chip strip is pinned, so filters stay reachable while
+    // scrolled, as they were when the strip was fixed. At rest the order and
+    // spacing are unchanged: search, banner, chips, results.
+    final header = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // 1–3. Tajuk besar "Explore" + pil Trending (callback sosial kekal).
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 16, 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  l.t('navExplore'),
+                  style: TextStyle(
+                    color: palette.text,
+                    fontSize: 30,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.5,
+                  ),
+                ),
+              ),
+              _TrendingPill(onTap: () => context.push(RoutePaths.social)),
+            ],
+          ),
+        ),
+        // Panel diagnostik: debug + flag ON sahaja (default BERSIH).
+        if (kDebugMode && ExploreFlags.diagnosticsVisible)
+          _buildDiagnosticPanel(context, page),
+        // Label lokasi jujur (kongsi sumber lokasi dengan Home).
+        _buildNearLocationLabel(context, l),
+        // 4. Bar carian premium — local UX + server full-pool search.
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+          child: TextField(
+            onChanged: (v) {
+              setState(() => _query = v);
+              ref.read(explorePaginationProvider.notifier).setSearchQuery(v);
+            },
+            style: TextStyle(color: palette.text),
+            decoration: InputDecoration(
+              hintText: l.t('searchHint'),
+              hintStyle: TextStyle(color: palette.subtext),
+              prefixIcon: Icon(Icons.search, size: 22, color: palette.subtext),
+              prefixIconConstraints:
+                  const BoxConstraints(minWidth: 48, minHeight: 48),
+              filled: true,
+              fillColor: palette.card,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(20),
+                borderSide: BorderSide(color: palette.border),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(20),
+                borderSide: BorderSide(color: palette.border),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(20),
+                borderSide: BorderSide(color: palette.primary, width: 1.4),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+
+    // 5. Cip kategori merah-aktif (semantik penapis _cuisineFilter KEKAL).
+    // Painted on the page background, so results scrolling underneath a pinned
+    // strip never show through.
+    final chipStrip = ColoredBox(
+      color: palette.background,
+      child: SizedBox(
+        height: _chipStripHeight,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 20),
+          itemCount: cuisines.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 10),
+          itemBuilder: (context, i) {
+            final c = cuisines[i];
+            return Center(
+              child: _CategoryChip(
+                label: c,
+                selected: _cuisineFilter == c,
+                onTap: () => setState(
+                    () => _cuisineFilter = _cuisineFilter == c ? null : c),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    // 6. Senarai kad premium (pagination/cursor KEKAL).
+    final results = places.isEmpty
+        ? _buildEmptyState(context, l, page, isDemo, all.isEmpty)
+        : _buildPaginatedList(context, l, page, places);
+
+    final scrollingBody = LayoutBuilder(
+      builder: (context, constraints) {
+        // The strip stays pinned — as it was when it was fixed — only while it
+        // leaves at least twice its own height for the results it filters. On
+        // a short screen with the keyboard open, a pinned 54 px strip would
+        // cover a 32–64 px results area entirely, so there it scrolls away
+        // with the results instead.
+        final pinChips = constraints.maxHeight >= _chipStripHeight * 3;
+        return RefreshIndicator(
+          onRefresh: () =>
+              ref.read(explorePaginationProvider.notifier).refresh(),
+          child: CustomScrollView(
+            slivers: [
+              // WAVE 5 — curated/editorial CMS slot. Marked as sponsored so
+              // editorial content is never mistaken for an organic result. The
+              // restaurant list below is UNCHANGED: ranking, search and the
+              // recommendation algorithm are not touched.
+              const SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(20, 4, 20, 0),
+                  child: CmsSlot(
+                    placement: CmsPlacement.exploreTop,
+                    sponsored: true,
+                    sourceScreen: SourceScreen.explore,
+                  ),
+                ),
+              ),
+              if (pinChips)
+                PinnedHeaderSliver(child: chipStrip)
+              else
+                SliverToBoxAdapter(child: chipStrip),
+              results,
+            ],
+          ),
+        );
+      },
+    );
+
     return Scaffold(
       backgroundColor: palette.background,
       body: SafeArea(
         bottom: false,
-        child: Column(
-          children: [
-            // 1–3. Tajuk besar "Explore" + pil Trending (callback sosial kekal).
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 16, 8),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      l.t('navExplore'),
-                      style: TextStyle(
-                        color: palette.text,
-                        fontSize: 30,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-                  ),
-                  _TrendingPill(onTap: () => context.push(RoutePaths.social)),
-                ],
+        child: LayoutBuilder(
+          builder: (context, constraints) => Column(
+            children: [
+              // Last line of defence for extreme geometry (landscape + keyboard
+              // + large text): the header may never claim more height than
+              // exists. Normally it is far shorter, has no scroll extent and is
+              // inert — no drag, no overscroll glow, no scroll notifications.
+              ConstrainedBox(
+                constraints: BoxConstraints(maxHeight: constraints.maxHeight),
+                child: SingleChildScrollView(primary: false, child: header),
               ),
-            ),
-            // Panel diagnostik: debug + flag ON sahaja (default BERSIH).
-            if (kDebugMode && ExploreFlags.diagnosticsVisible)
-              _buildDiagnosticPanel(context, page),
-            // Label lokasi jujur (kongsi sumber lokasi dengan Home).
-            _buildNearLocationLabel(context, l),
-            // 4. Bar carian premium — local UX + server full-pool search.
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
-              child: TextField(
-                onChanged: (v) {
-                  setState(() => _query = v);
-                  ref
-                      .read(explorePaginationProvider.notifier)
-                      .setSearchQuery(v);
-                },
-                style: TextStyle(color: palette.text),
-                decoration: InputDecoration(
-                  hintText: l.t('searchHint'),
-                  hintStyle: TextStyle(color: palette.subtext),
-                  prefixIcon:
-                      Icon(Icons.search, size: 22, color: palette.subtext),
-                  prefixIconConstraints:
-                      const BoxConstraints(minWidth: 48, minHeight: 48),
-                  filled: true,
-                  fillColor: palette.card,
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: BorderSide(color: palette.border),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: BorderSide(color: palette.border),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(20),
-                    borderSide: BorderSide(color: palette.primary, width: 1.4),
-                  ),
-                ),
-              ),
-            ),
-            // WAVE 5 — curated/editorial CMS slot. Marked as sponsored so
-            // editorial content is never mistaken for an organic result. The
-            // restaurant list below is UNCHANGED: ranking, search and the
-            // recommendation algorithm are not touched.
-            const Padding(
-              padding: EdgeInsets.fromLTRB(20, 4, 20, 0),
-              child: CmsSlot(
-                placement: CmsPlacement.exploreTop,
-                sponsored: true,
-              ),
-            ),
-            // 5. Cip kategori merah-aktif (semantik penapis _cuisineFilter KEKAL).
-            SizedBox(
-              height: 54,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                itemCount: cuisines.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 10),
-                itemBuilder: (context, i) {
-                  final c = cuisines[i];
-                  return Center(
-                    child: _CategoryChip(
-                      label: c,
-                      selected: _cuisineFilter == c,
-                      onTap: () => setState(() =>
-                          _cuisineFilter = _cuisineFilter == c ? null : c),
-                    ),
-                  );
-                },
-              ),
-            ),
-            // 6. Senarai kad premium (pagination/cursor KEKAL).
-            Expanded(
-              child: RefreshIndicator(
-                onRefresh: () =>
-                    ref.read(explorePaginationProvider.notifier).refresh(),
-                child: places.isEmpty
-                    ? _buildEmptyState(context, l, page, isDemo, all.isEmpty)
-                    : _buildPaginatedList(context, l, page, places),
-              ),
-            ),
-          ],
+              Expanded(child: scrollingBody),
+            ],
+          ),
         ),
       ),
     );
@@ -253,13 +314,17 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
   ///  * belum initialized / loading → LOADING (spinner), bukan restoran sampel.
   ///  * ralat → RALAT/OFFLINE + retry (muat semula).
   ///  * selesai + kosong → KOSONG-BENAR.
-  /// Jika ada data tapi tapis/carian → 0 → "tiada padanan". Semua guna ListView
-  /// supaya pull-to-refresh tetap berfungsi. Kanvas kekal #FFFFFF.
+  /// Jika ada data tapi tapis/carian → 0 → "tiada padanan". Returns a SLIVER in
+  /// the shared scroll view, which is always scrollable, so pull-to-refresh
+  /// keeps working on an empty result. Kanvas kekal #FFFFFF.
   Widget _buildEmptyState(BuildContext context, AppLocalizations l,
       ExplorePaginationState page, bool isDemo, bool noData) {
     final palette = HomePalette.of(context);
-    Widget centered(Widget child) =>
-        ListView(children: [const SizedBox(height: 120), Center(child: child)]);
+    Widget centered(Widget child) => SliverToBoxAdapter(
+          child: Column(
+            children: [const SizedBox(height: 120), Center(child: child)],
+          ),
+        );
     if (noData && !isDemo) {
       if (!page.initialized || page.loading) {
         return centered(const CircularProgressIndicator(strokeWidth: 2));
@@ -333,49 +398,54 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     // Footer pagination hanya bermakna pada senarai penuh (tiada tapis/carian).
     final showFooter = _query.isEmpty && _cuisineFilter == null;
     final count = places.length + (showFooter ? 1 : 0);
-    return ListView.separated(
+    // A sliver in the shared scroll view (was a ListView of its own). Padding,
+    // spacing, footer states and item order are identical.
+    return SliverPadding(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
-      itemCount: count,
-      separatorBuilder: (context, i) => const SizedBox(height: 14),
-      itemBuilder: (context, i) {
-        if (showFooter && i == places.length) {
-          if (page.error) {
+      sliver: SliverList.separated(
+        itemCount: count,
+        separatorBuilder: (context, i) => const SizedBox(height: 14),
+        itemBuilder: (context, i) {
+          if (showFooter && i == places.length) {
+            if (page.error) {
+              return Center(
+                child: TextButton.icon(
+                  onPressed: () =>
+                      ref.read(explorePaginationProvider.notifier).loadMore(),
+                  icon: const Icon(Icons.refresh),
+                  label: Text(l.t('retry')),
+                ),
+              );
+            }
+            if (page.loading) {
+              return const Padding(
+                padding: EdgeInsets.symmetric(vertical: 16),
+                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+              );
+            }
+            if (!page.endOfResults) {
+              return Center(
+                child: OutlinedButton(
+                  onPressed: () =>
+                      ref.read(explorePaginationProvider.notifier).loadMore(),
+                  child: Text(l.t('loadMore')),
+                ),
+              );
+            }
             return Center(
-              child: TextButton.icon(
-                onPressed: () =>
-                    ref.read(explorePaginationProvider.notifier).loadMore(),
-                icon: const Icon(Icons.refresh),
-                label: Text(l.t('retry')),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                child: Text(
+                  l.t('endOfResults'),
+                  style:
+                      TextStyle(color: context.mm.onCardMuted, fontSize: 12.5),
+                ),
               ),
             );
           }
-          if (page.loading) {
-            return const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
-              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-            );
-          }
-          if (!page.endOfResults) {
-            return Center(
-              child: OutlinedButton(
-                onPressed: () =>
-                    ref.read(explorePaginationProvider.notifier).loadMore(),
-                child: Text(l.t('loadMore')),
-              ),
-            );
-          }
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Text(
-                l.t('endOfResults'),
-                style: TextStyle(color: context.mm.onCardMuted, fontSize: 12.5),
-              ),
-            ),
-          );
-        }
-        return ExplorePlaceCard(place: places[i]);
-      },
+          return ExplorePlaceCard(place: places[i]);
+        },
+      ),
     );
   }
 }

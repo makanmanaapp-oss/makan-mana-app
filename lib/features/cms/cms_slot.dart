@@ -20,9 +20,15 @@ class CmsSlot extends ConsumerWidget {
     required this.placement,
     this.canonicalPlaceId,
     this.sponsored = false,
+    this.sourceScreen,
   });
 
   final CmsPlacement placement;
+
+  /// B5 — which surface this slot sits on, carried into the impression and CTA
+  /// events. Optional: a host that does not pass it still gets counted, just
+  /// without the screen attribution.
+  final String? sourceScreen;
 
   /// Required for [CmsPlacement.restaurantDetail]; a banner targeted at one
   /// restaurant may never appear on another.
@@ -53,6 +59,10 @@ class CmsSlot extends ConsumerWidget {
             .toList(growable: false)
         : result.content;
 
-    return CmsBannerList(items: items, sponsored: sponsored);
+    return CmsBannerList(
+      items: items,
+      sponsored: sponsored,
+      sourceScreen: sourceScreen,
+    );
   }
 }

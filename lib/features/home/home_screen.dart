@@ -811,7 +811,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
                 // WAVE 5 — CMS slot. Renders NOTHING when there is no eligible
                 // banner, so Home is byte-for-byte its approved layout.
-                const CmsSlot(placement: CmsPlacement.homeTop),
+                const CmsSlot(
+                  placement: CmsPlacement.homeTop,
+                  sourceScreen: SourceScreen.home,
+                ),
 
                 // Mood chips
                 Text(
@@ -1007,7 +1010,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
                 // WAVE 5 — second CMS slot. Same contract: nothing to show
                 // means nothing rendered.
-                const CmsSlot(placement: CmsPlacement.homeMid),
+                const CmsSlot(
+                  placement: CmsPlacement.homeMid,
+                  sourceScreen: SourceScreen.home,
+                ),
 
                 // Berdekatan + penunjuk mood semasa (Prompt 5).
                 // QA akhir: tajuk Expanded + chip Flexible — Row tegar melimpah

@@ -15,6 +15,7 @@ permissions:
 jobs:
   functions:
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     defaults:
       run:
         working-directory: functions
@@ -27,9 +28,20 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: functions/package-lock.json
+      - name: Setup Java 21 for Firestore emulator
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
       - name: Install dependencies
         run: npm ci
       - name: TypeScript production build
         run: npm run build
       - name: Domain unit tests
         run: npm test
+      - name: Install Firebase CLI for local-only emulator
+        run: npm install --global firebase-tools@14
+      - name: Verify Firebase CLI version
+        run: firebase --version
+      - name: B5 CMS analytics Firestore emulator race tests
+        run: npm run test:emulator:cmsAnalytics

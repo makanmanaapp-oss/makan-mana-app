@@ -5,6 +5,7 @@ import type {MenuCommentMirrorRecord, SocialPostMirrorRecord} from "../domain/re
 import type {MirrorEntityType} from "../domain/restaurantEngagement/mirrorEvents";
 import type {PromotionMirrorRecord} from "../domain/promotions/promotionMirrorPayload";
 import type {CmsMirrorRecord} from "../domain/cms/cmsDocument";
+import type {CmsAnalyticsMirrorRecord} from "../domain/cms/cmsAnalytics";
 import type {CollectionMirrorRecord} from "../domain/cms/collectionDocument";
 
 /**
@@ -27,7 +28,8 @@ export type MirrorRecord =
   | PromotionMirrorRecord
   | CmsMirrorRecord
   | CollectionMirrorRecord
-  | AnalyticsMirrorRecord;
+  | AnalyticsMirrorRecord
+  | CmsAnalyticsMirrorRecord;
 
 /**
  * POST one idempotent mirror batch. `eventId` is the idempotency key enforced by
@@ -37,7 +39,7 @@ export type MirrorRecord =
  */
 export async function pushMirrorBatch(params: {
   entityType: MirrorEntityType | "restaurant_promotion" | "cms_content" | "cms_collection"
-    | "merchant_analytics_daily";
+    | "merchant_analytics_daily" | "cms_analytics_daily";
   records: MirrorRecord[];
   secret: string;
   eventId: string;
