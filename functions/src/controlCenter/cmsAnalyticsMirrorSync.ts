@@ -20,7 +20,7 @@ import {onDocumentWritten} from "firebase-functions/v2/firestore";
 import {onSchedule} from "firebase-functions/v2/scheduler";
 
 import {db} from "../config/firebase";
-import {BUSINESS_TIMEZONE, businessDayKey} from "../domain/analytics/analyticsAggregation";
+import {BUSINESS_TIMEZONE} from "../domain/analytics/analyticsAggregation";
 import {
   CMS_ANALYTICS_DAILY_COLLECTION,
   CMS_ANALYTICS_MIRROR_ENTITY_TYPE,
@@ -30,6 +30,14 @@ import {
   type CmsAnalyticsDailyDocument,
   type CmsAnalyticsMirrorRecord,
 } from "../domain/cms/cmsAnalytics";
+import {readAggregateReceipts} from "../analytics/cmsAnalyticsJobs";
+import {
+  RECONCILE_RECEIPT_COLLECTION,
+  RECOVERY_LOOKBACK_DAYS,
+  mirrorNeedsRepush,
+  recoveryDayKeys,
+  reconcileReceiptId,
+} from "../domain/cms/cmsAnalyticsRecovery";
 import {CONTROL_CENTER_SYNC_SECRET, pushMirrorBatch} from "./mirrorEventPush";
 
 /** One page of the reconcile scan. Paged by cursor, not capped in total. */
@@ -139,6 +147,20 @@ export const mirrorCmsAnalyticsOnWrite = onDocumentWritten(
   },
 );
 
+async function readMirrorReceipts(days: string[]): Promise<Map<string, number>> {
+  const refs = days.map((dayKey) =>
+    db.collection(RECONCILE_RECEIPT_COLLECTION).doc(reconcileReceiptId("mirror", dayKey)));
+  const snaps = refs.length > 0 ? await db.getAll(...refs) : [];
+  const out = new Map<string, number>();
+  snaps.forEach((snap, i) => {
+    const completedAtMs = snap.exists ? snap.data()?.completedAtMs : undefined;
+    if (typeof completedAtMs === "number" && Number.isFinite(completedAtMs)) {
+      out.set(days[i], completedAtMs);
+    }
+  });
+  return out;
+}
+
 export const reconcileCmsAnalyticsMirrorDaily = onSchedule(
   {
     schedule: "47 4 * * *",
@@ -147,6 +169,13 @@ export const reconcileCmsAnalyticsMirrorDaily = onSchedule(
     timeoutSeconds: 540,
     memory: "512MiB",
     maxInstances: 1,
+    // Same bounded retry contract as the aggregate job: these cover a run that
+    // started and failed, not a night that never fired. The lookback below is
+    // what covers a missed night.
+    retryCount: 3,
+    minBackoffSeconds: 60,
+    maxBackoffSeconds: 600,
+    maxRetrySeconds: 3600,
   },
   async () => {
     const secret = CONTROL_CENTER_SYNC_SECRET.value();
@@ -155,11 +184,34 @@ export const reconcileCmsAnalyticsMirrorDaily = onSchedule(
       return;
     }
 
-    // Yesterday and today only. Older days are already settled, and re-pushing
-    // the whole table nightly would be a lot of traffic to say nothing new.
+    // A BOUNDED LOOKBACK, not just yesterday and today.
+    //
+    // Yesterday-and-today alone had the same hole as the aggregate job: a night
+    // that never ran left that day's rows never re-pushed, because the next
+    // night's "yesterday" is a different day. The window is the same horizon,
+    // and a day is skipped on a single receipt read when the mirror has already
+    // pushed it AFTER the day closed and after the aggregate last repaired it —
+    // so a day the aggregate repaired later is re-pushed rather than left stale.
+    //
+    // Re-pushing is safe: the stored snapshot only moves forward, because the
+    // mirror upsert refuses a snapshot older than the one it holds.
     const now = Date.now();
-    const days = [businessDayKey(now - 86_400_000), businessDayKey(now)];
+    const window = recoveryDayKeys(now, RECOVERY_LOOKBACK_DAYS);
+    const [mirrorReceipts, aggregateReceipts] = await Promise.all([
+      readMirrorReceipts(window),
+      readAggregateReceipts(window),
+    ]);
+    const days = window
+      .filter((dayKey) => mirrorNeedsRepush({
+        dayKey,
+        mirrorCompletedAtMs: mirrorReceipts.get(dayKey) ?? null,
+        aggregateCompletedAtMs: aggregateReceipts.get(dayKey) ?? null,
+      }))
+      // Oldest first, so the longest-outstanding day is served before a fresh one.
+      .reverse();
+    const skipped = window.filter((dayKey) => !days.includes(dayKey));
     let pushed = 0;
+    const completed: string[] = [];
 
     const incomplete: string[] = [];
     let failedPushes = 0;
@@ -171,6 +223,7 @@ export const reconcileCmsAnalyticsMirrorDaily = onSchedule(
       // the ones a silent cap drops.
       let cursor: FirebaseFirestore.QueryDocumentSnapshot | null = null;
       let pages = 0;
+      const failedBefore = failedPushes;
 
       for (;;) {
         if (pages >= RECONCILE_MAX_PAGES) {
@@ -212,9 +265,22 @@ export const reconcileCmsAnalyticsMirrorDaily = onSchedule(
         if (snap.size < RECONCILE_PAGE) break;
         cursor = snap.docs[snap.docs.length - 1];
       }
+
+      // A receipt only for a day that was walked completely and pushed without a
+      // failure. A partial page walk or a refused push leaves the day unsettled
+      // so the next run picks it up again.
+      if (!incomplete.includes(dayKey) && failedPushes === failedBefore) {
+        await db.collection(RECONCILE_RECEIPT_COLLECTION)
+          .doc(reconcileReceiptId("mirror", dayKey))
+          .set({scope: "mirror", dayKey, completedAtMs: Date.now()}, {merge: true});
+        completed.push(dayKey);
+      }
     }
 
-    console.log("cms analytics mirror reconcile", {days, pushed, failedPushes});
+    console.log("cms analytics mirror reconcile", {
+      window, days, skipped, completed, pushed, failedPushes,
+      lookbackDays: RECOVERY_LOOKBACK_DAYS,
+    });
 
     if (incomplete.length > 0 || failedPushes > 0) {
       // Raised rather than logged. Unlike the aggregate reconciler this one

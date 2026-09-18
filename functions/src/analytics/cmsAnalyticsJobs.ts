@@ -22,6 +22,12 @@ import {onSchedule} from "firebase-functions/v2/scheduler";
 import {db, FieldValue} from "../config/firebase";
 import {ensureEventServerTimestampMs} from "./eventServerStamp";
 import {
+  RECONCILE_RECEIPT_COLLECTION,
+  RECOVERY_LOOKBACK_DAYS,
+  planRecovery,
+  reconcileReceiptId,
+} from "../domain/cms/cmsAnalyticsRecovery";
+import {
   BUSINESS_TIMEZONE,
   businessDayKey,
   businessDayStartMs,
@@ -453,6 +459,42 @@ async function runReconcile(options: {
   return {dayKey, scanned: rawEvents.length, repaired, truncated, deferred, markersWritten};
 }
 
+/**
+ * Record that a day is finished, so later runs can skip it.
+ *
+ * Written ONLY for a day that was recomputed completely: no truncation, no
+ * deferred bucket, no error. A receipt is a claim that the day needs no further
+ * repair, and a claim made about a partial scan is exactly the kind of quiet
+ * wrong answer the reconcile exists to prevent.
+ */
+async function writeReconcileReceipt(dayKey: string, nowMs: number): Promise<void> {
+  await db.collection(RECONCILE_RECEIPT_COLLECTION)
+    .doc(reconcileReceiptId("aggregate", dayKey))
+    .set({scope: "aggregate", dayKey, completedAtMs: nowMs}, {merge: true});
+}
+
+async function readReconcileReceipts(
+  scope: "aggregate" | "mirror",
+  days: string[],
+): Promise<Map<string, number>> {
+  const refs = days.map((dayKey) =>
+    db.collection(RECONCILE_RECEIPT_COLLECTION).doc(reconcileReceiptId(scope, dayKey)));
+  const snaps = refs.length > 0 ? await db.getAll(...refs) : [];
+  const out = new Map<string, number>();
+  snaps.forEach((snap, i) => {
+    const completedAtMs = snap.exists ? snap.data()?.completedAtMs : undefined;
+    if (typeof completedAtMs === "number" && Number.isFinite(completedAtMs)) {
+      out.set(days[i], completedAtMs);
+    }
+  });
+  return out;
+}
+
+/** Shared by the aggregate job and the mirror job, so both recover the same days. */
+export async function readAggregateReceipts(days: string[]): Promise<Map<string, number>> {
+  return readReconcileReceipts("aggregate", days);
+}
+
 export const reconcileCmsAnalyticsDaily = onSchedule(
   {
     schedule: "41 3 * * *",
@@ -460,31 +502,94 @@ export const reconcileCmsAnalyticsDaily = onSchedule(
     region: REGION,
     maxInstances: 1,
     timeoutSeconds: 540,
+    // RETRIES, stated explicitly rather than left to the platform default.
+    //
+    // These cover a run that STARTED and failed: a transient Firestore error, a
+    // timeout, a deploy racing the schedule. They bound the noise: at most three
+    // extra attempts, backing off from a minute to ten, and never more than an
+    // hour of retrying in total, so a broken night cannot still be hammering
+    // Firestore when the next one begins.
+    //
+    // They do NOT repair a night that never ran, and nothing about a retry can:
+    // the following night's "yesterday" is a different day. That case is what
+    // the bounded lookback below is for.
+    retryCount: 3,
+    minBackoffSeconds: 60,
+    maxBackoffSeconds: 600,
+    maxRetrySeconds: 3600,
   },
   async () => {
     const now = Date.now();
-    // Yesterday first: it is complete, so its repair is final.
-    const yesterday = await reconcileCmsAnalyticsDay(businessDayKey(now - 86_400_000), now);
-    const today = await reconcileCmsAnalyticsDay(businessDayKey(now), now);
-    console.log("cms analytics reconcile", {yesterday, today});
+    const receipts = await readAggregateReceipts(
+      Array.from({length: RECOVERY_LOOKBACK_DAYS}, (_, i) =>
+        businessDayKey(now - i * 86_400_000)),
+    );
+    const plan = planRecovery({
+      nowMs: now,
+      receiptCompletedAtMs: (dayKey) => receipts.get(dayKey) ?? null,
+    });
 
-    if (yesterday.deferred || today.deferred) {
-      // Not a failure. The live trigger was writing while we scanned, so those
-      // buckets keep their live figures and the next run repairs them.
-      console.warn("cms analytics reconcile deferred buckets to the next run", {
-        yesterday: yesterday.deferred, today: today.deferred,
+    const repaired: string[] = [];
+    const deferred: string[] = [];
+    const truncated: string[] = [];
+    const failed: Array<{dayKey: string; message: string}> = [];
+
+    // Oldest first, and one day's failure must not abandon the others: a day
+    // that cannot be repaired tonight still needs the days around it repaired.
+    for (const dayKey of plan.due) {
+      try {
+        const result = await reconcileCmsAnalyticsDay(dayKey, Date.now());
+        if (result.truncated) {
+          truncated.push(dayKey);
+          continue;
+        }
+        if (result.deferred > 0) {
+          // The live trigger wrote while we scanned. Its figures stand, and the
+          // day stays unsettled so the next run repairs it.
+          deferred.push(dayKey);
+          continue;
+        }
+        await writeReconcileReceipt(dayKey, Date.now());
+        repaired.push(dayKey);
+      } catch (error) {
+        failed.push({dayKey, message: error instanceof Error ? error.message : String(error)});
+      }
+    }
+
+    console.log("cms analytics reconcile", {
+      due: plan.due, settled: plan.settled, repaired, deferred, truncated, failed,
+      lookbackDays: RECOVERY_LOOKBACK_DAYS,
+    });
+
+    if (plan.beyondHorizon) {
+      // The oldest day this job can see is still unsettled, so the outage is at
+      // least a week old and days beyond the window are out of reach. Said out
+      // loud because the fix is a manual, controlled repair — not something this
+      // job may quietly widen its scan to cover.
+      console.error("cms analytics reconcile is behind its recovery horizon", {
+        oldestDayInWindow: plan.due[0],
+        lookbackDays: RECOVERY_LOOKBACK_DAYS,
+        action: "run the documented manual repair for days older than the window",
       });
     }
 
-    const truncated = [yesterday, today].filter((r) => r.truncated).map((r) => r.dayKey);
-    if (truncated.length > 0) {
-      // THROWN, not logged. Nothing was written for these days — the aggregates
-      // and markers are untouched — but a day the repairer could not finish is
-      // an operational fault, and a job that reported success would hide it
-      // until somebody happened to read the logs.
+    if (deferred.length > 0) {
+      console.warn("cms analytics reconcile deferred days to the next run", {deferred});
+    }
+
+    // PARTIAL IS NOT SUCCESS. Any day this run could not finish leaves the job
+    // failed, so the retry configured above applies and an operator sees it.
+    // Days that DID complete keep their receipts either way, so a retry repeats
+    // only what is still outstanding.
+    if (truncated.length > 0 || failed.length > 0) {
       throw new Error(
-        `cms analytics reconcile could not scan ${truncated.join(", ")} completely; ` +
-        "no aggregate was written for those days",
+        "cms analytics reconcile did not complete every day" +
+        (truncated.length > 0
+          ? `; could not scan ${truncated.join(", ")} completely, so no aggregate was written for those days`
+          : "") +
+        (failed.length > 0
+          ? `; failed on ${failed.map((f) => `${f.dayKey} (${f.message})`).join(", ")}`
+          : ""),
       );
     }
   },

@@ -32,7 +32,12 @@ import {
 } from "../../../../analytics/cmsAnalyticsJobs";
 import {aggregateAnalyticsEventOnCreate} from "../../../../analytics/analyticsJobs";
 import {ensureEventServerTimestampMs} from "../../../../analytics/eventServerStamp";
-import {businessDayKey} from "../../../analytics/analyticsAggregation";
+import {businessDayKey, businessDayStartMs} from "../../../analytics/analyticsAggregation";
+import {
+  RECONCILE_RECEIPT_COLLECTION,
+  RECOVERY_LOOKBACK_DAYS,
+  reconcileReceiptId,
+} from "../../cmsAnalyticsRecovery";
 import {
   CMS_ANALYTICS_DAILY_COLLECTION,
   CMS_CTA_TAPPED_EVENT,
@@ -505,3 +510,134 @@ async function runScheduled() {
   return (reconcileCmsAnalyticsDaily as unknown as {run: (e: unknown) => Promise<unknown>})
     .run({scheduleTime: new Date().toISOString(), jobName: "reconcileCmsAnalyticsDaily"});
 }
+
+// ── CATCHING UP AFTER A NIGHT THAT NEVER RAN ───────────────────────────────
+//
+// Under yesterday-and-today, a single missed invocation left that day
+// unrepaired forever: the next night's "yesterday" is a different day, and
+// nothing ever looked back. These drive the WRAPPER and pin both halves of the
+// fix — that a missed day is picked up, and that the catch-up stays bounded.
+
+/** Put a day into the state a missed night leaves behind: real events, wrong counters, no receipt. */
+async function seedDriftedDay(contentId: string, dayKey: string, userIds: string[]) {
+  // Earlier tests in this file drive the same scheduler, and the emulator keeps
+  // what they settled. A missed night means NO receipt, so say so rather than
+  // inheriting one.
+  await clearReceipt("aggregate", dayKey);
+  const noon = businessDayStartMs(dayKey) + 12 * 3_600_000;
+  for (const userId of userIds) {
+    const id = await storeEvent({contentId, userId, metric: "impressions", at: noon});
+    await runTrigger(id);
+  }
+  // Drift, with a stamp old enough that the deferral guard cannot be what
+  // protects it — only a day the run never looks at stays wrong.
+  await db.collection(CMS_ANALYTICS_DAILY_COLLECTION)
+    .doc(cmsAnalyticsDailyDocId(contentId, PLACEMENT, dayKey))
+    .set({
+      contentId, placement: PLACEMENT, dayKey,
+      counters: {impressions: 99, ctaTaps: 0, engagedUsers: 0},
+      distinctUserCount: 99,
+      updatedAtMs: noon,
+    }, {merge: true});
+}
+
+async function readReceipt(scope: "aggregate" | "mirror", dayKey: string) {
+  const snap = await db.collection(RECONCILE_RECEIPT_COLLECTION)
+    .doc(reconcileReceiptId(scope, dayKey)).get();
+  return snap.exists ? (snap.data()?.completedAtMs as number | undefined) ?? null : null;
+}
+
+async function clearReceipt(scope: "aggregate" | "mirror", dayKey: string) {
+  await db.collection(RECONCILE_RECEIPT_COLLECTION).doc(reconcileReceiptId(scope, dayKey)).delete();
+}
+
+async function writeReceipt(scope: "aggregate" | "mirror", dayKey: string, completedAtMs: number) {
+  await db.collection(RECONCILE_RECEIPT_COLLECTION)
+    .doc(reconcileReceiptId(scope, dayKey))
+    .set({scope, dayKey, completedAtMs}, {merge: true});
+}
+
+const daysAgo = (n: number) => businessDayKey(Date.now() - n * 86_400_000);
+
+test("14. a day a missed night skipped is repaired by the next run", {skip}, async () => {
+  const contentId = `recovery_missed_${seq++}`;
+  const missed = daysAgo(3);
+  await seedDriftedDay(contentId, missed, ["u1", "u2"]);
+  assert.equal((await readDailyOn(contentId, missed)).impressions, 99, "drift is in place");
+  assert.equal(await readReceipt("aggregate", missed), null, "the night that should have run did not");
+
+  await runScheduled();
+
+  assert.equal((await readDailyOn(contentId, missed)).impressions, 2,
+    "the skipped day must be repaired, not stranded");
+  const receipt = await readReceipt("aggregate", missed);
+  assert.ok(receipt !== null && receipt > businessDayStartMs(missed) + 86_400_000,
+    "a completed repair records the day as settled, after that day closed");
+});
+
+test("15. a day already settled is skipped, so the catch-up stays cheap", {skip}, async () => {
+  const contentId = `recovery_settled_${seq++}`;
+  const settled = daysAgo(4);
+  await seedDriftedDay(contentId, settled, ["u1"]);
+  // A completed repair from an earlier night.
+  await writeReceipt("aggregate", settled, businessDayStartMs(settled) + 86_400_000 + 60_000);
+
+  await runScheduled();
+
+  assert.equal((await readDailyOn(contentId, settled)).impressions, 99,
+    "a settled day must not be rescanned every night");
+});
+
+test("16. the lookback is a real ceiling: an older day is never touched", {skip}, async () => {
+  const contentId = `recovery_horizon_${seq++}`;
+  const tooOld = daysAgo(RECOVERY_LOOKBACK_DAYS + 2);
+  await seedDriftedDay(contentId, tooOld, ["u1"]);
+
+  await runScheduled();
+
+  assert.equal((await readDailyOn(contentId, tooOld)).impressions, 99,
+    "a day beyond the horizon is out of reach and must not be silently scanned");
+  assert.equal(await readReceipt("aggregate", tooOld), null,
+    "and it must not be claimed as done either");
+});
+
+test("17. a deferred day earns no receipt and stays due", {skip}, async () => {
+  const contentId = `recovery_deferred_${seq++}`;
+  const day = daysAgo(2);
+  await clearReceipt("aggregate", day);
+  const noon = businessDayStartMs(day) + 12 * 3_600_000;
+  const id = await storeEvent({contentId, userId: "u1", metric: "impressions", at: noon});
+  await runTrigger(id);
+  // A live write that lands AFTER this run's scan began: the reconcile must
+  // keep the live figure and defer, which is not a completed day.
+  await db.collection(CMS_ANALYTICS_DAILY_COLLECTION)
+    .doc(cmsAnalyticsDailyDocId(contentId, PLACEMENT, day))
+    .set({counters: {impressions: 7, ctaTaps: 0, engagedUsers: 0}, updatedAtMs: Date.now() + 600_000},
+      {merge: true});
+
+  await runScheduled();
+
+  assert.equal((await readDailyOn(contentId, day)).impressions, 7,
+    "a deferred bucket keeps the live figure rather than being overwritten");
+  assert.equal(await readReceipt("aggregate", day), null,
+    "and the day stays unsettled so the next run repairs it");
+});
+
+test("18. a second run settles nothing twice and counts nothing twice", {skip}, async () => {
+  const contentId = `recovery_idempotent_${seq++}`;
+  const day = daysAgo(2);
+  await seedDriftedDay(contentId, day, ["u1", "u2", "u3"]);
+
+  await runScheduled();
+  const first = await readDailyOn(contentId, day);
+  const firstReceipt = await readReceipt("aggregate", day);
+
+  await runScheduled();
+  const second = await readDailyOn(contentId, day);
+
+  assert.equal(first.impressions, 3);
+  assert.equal(second.impressions, 3, "a repeated run must not add the same users again");
+  assert.equal(second.distinctUserCount, 3);
+  assert.equal(await readReceipt("aggregate", day), firstReceipt,
+    "a settled day is skipped on the second run, so its receipt does not move");
+});
