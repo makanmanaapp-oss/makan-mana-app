@@ -2,17 +2,51 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show appFlavor;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app/app.dart';
 import 'core/providers.dart';
+import 'core/qa/qa_blocked_app.dart';
+import 'core/qa/qa_isolation_bootstrap.dart';
 import 'core/security/app_check_bootstrap.dart';
 import 'features/place_migration/qa_canonical_activation.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ISOLATION GATE — the QA flavour never reaches the production path below.
+  //
+  // `com.makanmana.apps.qa` lives in the SAME Firebase project as production, so
+  // a QA build that simply starts writes real documents into the production
+  // `events` collection. This branch returns in every case: either the build has
+  // a verified isolated backend, or it shows why it was stopped. There is no
+  // path from here into `DefaultFirebaseOptions`.
+  if (appFlavor == kQaFlavorName) {
+    final isolation = await bootstrapQaIsolation();
+    if (!isolation.isAllowed) {
+      debugPrint('MM QA ISOLATION BLOCKED: ${isolation.blockedReason}');
+      runApp(QaIsolationBlockedApp(reason: isolation.blockedReason!));
+      return;
+    }
+
+    // App Check is deliberately NOT activated: attestation is a production
+    // service, and an isolated build must not talk to it.
+    final qaPrefs = await SharedPreferences.getInstance();
+    applyQaCanonicalActivation();
+    runApp(
+      ProviderScope(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(qaPrefs),
+          firebaseReadyProvider.overrideWithValue(true),
+        ],
+        child: const MakanManaApp(),
+      ),
+    );
+    return;
+  }
 
   // Cuba init Firebase. Jika `flutterfire configure` belum dijalankan,
   // app tetap boleh berjalan dalam mod dev (data tempatan + dummy).

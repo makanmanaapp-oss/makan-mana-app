@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    QA FLAVOUR ONLY. Never merged into the production flavour.
+
+    Dart cannot be the whole isolation gate. `FirebaseInitProvider` is a
+    ContentProvider merged in from the Firebase AAR, and Android runs it BEFORE
+    the Flutter engine starts, building the default FirebaseApp from
+    google-services.json — which for this flavour is the production project. By
+    the time `main()` ran, production would already be initialised.
+
+    Removing it here means the only FirebaseApp that can exist in a QA build is
+    the isolated one created by the gate. The gate also asserts the project id at
+    runtime, so if this removal ever stops taking effect the build blocks rather
+    than quietly talking to production.
+
+    The rest disables the SDKs that phone home on their own: Analytics (which the
+    event repository also calls directly), Crashlytics and FCM auto-init.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        android:networkSecurityConfig="@xml/qa_network_security_config"
+        tools:replace="android:networkSecurityConfig">
+
+        <provider
+            android:name="com.google.firebase.provider.FirebaseInitProvider"
+            android:authorities="${applicationId}.firebaseinitprovider"
+            tools:node="remove" />
+
+        <meta-data
+            android:name="firebase_analytics_collection_deactivated"
+            android:value="true" />
+        <meta-data
+            android:name="google_analytics_adid_collection_enabled"
+            android:value="false" />
+        <meta-data
+            android:name="firebase_crashlytics_collection_enabled"
+            android:value="false" />
+        <meta-data
+            android:name="firebase_messaging_auto_init_enabled"
+            android:value="false" />
+    </application>
+</manifest>

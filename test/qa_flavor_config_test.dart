@@ -65,10 +65,44 @@ void main() {
           .map((i) => (i as Map)['package_name'] as String)
           .toSet();
       expect(packages, contains('com.makanmana.apps.qa'));
-      // Projek Firebase mesti sama dengan pengeluaran (makanmana-c59f3).
-      final projectId =
-          ((json['project_info'] as Map)['project_id'] as String);
-      expect(projectId, 'makanmana-c59f3');
+    });
+
+    // PEMBALIKAN DISENGAJAKAN (pengasingan backend QA).
+    //
+    // Ujian ini DAHULUNYA menuntut `project_id == 'makanmana-c59f3'`, iaitu ia
+    // MENGUATKUASAKAN binaan QA berkongsi projek Firebase pengeluaran. Itulah
+    // punca sebenar: `com.makanmana.apps.qa` ialah app Android BERDAFTAR di
+    // dalam projek pengeluaran, jadi sesi QA menulis dokumen sebenar ke koleksi
+    // `events` pengeluaran.
+    //
+    // Nilai jangkaan tidak "dilonggarkan" untuk melepaskan ujian — invarian yang
+    // dikehendaki sudah bertukar arah, dan ujian ini kini menguatkuasakan arah
+    // yang baharu. Sejarah penuh fail lama ada pada komit de200b6.
+    test('google-services QA MESTI BUKAN projek pengeluaran', () {
+      final json = jsonDecode(
+              File('android/app/src/qa/google-services.json').readAsStringSync())
+          as Map<String, dynamic>;
+      final info = json['project_info'] as Map<String, dynamic>;
+      final projectId = info['project_id'] as String;
+
+      expect(projectId, 'demo-makanmana-qa');
+      expect(projectId, startsWith('demo-'),
+          reason: 'awalan demo- menjadikan projek mustahil dicapai di hulu');
+      expect(projectId, isNot('makanmana-c59f3'));
+
+      // Tiada pengecam pengeluaran boleh tinggal dalam APK QA.
+      final raw = File('android/app/src/qa/google-services.json')
+          .readAsStringSync();
+      final prod = jsonDecode(
+              File('android/app/google-services.json').readAsStringSync())
+          as Map<String, dynamic>;
+      final prodInfo = prod['project_info'] as Map<String, dynamic>;
+      expect(raw.contains(prodInfo['project_id'] as String), isFalse);
+      expect(raw.contains(prodInfo['project_number'] as String), isFalse);
+      final prodKey = (((prod['client'] as List).first as Map)['api_key']
+          as List).first as Map;
+      expect(raw.contains(prodKey['current_key'] as String), isFalse,
+          reason: 'kunci API pengeluaran tidak boleh dihantar dalam binaan QA');
     });
   });
 }

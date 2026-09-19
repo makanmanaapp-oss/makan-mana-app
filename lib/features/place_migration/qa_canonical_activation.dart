@@ -28,11 +28,14 @@ library;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show appFlavor;
 
+import '../../core/qa/qa_isolation.dart';
 import 'place_migration_flags.dart';
 
-/// Nama flavor QA — mesti sepadan dengan productFlavors "qa" dalam
-/// android/app/build.gradle.kts (applicationIdSuffix ".qa").
-const String kQaFlavorName = 'qa';
+/// Nama flavor QA — kini dimiliki oleh `core/qa/qa_isolation.dart`, kerana gerbang
+/// pengasingan backend juga bergantung padanya dan DUA pemalar yang boleh
+/// menyimpang adalah tepat jenis pepijat yang gerbang itu wujud untuk halang.
+/// Dieksport semula supaya pengimport sedia ada tidak berubah.
+export '../../core/qa/qa_isolation.dart' show kQaFlavorName;
 
 /// Penilaian TULEN (tiada kesan sampingan, boleh diuji tanpa binaan sebenar).
 ///

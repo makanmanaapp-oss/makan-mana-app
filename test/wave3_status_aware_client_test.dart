@@ -244,7 +244,13 @@ void main() {
           read('lib/features/place_migration/qa_canonical_activation.dart'));
       expect(qa, contains('isDebugBuild'));
       expect(qa, contains('appFlavor'));
-      expect(qa, contains("'qa'"));
+      // The literal moved: `kQaFlavorName` is now owned by core/qa/qa_isolation
+      // (the backend isolation gate needs the same constant, and two constants
+      // that could drift is the bug that gate exists to prevent). The invariant
+      // is unchanged, so follow the constant rather than weaken the assertion.
+      expect(qa, contains('kQaFlavorName'));
+      expect(code(read('lib/core/qa/qa_isolation.dart')),
+          contains("kQaFlavorName = 'qa'"));
     });
   });
 }

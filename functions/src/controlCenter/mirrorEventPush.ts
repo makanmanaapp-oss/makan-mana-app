@@ -19,8 +19,35 @@ import type {CollectionMirrorRecord} from "../domain/cms/collectionDocument";
  */
 
 export const CONTROL_CENTER_SYNC_SECRET = defineSecret("CONTROL_CENTER_SYNC_SECRET");
-export const CONTROL_CENTER_MIRROR_URL =
+const PRODUCTION_CONTROL_CENTER_MIRROR =
   "https://makanmana-control-center.vercel.app/api/internal/sync/mirror";
+
+/**
+ * Where a mirror batch is pushed.
+ *
+ * Deployed functions ALWAYS push to production. The override exists so that a
+ * function running inside the Firebase emulator - during isolated device QA -
+ * cannot reach the production console, and it is fenced twice over:
+ *
+ *   - `FUNCTIONS_EMULATOR` is set by the emulator itself and is absent in every
+ *     deployed environment, so production cannot be redirected by configuration;
+ *   - the override must be loopback, so an isolated run cannot be pointed at
+ *     some other host either.
+ *
+ * Anything that fails those checks falls back to production, which is the safe
+ * direction for a deployed function and is unreachable for an isolated one,
+ * because the emulator run has no route to production in the first place.
+ */
+export function resolveControlCenterMirrorUrl(
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  const override = env.CONTROL_CENTER_MIRROR_URL_OVERRIDE ?? "";
+  const inEmulator = env.FUNCTIONS_EMULATOR === "true";
+  if (inEmulator && override.startsWith("http://127.0.0.1:")) return override;
+  return PRODUCTION_CONTROL_CENTER_MIRROR;
+}
+
+export const CONTROL_CENTER_MIRROR_URL = resolveControlCenterMirrorUrl();
 
 export type MirrorRecord =
   | SocialPostMirrorRecord
