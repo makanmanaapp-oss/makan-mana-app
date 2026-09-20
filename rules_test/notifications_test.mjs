@@ -65,9 +65,17 @@ await check('4 pemilik tanda dibaca (isRead+readAt) dibenarkan', () =>
   assertSucceeds(updateDoc(doc(alice, 'users', 'alice', 'notifications', 'n1'),
     { isRead: true, readAt: new Date() })));
 
-// 5. Pemilik boleh kemas kini isRead sahaja (tanpa readAt) — masih dibenarkan.
-await check('5 pemilik tanda dibaca (isRead sahaja) dibenarkan', () =>
-  assertSucceeds(updateDoc(doc(alice, 'users', 'alice', 'notifications', 'n2'),
+// 5. isRead TANPA readAt DITOLAK — dan itu memang disengajakan.
+//
+// Ujian ini dahulu menjangka DIBENARKAN dan gagal. Jangkaan itulah yang
+// salah, bukan rules: blok notifications menuntut `readAt != null` secara
+// eksplisit supaya keadaan-baca tidak boleh ditulis tanpa meninggalkan cap
+// masa. Klien TIDAK PERNAH melakukannya - notification_providers.dart
+// markRead() dan markAllRead() kedua-duanya menulis isRead + readAt +
+// status bersama-sama dalam satu set(merge). Jadi dakwaan yang betul ialah
+// bentuk separa ini DITOLAK.
+await check('5 tanda dibaca TANPA readAt DITOLAK', () =>
+  assertFails(updateDoc(doc(alice, 'users', 'alice', 'notifications', 'n2'),
     { isRead: true })));
 
 // 6. Pemilik TIDAK boleh ubah medan lain (spoof jenis/keutamaan/destinasi).

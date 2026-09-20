@@ -39,6 +39,13 @@ await env.withSecurityRulesDisabled(async (ctx) => {
     await setDoc(doc(db, 'feed_posts', id, 'comments', `c-${id}`), {
       authorUid: 'alice', text: `balasan ${id}`, postId: id,
       parentVisibility: 'public', // sengaja 'public' untuk semua: uji basi!
+      // WAVE 3C gagal-tertutup: commentLifecycleActive menuntut
+      // status == 'active' TEPAT, tanpa lalai. Benih ini mendahului
+      // WAVE 3C dan tiada medan status, jadi SETIAP bacaan bukan-pengarang
+      // ditolak dan 3 ujian gagal atas sebab yang tiada kaitan dengan
+      // perkara yang diuji. Komen sebenar MEMANG membawa medan ini -
+      // comment_sheet.dart:84 menulis 'status': kCommentStatusActive.
+      status: 'active',
     });
   }
   // komen dipadam + ahli grup g1 (bob bukan ahli; carol ahli)
