@@ -228,5 +228,19 @@ bool isSafeCtaDestination(String? value) {
   if (clean.startsWith('/')) {
     return _allowedRoutePrefixes.any(clean.startsWith);
   }
-  return clean.toLowerCase().startsWith('https://');
+  if (!clean.toLowerCase().startsWith('https://')) return false;
+
+  // DEF-2: "starts with https://" is not "is a url". `https://[b5c` used to
+  // pass here, so the card rendered a CTA that looked live and `_open` then
+  // threw the tap away when Uri.tryParse returned null - no navigation, no
+  // event, no sign to anyone that the banner was dead. A destination that
+  // cannot be parsed must not present a button in the first place.
+  //
+  // Whitespace is rejected before parsing because Dart and JS disagree about
+  // it: Uri.parse turns "https://exa mple.com" into host "exa%20mple.com" while
+  // `new URL` throws. The same three checks run in
+  // functions/src/domain/cms/cmsLifecycle.ts so both sides give one answer.
+  if (clean.contains(RegExp(r'\s'))) return false;
+  final uri = Uri.tryParse(clean);
+  return uri != null && uri.scheme == 'https' && uri.host.isNotEmpty;
 }

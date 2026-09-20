@@ -13,8 +13,36 @@ import 'cms_visibility_geometry.dart';
 /// One policy for the whole app run, so a banner scrolled off and back on, or
 /// rebuilt by a provider refresh, is recognised as the SAME banner. Holding it
 /// per widget would make every rebuild a fresh impression.
+///
+/// DEF-3 (found on a physical device): the counted set is keyed by
+/// (placement, contentId) and says nothing about WHO saw it. When one person
+/// signed out and another signed in without the process ending, every banner
+/// the first had seen stayed marked and the second recorded nothing at all
+/// until the app was killed. The marks belong to an identity, so they are
+/// cleared when the identity genuinely changes.
+///
+/// Deliberately NOT cleared on sign-OUT, and not when the same uid is emitted
+/// again: signing out and back in as the same person is not a new audience, and
+/// handing that person a clean slate would let one human be counted twice in a
+/// session. Only a different, non-empty uid resets it.
+///
+/// The server still deduplicates per user per Malaysia business day, so this is
+/// the client half of the same rule, not a replacement for it.
 final cmsImpressionPolicyProvider = Provider<CmsImpressionPolicy>((ref) {
-  return CmsImpressionPolicy();
+  final policy = CmsImpressionPolicy();
+  String? owner;
+  ref.listen<String>(currentUidProvider, (_, next) {
+    if (next.isEmpty) return; // signed out: the marks are still this person's
+    if (owner == null) {
+      owner = next; // first identity of the run adopts whatever is there
+      return;
+    }
+    if (owner != next) {
+      owner = next;
+      policy.resetForNewSession();
+    }
+  }, fireImmediately: true);
+  return policy;
 });
 
 /// Wall-clock milliseconds used to measure dwell.
@@ -102,8 +130,7 @@ class _CmsImpressionTrackerState extends ConsumerState<CmsImpressionTracker>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _foregrounded =
-        WidgetsBinding.instance.lifecycleState != AppLifecycleState.paused;
+    _foregrounded = _isForeground(WidgetsBinding.instance.lifecycleState);
     _startSampling();
   }
 
@@ -125,9 +152,33 @@ class _CmsImpressionTrackerState extends ConsumerState<CmsImpressionTracker>
     }
   }
 
+  /// Is the app in a state where a person could actually be looking at this?
+  ///
+  /// DEF-1 (found on a physical device): this used to be `!= paused` at mount
+  /// time and `== resumed` on change, and the two disagreed. An Android
+  /// runtime-permission dialog is a TRANSLUCENT activity, so the app gets
+  /// onPause (-> `inactive`) but never onStop (-> `paused`). A tracker that
+  /// MOUNTED during that window therefore seeded itself as foregrounded, and
+  /// because `didChangeAppLifecycleState` only fires on a CHANGE, nothing ever
+  /// corrected it: a banner completely behind the dialog was counted.
+  ///
+  /// Only `resumed` means the app is genuinely in front. `inactive`, `hidden`,
+  /// `paused` and `detached` all mean something is over it or it is on its way
+  /// out, and none of them is time spent looking at a banner.
+  ///
+  /// `null` is the one state that is not a claim about obscurity: it is simply
+  /// "the engine has not reported yet", which happens for the first frames of a
+  /// cold start. Treating that as background would silently lose the very first
+  /// impression of a session, so it stays foreground until the engine says
+  /// otherwise — and it always does, which is what corrects it. The dialog case
+  /// cannot hide here: reaching it requires the app to have been resumed first,
+  /// so by then the state is concrete.
+  static bool _isForeground(AppLifecycleState? state) =>
+      state == null || state == AppLifecycleState.resumed;
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    final foreground = state == AppLifecycleState.resumed;
+    final foreground = _isForeground(state);
     if (foreground == _foregrounded) return;
     _foregrounded = foreground;
     if (!foreground) {

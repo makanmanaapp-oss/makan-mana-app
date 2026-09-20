@@ -228,6 +228,28 @@ export function validateCtaDestination(value: unknown): Validated<string> {
   }
 
   if (!clean.toLowerCase().startsWith("https://")) return fail("cta_scheme_not_allowed");
+
+  // DEF-2: starting with "https://" is not the same as BEING a url. An operator
+  // could save "https://[b5c": it renders a CTA that looks live, and the client
+  // then discards the tap when Uri.parse fails - no navigation, no analytics
+  // event, and nothing to tell the operator their banner is dead. Refuse it
+  // here, where there is somebody to tell.
+  //
+  // Whitespace is checked separately because the two runtimes disagree about
+  // it: `new URL("https://exa mple.com")` throws, while Dart's Uri.parse
+  // silently percent-encodes the space into the host. Rejecting raw whitespace
+  // keeps both sides on the same answer. Same for the empty host, which Dart
+  // accepts and URL does not.
+  if (/\s/.test(clean)) return fail("cta_destination_malformed");
+  let parsed: URL;
+  try {
+    parsed = new URL(clean);
+  } catch {
+    return fail("cta_destination_malformed");
+  }
+  if (parsed.protocol !== "https:" || !parsed.hostname) {
+    return fail("cta_destination_malformed");
+  }
   return {ok: true, value: clean, error: ""};
 }
 
