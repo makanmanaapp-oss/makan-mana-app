@@ -58,7 +58,7 @@ class _CommentSheetState extends ConsumerState<_CommentSheet> {
     final name = ref.read(myDisplayNameProvider).valueOrNull ?? 'Foodie';
     setState(() => _sending = true);
     try {
-      final myDoc = ref.read(myUserDocProvider).value;
+      final myDoc = ref.read(myUserDocProvider).valueOrNull;
       // ISSUE 005: medan denormalisasi untuk tab Balasan profil awam.
       // Rules mengesahkan nilai ini BENAR terhadap post induk sebenar.
       final parentSnap = await FirebaseFirestore.instance

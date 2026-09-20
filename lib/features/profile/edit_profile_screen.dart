@@ -40,7 +40,7 @@ class _EditProfileScreenState extends ConsumerState<EditProfileScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((timeStamp) {
-      final doc = ref.read(myUserDocProvider).value;
+      final doc = ref.read(myUserDocProvider).valueOrNull;
       _nameController.text = doc?['displayName'] as String? ?? '';
       _usernameController.text = doc?['username'] as String? ?? '';
       setState(() {

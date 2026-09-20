@@ -35,7 +35,7 @@ class _EditFoodProfileScreenState
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final uid = ref.read(authRepositoryProvider).currentUser?.uid ?? '';
-      final p = ref.read(publicProfileProvider(uid)).value;
+      final p = ref.read(publicProfileProvider(uid)).valueOrNull;
       if (p != null) {
         _bio.text = p.bio;
         _food.text = p.favouriteFood;
