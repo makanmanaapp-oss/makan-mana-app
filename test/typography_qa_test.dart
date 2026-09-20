@@ -303,7 +303,11 @@ void main() {
     //   check-in, undian suapan, hero tempatan mengikut negeri.
     // WAVE 4 Commercial Tools: +44 kunci promosi (permukaan peniaga,
     //   status, jenis tawaran, kad awam) merentas 4 bahasa.
-    expect(msKeys, hasLength(1833));
+    // FEED MAKAN: +1 kunci (feedUnavailable) merentas 4 bahasa — bacaan feed
+    //   yang GAGAL kini mempunyai ayatnya sendiri dan tidak lagi meminjam
+    //   profileError ("Profile tak dapat dibuka.") atau disalah-lapor
+    //   sebagai keadaan kosong.
+    expect(msKeys, hasLength(1834));
     final placeholder = RegExp(r'\{[^}]+\}');
     final msValues = AppLocalizations.valuesForTesting(const Locale('ms'));
     for (final language in ['en', 'zh', 'ta']) {

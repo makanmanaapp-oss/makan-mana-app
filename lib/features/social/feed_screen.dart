@@ -150,6 +150,16 @@ class FeedScreen extends ConsumerWidget {
 
 enum _FeedSource { forYou, following, nearby, trending }
 
+/// Provider di sebalik setiap tab. Dipakai oleh "Cuba Lagi" supaya tekanan
+/// butang benar-benar melanggan semula — bukan sekadar melukis semula ralat
+/// yang sama.
+ProviderOrFamily _providerFor(_FeedSource source) => switch (source) {
+      _FeedSource.forYou => publicFeedProvider,
+      _FeedSource.following => followingFeedProvider,
+      _FeedSource.nearby => publicFeedProvider,
+      _FeedSource.trending => trendingFeedProvider,
+    };
+
 /// Senarai feed generik + penapisan blok/mute.
 class _FeedList extends ConsumerWidget {
   const _FeedList({required this.source});
@@ -171,9 +181,37 @@ class _FeedList extends ConsumerWidget {
     return asyncPosts.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       // HOTFIX 4.2: JANGAN papar ralat Firestore mentah ($e) kepada pengguna.
+      //
+      // FEED MAKAN: bacaan yang GAGAL kini dilaporkan sebagai kegagalan FEED
+      // dengan jalan keluar. Dulu ia memakai l.t('profileError') ("Profile tak
+      // dapat dibuka.") — menyalahkan profil untuk kegagalan feed — dan tiada
+      // cara untuk mencuba semula, jadi pengguna tersekat sehingga app dimulakan
+      // semula.
       error: (e, _) => Center(
-          child: Text('😕 ${l.t('profileError')}',
-              style: const TextStyle(fontSize: 13))),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('😕', style: TextStyle(fontSize: 34)),
+            const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Text(
+                l.t('feedUnavailable'),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    color: AppColors.threadsMuted,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600),
+              ),
+            ),
+            const SizedBox(height: 4),
+            TextButton(
+              onPressed: () => ref.invalidate(_providerFor(source)),
+              child: Text(l.t('retryAction')),
+            ),
+          ],
+        ),
+      ),
       data: (all) {
         var posts = all
             .where((p) =>

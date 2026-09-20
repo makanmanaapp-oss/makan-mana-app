@@ -9,6 +9,27 @@ final socialServiceProvider = Provider<SocialService>(
   (ref) => SocialService(firebaseReady: ref.watch(firebaseReadyProvider)),
 );
 
+/// Backend tidak pernah naik (Firebase.initializeApp gagal), jadi feed TIADA
+/// jawapan — bukan jawapan "tiada siaran".
+///
+/// Prinsip sama seperti WAVE 3 GATE 3F pada butang Follow: bacaan yang GAGAL
+/// bukan jawapan negatif. Dulu penjaga di bawah memulangkan
+/// `Stream.value(const [])`, jadi Riverpod melaporkan AsyncData([]) dan skrin
+/// memapar keadaan KOSONG ("Belum ada siaran lagi") sedangkan pelayan tidak
+/// pernah ditanya.
+class FeedBackendUnavailable implements Exception {
+  const FeedBackendUnavailable();
+
+  @override
+  String toString() => 'FeedBackendUnavailable';
+}
+
+/// Strim yang terus gagal — dipakai oleh setiap senarai feed apabila backend
+/// tidak tersedia, supaya UI masuk cabang RALAT (dengan Cuba Lagi) dan bukan
+/// cabang KOSONG.
+Stream<T> _backendUnavailable<T>() =>
+    Stream<T>.error(const FeedBackendUnavailable(), StackTrace.current);
+
 /// PRIVASI (Social 1.1): post auto lama ("makan kat ...") yang dicipta
 /// tanpa persetujuan/visibility TIDAK lagi dipapar di permukaan awam —
 /// hanya penulisnya sendiri boleh nampak. Backend baharu sudah berhenti
@@ -49,7 +70,9 @@ const kCommentStatusActive = 'active';
 /// rules tolak). Post soft-deleted ditapis di client.
 final publicFeedProvider =
     StreamProvider<List<FeedPostData>>((ref) {
-  if (!ref.watch(firebaseReadyProvider)) return Stream.value(const []);
+  // Backend tak tersedia = TIADA jawapan, bukan "tiada siaran" (lihat
+  // FeedBackendUnavailable). Senarai feed SAHAJA diubah di sini.
+  if (!ref.watch(firebaseReadyProvider)) return _backendUnavailable();
   final myUid = ref.watch(authRepositoryProvider).currentUser?.uid ?? '';
   return FirebaseFirestore.instance
       .collection('feed_posts')
@@ -73,7 +96,9 @@ final publicFeedProvider =
 /// Firestore `in` had 30 - ambil 30 pertama yang diikuti.
 final followingFeedProvider =
     StreamProvider.autoDispose<List<FeedPostData>>((ref) {
-  if (!ref.watch(firebaseReadyProvider)) return Stream.value(const []);
+  // Backend tak tersedia = TIADA jawapan, bukan "tiada siaran" (lihat
+  // FeedBackendUnavailable). Senarai feed SAHAJA diubah di sini.
+  if (!ref.watch(firebaseReadyProvider)) return _backendUnavailable();
   final ids = ref.watch(myFollowingIdsProvider).value ?? const {};
   if (ids.isEmpty) return Stream.value(const []);
   final myUid = ref.watch(authRepositoryProvider).currentUser?.uid ?? '';
@@ -102,7 +127,9 @@ final followingFeedProvider =
 /// Feed "Trending": siaran awam paling banyak like.
 final trendingFeedProvider =
     StreamProvider.autoDispose<List<FeedPostData>>((ref) {
-  if (!ref.watch(firebaseReadyProvider)) return Stream.value(const []);
+  // Backend tak tersedia = TIADA jawapan, bukan "tiada siaran" (lihat
+  // FeedBackendUnavailable). Senarai feed SAHAJA diubah di sini.
+  if (!ref.watch(firebaseReadyProvider)) return _backendUnavailable();
   final myUid = ref.watch(authRepositoryProvider).currentUser?.uid ?? '';
   // SP9.2B: query visibility=='public' (bukan groupId null) — selari
   // rules; followers_only owner-only tidak dipulangkan.
