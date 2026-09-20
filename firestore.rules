@@ -353,6 +353,16 @@ service cloud.firestore {
 
     match /area_place_cache/{cacheKey} {
       allow read, write: if false;
+
+      // SCALABLE AREA CACHE — candidates dipindah keluar daripada dokumen
+      // induk kepada subkoleksi. Rules Firestore TIDAK menurun ke dalam
+      // subkoleksi melainkan padanan menggunakan wildcard rekursif, dan
+      // peraturan di atas tidak. Tanpa blok ini laluan baharu itu ditadbir
+      // hanya oleh catch-all. Dinyatakan secara eksplisit supaya pendirian
+      // server-only kelihatan di sini, bukan disimpulkan dari tempat lain.
+      match /candidates/{candidateId} {
+        allow read, write: if false;
+      }
     }
 
     // ---------- PART 1 (Phase 1.11): Pembetulan & Laporan Pengguna ----------
