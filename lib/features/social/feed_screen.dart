@@ -175,8 +175,11 @@ class _FeedList extends ConsumerWidget {
       _FeedSource.trending => ref.watch(trendingFeedProvider),
       _FeedSource.nearby => ref.watch(publicFeedProvider),
     };
-    final blocked = ref.watch(myBlockedIdsProvider).value ?? const {};
-    final muted = ref.watch(myMutedIdsProvider).value ?? const {};
+    // valueOrNull, bukan value: `.value` melontar pada ralat, jadi bacaan
+    // sekatan/senyap yang ditolak akan meruntuhkan senarai feed menjadi kotak
+    // ralat kelabu - kecacatan yang sama seperti tab Grup.
+    final blocked = ref.watch(myBlockedIdsProvider).valueOrNull ?? const {};
+    final muted = ref.watch(myMutedIdsProvider).valueOrNull ?? const {};
 
     return asyncPosts.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -496,10 +499,13 @@ class _GroupsTabState extends ConsumerState<_GroupsTab> {
     // dipadam DIKECUALIKAN di sini — satu grup rosak TIDAK meruntuhkan skrin
     // (isolasi per-grup, HOTFIX 4.2).
     final myIdsAsync = ref.watch(myGroupIdsProvider);
-    final myIds = myIdsAsync.value ?? const <String>{};
+    // Komen di atas menganggap `.value` memulangkan null pada ralat; ia tidak -
+    // ia MELONTAR, jadi isolasi per-grup yang dimaksudkan tidak pernah
+    // berfungsi. `valueOrNull` memulihkan niat itu.
+    final myIds = myIdsAsync.valueOrNull ?? const <String>{};
     final mine = <GroupData>[];
     for (final id in myIds) {
-      final g = ref.watch(groupProvider(id)).value;
+      final g = ref.watch(groupProvider(id)).valueOrNull;
       if (g != null && !g.isDeleted) mine.add(g);
     }
     final query = _query.trim().toLowerCase();
@@ -519,9 +525,14 @@ class _GroupsTabState extends ConsumerState<_GroupsTab> {
         children: [
           _searchBar(l),
           Expanded(
-            child: searching
-                ? _searchResults(context, ref, l, query, myIds)
-                : _myGroupsView(context, ref, l, mine, myIdsAsync.isLoading),
+            child: myIdsAsync.hasError
+                // Senarai grup UTAMA gagal dibaca. Ini BUKAN "anda tiada
+                // grup" - katakan ia gagal dan tawarkan jalan keluar sebenar.
+                ? _groupsUnavailable(ref, l)
+                : searching
+                    ? _searchResults(context, ref, l, query, myIds)
+                    : _myGroupsView(
+                        context, ref, l, mine, myIdsAsync.isLoading),
           ),
         ],
       ),
@@ -570,9 +581,37 @@ class _GroupsTabState extends ConsumerState<_GroupsTab> {
       );
 
   /// Query kosong: HANYA My Groups (+ jemputan tertunda). TIADA Discover auto.
+  /// Senarai grup yang GAGAL dibaca: mesej setempat + Cuba Lagi yang
+  /// benar-benar melanggan semula sumbernya.
+  Widget _groupsUnavailable(WidgetRef ref, AppLocalizations l) => Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('😕', style: TextStyle(fontSize: 34)),
+            const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Text(
+                l.t('groupsUnavailable'),
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    color: AppColors.threadsMuted,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600),
+              ),
+            ),
+            const SizedBox(height: 4),
+            TextButton(
+              onPressed: () => ref.invalidate(myGroupIdsProvider),
+              child: Text(l.t('retryAction')),
+            ),
+          ],
+        ),
+      );
+
   Widget _myGroupsView(BuildContext context, WidgetRef ref, AppLocalizations l,
       List<GroupData> mine, bool loading) {
-    final invites = ref.watch(myGroupInvitesProvider).value ?? const [];
+    final invites = ref.watch(myGroupInvitesProvider).valueOrNull ?? const [];
     if (mine.isEmpty && invites.isEmpty) {
       if (loading) return const Center(child: CircularProgressIndicator());
       return _emptyState(l.t('noJoinedGroups'), l.t('noJoinedGroupsBody'));
@@ -598,7 +637,7 @@ class _GroupsTabState extends ConsumerState<_GroupsTab> {
     if (discoverAsync.isLoading && !discoverAsync.hasValue) {
       return const Center(child: CircularProgressIndicator());
     }
-    final results = (discoverAsync.value ?? const <GroupData>[])
+    final results = (discoverAsync.valueOrNull ?? const <GroupData>[])
         .where((g) =>
             !g.isDeleted && g.name.toLowerCase().contains(query))
         .toList();
@@ -655,7 +694,7 @@ class _GroupsTabState extends ConsumerState<_GroupsTab> {
   /// FIX 3: senarai jemputan grup tertunda saya (terima/tolak melalui pelayan).
   List<Widget> _pendingInvites(
       BuildContext context, WidgetRef ref, AppLocalizations l) {
-    final invites = ref.watch(myGroupInvitesProvider).value ?? const [];
+    final invites = ref.watch(myGroupInvitesProvider).valueOrNull ?? const [];
     if (invites.isEmpty) return const [];
     final service = ref.read(socialServiceProvider);
     return [

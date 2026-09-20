@@ -13,6 +13,7 @@ class GroupQuickStats {
     this.unpaidBillCount = 0,
     this.latestActivityText = '',
     this.latestPostTime,
+    this.unavailable = false,
   });
 
   final int activePollCount;
@@ -21,6 +22,11 @@ class GroupQuickStats {
   /// Snippet aktiviti terkini ('' = tiada; UI papar teks lalai).
   final String latestActivityText;
   final DateTime? latestPostTime;
+
+  /// Sekurang-kurangnya satu bacaan asas GAGAL (contohnya ditolak oleh rules).
+  /// Statistik di bawah TIDAK boleh dipercayai dan UI mesti berhenti daripada
+  /// mendakwa "tiada aktiviti" - bacaan yang gagal bukan jawapan sifar.
+  final bool unavailable;
 }
 
 /// Kira stats daripada senarai mentah. Tulen — boleh diuji unit.
@@ -70,9 +76,23 @@ GroupQuickStats computeGroupStats({
 /// stream dikongsi dengan tab hub jadi tiada bacaan tambahan besar).
 final groupQuickStatsProvider = Provider.autoDispose
     .family<GroupQuickStats, String>((ref, groupId) {
-  final polls = ref.watch(groupPollsProvider(groupId)).value ?? const [];
-  final bills = ref.watch(groupBillsProvider(groupId)).value ?? const [];
-  final posts = ref.watch(groupFeedProvider(groupId)).value ?? const [];
+  // `AsyncValue.value` MELONTAR pada keadaan ralat (riverpod 2.6.1,
+  // common.dart:493) - jadi `.value ?? const []` ialah penjaga PALSU dan
+  // melontar semula bacaan yang ditolak. Satu bacaan grup yang ditolak
+  // meruntuhkan keseluruhan tab Grup menjadi kotak ralat kelabu Flutter.
+  final pollsA = ref.watch(groupPollsProvider(groupId));
+  final billsA = ref.watch(groupBillsProvider(groupId));
+  final postsA = ref.watch(groupFeedProvider(groupId));
+
+  final polls = pollsA.valueOrNull ?? const [];
+  final bills = billsA.valueOrNull ?? const [];
+  final posts = postsA.valueOrNull ?? const [];
+
+  // Bacaan yang GAGAL bukan jawapan sifar.
+  if (pollsA.hasError || billsA.hasError || postsA.hasError) {
+    return const GroupQuickStats(unavailable: true);
+  }
+
   return computeGroupStats(
     polls: polls,
     bills: bills.map((b) => b.$2).toList(),

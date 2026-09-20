@@ -307,7 +307,10 @@ void main() {
     //   yang GAGAL kini mempunyai ayatnya sendiri dan tidak lagi meminjam
     //   profileError ("Profile tak dapat dibuka.") atau disalah-lapor
     //   sebagai keadaan kosong.
-    expect(msKeys, hasLength(1834));
+    // TAB GRUP: +1 kunci (groupsUnavailable) merentas 4 bahasa - senarai grup
+    //   yang GAGAL dibaca kini mempunyai ayatnya sendiri dan tidak lagi
+    //   berpura-pura "anda tiada grup".
+    expect(msKeys, hasLength(1835));
     final placeholder = RegExp(r'\{[^}]+\}');
     final msValues = AppLocalizations.valuesForTesting(const Locale('ms'));
     for (final language in ['en', 'zh', 'ta']) {

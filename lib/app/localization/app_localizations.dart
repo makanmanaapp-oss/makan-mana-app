@@ -1174,6 +1174,7 @@ class AppLocalizations {
       'searchGroupHint': 'Cari grup awam...',
       'searchResultsLabel': 'Hasil carian',
       'noJoinedGroups': 'Anda belum sertai mana-mana grup',
+      'groupsUnavailable': 'Senarai grup tidak dapat dimuatkan sekarang.',
       'noJoinedGroupsBody':
           'Cari grup awam di atas, atau sertai melalui jemputan.',
       'noGroupSearchResults': 'Tiada grup awam dijumpai',
@@ -2558,6 +2559,7 @@ class AppLocalizations {
       'searchGroupHint': 'Search public groups...',
       'searchResultsLabel': 'Search results',
       'noJoinedGroups': "You haven't joined any groups yet",
+      'groupsUnavailable': 'Your groups could not be loaded right now.',
       'noJoinedGroupsBody':
           'Search for a public group above, or join through an invitation.',
       'noGroupSearchResults': 'No public groups found',
@@ -3870,6 +3872,7 @@ class AppLocalizations {
       'searchGroupHint': '搜索公开群组...',
       'searchResultsLabel': '搜索结果',
       'noJoinedGroups': '你还没有加入任何群组',
+      'groupsUnavailable': '目前无法加载群组列表。',
       'noJoinedGroupsBody': '在上方搜索公开群组，或通过邀请加入。',
       'noGroupSearchResults': '未找到公开群组',
       'clearAction': '清除',
@@ -5259,6 +5262,7 @@ class AppLocalizations {
       'searchGroupHint': 'பொது குழுக்களைத் தேடு...',
       'searchResultsLabel': 'தேடல் முடிவுகள்',
       'noJoinedGroups': 'நீங்கள் இன்னும் எந்தக் குழுவிலும் சேரவில்லை',
+      'groupsUnavailable': 'குழுக்களை இப்போது ஏற்ற முடியவில்லை.',
       'noJoinedGroupsBody':
           'மேலே பொது குழுவைத் தேடுங்கள், அல்லது அழைப்பின் மூலம் சேருங்கள்.',
       'noGroupSearchResults': 'பொது குழுக்கள் எதுவும் இல்லை',
