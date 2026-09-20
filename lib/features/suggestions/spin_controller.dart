@@ -59,7 +59,7 @@ class SpinController {
 
   String get _uid =>
       _ref.read(authRepositoryProvider).currentUser?.uid ?? '';
-  String get _plan => _ref.read(userPlanProvider).value ?? 'free';
+  String get _plan => _ref.read(userPlanProvider).valueOrNull ?? 'free';
   String get _language =>
       _ref.read(languageProvider).languageCode;
 

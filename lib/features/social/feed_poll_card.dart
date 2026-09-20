@@ -55,7 +55,7 @@ class _FeedPollCardState extends ConsumerState<FeedPollCard> {
         .toList();
     final total = (widget.poll['totalVotes'] as num?)?.toInt() ?? 0;
     final isOpen = (widget.poll['status'] as String?) != 'closed';
-    final myVote = ref.watch(feedPollVoteProvider(widget.postId)).value;
+    final myVote = ref.watch(feedPollVoteProvider(widget.postId)).valueOrNull;
 
     return Container(
       margin: const EdgeInsets.only(top: 10),

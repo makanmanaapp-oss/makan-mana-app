@@ -195,7 +195,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final plan = ref.watch(userPlanProvider).value ?? 'free';
+    final plan = ref.watch(userPlanProvider).valueOrNull ?? 'free';
     final targetPro = widget.args?.requiredPlan == PlanTier.pro;
 
     // Dengar hasil pembelian server-authoritative (Part 24) — mesej jujur.

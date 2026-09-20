@@ -96,7 +96,7 @@ Future<void> showRepostSheet(
   final logger = ref.read(eventLoggerProvider);
   final data = post.data;
   final groupId = data['groupId'] as String?;
-  final myGroups = ref.read(myGroupIdsProvider).value ?? const {};
+  final myGroups = ref.read(myGroupIdsProvider).valueOrNull ?? const {};
   final check = checkRepostability(
     data,
     isGroupMember: groupId == null || myGroups.contains(groupId),

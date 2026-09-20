@@ -701,7 +701,7 @@ class _PostCardState extends ConsumerState<PostCard> {
     final likedBy = (data['likedBy'] as List?)?.cast<String>() ?? const [];
     final liked = _likedOverride ?? likedBy.contains(uid);
     final likeCount = ((data['likeCount'] as num?)?.toInt() ?? 0) + _likeDelta;
-    final saved = (ref.watch(mySavedPostIdsProvider).value ?? const {})
+    final saved = (ref.watch(mySavedPostIdsProvider).valueOrNull ?? const {})
         .contains(widget.post.id);
 
     return GestureDetector(

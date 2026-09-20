@@ -45,7 +45,7 @@ String billSummaryLine(Map<String, dynamic> bill, String paidLabel) {
 final billForPostProvider = Provider.autoDispose
     .family<(String, Map<String, dynamic>)?,
         ({String groupId, String postId})>((ref, arg) {
-  final bills = ref.watch(groupBillsProvider(arg.groupId)).value ?? const [];
+  final bills = ref.watch(groupBillsProvider(arg.groupId)).valueOrNull ?? const [];
   for (final b in bills) {
     if (b.$2['linkedPostId'] == arg.postId) return b;
   }

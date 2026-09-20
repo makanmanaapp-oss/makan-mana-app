@@ -55,7 +55,7 @@ class _CommentSheetState extends ConsumerState<_CommentSheet> {
     final text = _controller.text.trim();
     if (text.isEmpty || _sending) return;
     final uid = ref.read(authRepositoryProvider).currentUser?.uid ?? '';
-    final name = ref.read(myDisplayNameProvider).value ?? 'Foodie';
+    final name = ref.read(myDisplayNameProvider).valueOrNull ?? 'Foodie';
     setState(() => _sending = true);
     try {
       final myDoc = ref.read(myUserDocProvider).value;

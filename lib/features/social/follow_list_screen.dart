@@ -66,8 +66,8 @@ class FollowRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l = AppLocalizations.of(context);
     final myUid = ref.watch(authRepositoryProvider).currentUser?.uid ?? '';
-    final p = ref.watch(publicProfileProvider(uid)).value;
-    final following = ref.watch(isFollowingProvider(uid)).value ?? false;
+    final p = ref.watch(publicProfileProvider(uid)).valueOrNull;
+    final following = ref.watch(isFollowingProvider(uid)).valueOrNull ?? false;
     if (p == null) return const SizedBox.shrink();
 
     return ListTile(

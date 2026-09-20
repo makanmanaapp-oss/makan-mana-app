@@ -54,7 +54,7 @@ class ProfileScreen extends ConsumerWidget {
             ? authUser!.phoneNumber!
             : 'dev@makanmana.app';
     final uid = authUser?.uid ?? '';
-    final isAdmin = ref.watch(myUserDocProvider).value?['isAdmin'] == true;
+    final isAdmin = ref.watch(myUserDocProvider).valueOrNull?['isAdmin'] == true;
 
     // Destinations grouped into flat sections — SAME icons/labels/routes as
     // before, just reorganised for a cleaner, less card-heavy hub.
@@ -311,12 +311,12 @@ class _HeroCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l = AppLocalizations.of(context);
-    final doc = ref.watch(myUserDocProvider).value;
+    final doc = ref.watch(myUserDocProvider).valueOrNull;
     final photoUrl = doc?['photoUrl'] as String?;
     final displayName = (doc?['displayName'] as String?)?.trim() ?? '';
     final username = doc?['username'] as String? ?? '';
     final trial = couponTrialInfo(doc);
-    final plan = ref.watch(userPlanProvider).value;
+    final plan = ref.watch(userPlanProvider).valueOrNull;
     final isPaidPro = plan == 'pro' && !trial.isTrial;
 
     final planLabel =

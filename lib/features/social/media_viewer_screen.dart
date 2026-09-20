@@ -185,7 +185,7 @@ class _MediaViewerScreenState extends ConsumerState<MediaViewerScreen> {
         (((data['likeCount'] as num?)?.toInt() ?? 0) + _likeDelta)
             .clamp(0, 1 << 31);
     final commentCount = (data['commentCount'] as num?)?.toInt() ?? 0;
-    final savedIds = ref.watch(mySavedPostIdsProvider).value ?? const {};
+    final savedIds = ref.watch(mySavedPostIdsProvider).valueOrNull ?? const {};
     final saved = savedIds.contains(widget.postId);
     final text = data['text'] as String? ?? '';
 

@@ -31,7 +31,7 @@ class _TaxTile extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final count = ref.watch(userTaxonomyProvider(type)).value?.length ?? 0;
+    final count = ref.watch(userTaxonomyProvider(type)).valueOrNull?.length ?? 0;
     // SP10.4: PERATURAN KAD — bg mm.card, tajuk mm.onCard.
     final mm = context.mm;
     return Padding(

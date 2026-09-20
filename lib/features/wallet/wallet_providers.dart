@@ -9,7 +9,7 @@ import 'wallet_service.dart';
 enum WalletAccess { free, plus, pro }
 
 final walletAccessProvider = Provider<WalletAccess>((ref) {
-  final plan = ref.watch(userPlanProvider).value ?? 'free';
+  final plan = ref.watch(userPlanProvider).valueOrNull ?? 'free';
   return switch (plan) {
     'pro' => WalletAccess.pro,
     'plus' => WalletAccess.plus,
@@ -21,7 +21,7 @@ final walletServiceProvider = Provider<WalletService>((ref) {
   return WalletService(
     firebaseReady: ref.watch(firebaseReadyProvider),
     uid: ref.watch(authRepositoryProvider).currentUser?.uid ?? '',
-    plan: ref.watch(userPlanProvider).value ?? 'free',
+    plan: ref.watch(userPlanProvider).valueOrNull ?? 'free',
     languageCode: ref.watch(languageProvider).languageCode,
     events: ref.watch(eventRepositoryProvider),
   );
@@ -61,13 +61,13 @@ final budgetProfileProvider = StreamProvider<BudgetProfile>((ref) {
 });
 
 final spendSummaryProvider = Provider.autoDispose<SpendSummary>((ref) {
-  final expenses = ref.watch(monthExpensesProvider).value ?? const [];
+  final expenses = ref.watch(monthExpensesProvider).valueOrNull ?? const [];
   return ref.watch(walletServiceProvider).summarize(expenses);
 });
 
 final coachInsightsProvider = Provider.autoDispose<List<String>>((ref) {
   final summary = ref.watch(spendSummaryProvider);
   final budget =
-      ref.watch(budgetProfileProvider).value ?? const BudgetProfile();
+      ref.watch(budgetProfileProvider).valueOrNull ?? const BudgetProfile();
   return ref.watch(walletServiceProvider).coachInsights(summary, budget);
 });

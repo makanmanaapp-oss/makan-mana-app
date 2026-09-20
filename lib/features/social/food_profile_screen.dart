@@ -150,7 +150,7 @@ class _FoodProfileScreenState extends ConsumerState<FoodProfileScreen> {
 
     final profileAsync = ref.watch(publicProfileProvider(widget.uid));
     final blocked = !isMe &&
-        (ref.watch(myBlockedIdsProvider).value ?? const {})
+        (ref.watch(myBlockedIdsProvider).valueOrNull ?? const {})
             .contains(widget.uid);
 
     return Scaffold(
@@ -377,7 +377,7 @@ class _FoodProfileScreenState extends ConsumerState<FoodProfileScreen> {
           child: OutlinedButton(
             onPressed: () {
               final blocked =
-                  ref.read(myBlockedIdsProvider).value ?? const <String>{};
+                  ref.read(myBlockedIdsProvider).valueOrNull ?? const <String>{};
               if (blocked.contains(widget.uid)) {
                 ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text(l.t('dmCannotMessage'))));
@@ -792,9 +792,9 @@ class _FoodProfileScreenState extends ConsumerState<FoodProfileScreen> {
   Future<void> _moreMenu(BuildContext context, String targetUid) async {
     final l = AppLocalizations.of(context);
     final muted =
-        (ref.read(myMutedIdsProvider).value ?? const {}).contains(targetUid);
+        (ref.read(myMutedIdsProvider).valueOrNull ?? const {}).contains(targetUid);
     final blocked =
-        (ref.read(myBlockedIdsProvider).value ?? const {}).contains(targetUid);
+        (ref.read(myBlockedIdsProvider).valueOrNull ?? const {}).contains(targetUid);
     final service = ref.read(socialServiceProvider);
     final logger = ref.read(eventLoggerProvider);
     final profile = ref.read(publicProfileProvider(targetUid)).valueOrNull;
@@ -1089,7 +1089,7 @@ class _FollowButtonState extends ConsumerState<FollowButton> {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     if (widget.isMe) return const SizedBox.shrink();
-    final following = ref.watch(isFollowingProvider(widget.uid)).value ?? false;
+    final following = ref.watch(isFollowingProvider(widget.uid)).valueOrNull ?? false;
     final child = _busy
         ? const SizedBox(
             height: 18,

@@ -286,7 +286,7 @@ class GroupAvatarResolved extends ConsumerWidget {
     // .value → null semasa loading/ralat → GroupAvatar guna fallback emoji.
     final url = groupId.isEmpty
         ? null
-        : ref.watch(groupImageUrlProvider(groupId)).value;
+        : ref.watch(groupImageUrlProvider(groupId)).valueOrNull;
     return GroupAvatar(
       emoji: emoji,
       imageUrl: url,

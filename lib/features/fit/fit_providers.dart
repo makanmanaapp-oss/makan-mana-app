@@ -31,7 +31,7 @@ final fitServiceProvider = Provider<FitService>((ref) {
   return FitService(
     firebaseReady: ref.watch(firebaseReadyProvider),
     uid: ref.watch(authRepositoryProvider).currentUser?.uid ?? '',
-    plan: ref.watch(userPlanProvider).value ?? 'free',
+    plan: ref.watch(userPlanProvider).valueOrNull ?? 'free',
     languageCode: ref.watch(languageProvider).languageCode,
     events: ref.watch(eventRepositoryProvider),
   );
@@ -88,7 +88,7 @@ final dailyFitScoreProvider = Provider<int?>((ref) {
   final profile = ref.watch(fitProfileProvider).valueOrNull;
   final targets = ref.watch(nutritionTargetsProvider);
   if (profile == null || targets == null) return null;
-  final metrics = ref.watch(todayMetricsProvider).value ?? const DailyMetrics();
+  final metrics = ref.watch(todayMetricsProvider).valueOrNull ?? const DailyMetrics();
   return metrics.fitScore(targets, profile.stepTarget);
 });
 
@@ -164,7 +164,7 @@ final bodyEntriesProvider =
 /// Streak latihan: hari berturut-turut dengan workout siap.
 /// Hari ini belum siap tidak mematikan streak (kira dari semalam).
 final trainingStreakProvider = Provider<int>((ref) {
-  final workouts = ref.watch(recentWorkoutsProvider).value ?? const [];
+  final workouts = ref.watch(recentWorkoutsProvider).valueOrNull ?? const [];
   final done = workouts
       .where((w) => w['status'] == 'completed')
       .map((w) => w['date'] as String? ?? '')
@@ -184,7 +184,7 @@ final trainingStreakProvider = Provider<int>((ref) {
 /// Laporan mingguan Fit (jana + cache).
 final fitWeeklyReportProvider =
     FutureProvider.autoDispose<Map<String, dynamic>>((ref) async {
-  final profile = ref.watch(fitProfileProvider).value;
+  final profile = ref.watch(fitProfileProvider).valueOrNull;
   final targets = ref.watch(nutritionTargetsProvider);
   // Phase 2.16A: incomplete OR invalid stored profile -> honest state, never
   // sample values. Invalid legacy profiles (e.g. height=0) require correction

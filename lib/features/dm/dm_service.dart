@@ -102,7 +102,7 @@ final dmMessagesProvider = StreamProvider.autoDispose
 /// Jumlah belum baca saya merentas semua thread (badge inbox).
 final dmTotalUnreadProvider = Provider.autoDispose<int>((ref) {
   final uid = ref.watch(authRepositoryProvider).currentUser?.uid ?? '';
-  final threads = ref.watch(myDmThreadsProvider).value ?? const [];
+  final threads = ref.watch(myDmThreadsProvider).valueOrNull ?? const [];
   var total = 0;
   for (final (_, data) in threads) {
     final counts = (data['unreadCounts'] as Map?) ?? const {};

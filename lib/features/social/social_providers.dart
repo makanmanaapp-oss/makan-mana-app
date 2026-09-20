@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -29,6 +31,12 @@ class FeedBackendUnavailable implements Exception {
 /// cabang KOSONG.
 Stream<T> _backendUnavailable<T>() =>
     Stream<T>.error(const FeedBackendUnavailable(), StackTrace.current);
+
+/// Strim yang tidak pernah memancar - mengekalkan penyedia dalam keadaan
+/// MEMUATKAN sementara kebergantungannya belum selesai. Memulangkan senarai
+/// kosong di sini akan memaparkan "anda tidak mengikut sesiapa" seketika
+/// kepada seseorang yang sebenarnya mengikut orang.
+Stream<T> _stillLoading<T>() => Stream<T>.fromFuture(Completer<T>().future);
 
 /// PRIVASI (Social 1.1): post auto lama ("makan kat ...") yang dicipta
 /// tanpa persetujuan/visibility TIDAK lagi dipapar di permukaan awam —
@@ -99,7 +107,13 @@ final followingFeedProvider =
   // Backend tak tersedia = TIADA jawapan, bukan "tiada siaran" (lihat
   // FeedBackendUnavailable). Senarai feed SAHAJA diubah di sini.
   if (!ref.watch(firebaseReadyProvider)) return _backendUnavailable();
-  final ids = ref.watch(myFollowingIdsProvider).value ?? const {};
+  // Tiga keadaan, tiga jawapan berbeza. `.value` akan MELONTAR pada ralat dan
+  // `?? const {}` akan menukar ralat DAN loading menjadi "tidak mengikut
+  // sesiapa" - dua dakwaan yang tidak benar.
+  final followingAsync = ref.watch(myFollowingIdsProvider);
+  if (followingAsync.hasError) return _backendUnavailable();
+  final ids = followingAsync.valueOrNull;
+  if (ids == null) return _stillLoading();
   if (ids.isEmpty) return Stream.value(const []);
   final myUid = ref.watch(authRepositoryProvider).currentUser?.uid ?? '';
   final slice = ids.take(30).toList();

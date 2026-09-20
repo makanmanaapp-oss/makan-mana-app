@@ -228,8 +228,8 @@ class _ShareResultSheetState extends ConsumerState<_ShareResultSheet> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final myGroupIds = ref.watch(myGroupIdsProvider).value ?? const {};
-    final groups = (ref.watch(discoverGroupsProvider).value ?? const [])
+    final myGroupIds = ref.watch(myGroupIdsProvider).valueOrNull ?? const {};
+    final groups = (ref.watch(discoverGroupsProvider).valueOrNull ?? const [])
         .where((g) => myGroupIds.contains(g.id))
         .toList();
     // SP9.2B: followers_only dibuang (dimatikan untuk beta).

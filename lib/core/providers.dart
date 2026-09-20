@@ -324,7 +324,7 @@ final userBrainServiceProvider = Provider<UserBrainService>(
 /// Prompt 10: kelayakan pelan berpusat. Selaraskan userPlanProvider (stream
 /// durable dari users/{uid}.plan) dengan MakanManaUserContext.plan.
 final entitlementProvider = Provider<Entitlement>((ref) {
-  final streamPlan = ref.watch(userPlanProvider).value;
+  final streamPlan = ref.watch(userPlanProvider).valueOrNull;
   final ctxPlan =
       ref.watch(makanManaUserContextProvider.select((c) => c.plan));
   return Entitlement(PlanTier.parse(streamPlan ?? ctxPlan));
@@ -375,6 +375,6 @@ final userPlanProvider = StreamProvider<String>((ref) {
 /// Guna autoDispose supaya dikira semula setiap kali Home dibina semula.
 final dailyUsageProvider = FutureProvider.autoDispose<DailyUsage>((ref) {
   final uid = ref.watch(authRepositoryProvider).currentUser?.uid ?? '';
-  final plan = ref.watch(userPlanProvider).value ?? 'free';
+  final plan = ref.watch(userPlanProvider).valueOrNull ?? 'free';
   return ref.watch(usageRepositoryProvider).getToday(uid, plan);
 });

@@ -516,7 +516,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
     // Tempat sebenar dari pelayan (cache 7 hari); dummy semasa loading.
     final nearbyAsync = ref.watch(nearbyPlacesProvider);
-    final places = nearbyAsync.value ?? service.nearby();
+    final places = nearbyAsync.valueOrNull ?? service.nearby();
     final nearby = [...places]
       ..sort((a, b) => a.distanceKm.compareTo(b.distanceKm));
 

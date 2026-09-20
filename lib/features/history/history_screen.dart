@@ -255,8 +255,8 @@ class _FitnessTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l = AppLocalizations.of(context);
     final access = ref.watch(fitAccessProvider);
-    final workouts = ref.watch(recentWorkoutsProvider).value ?? const [];
-    final mealLogs = ref.watch(todayMealLogsProvider).value ?? const [];
+    final workouts = ref.watch(recentWorkoutsProvider).valueOrNull ?? const [];
+    final mealLogs = ref.watch(todayMealLogsProvider).valueOrNull ?? const [];
 
     final body = ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 120),
@@ -401,10 +401,10 @@ class _MonitorTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l = AppLocalizations.of(context);
     final access = ref.watch(fitAccessProvider);
-    final profile = ref.watch(fitProfileProvider).value;
+    final profile = ref.watch(fitProfileProvider).valueOrNull;
     final targets = ref.watch(nutritionTargetsProvider);
     final metrics =
-        ref.watch(todayMetricsProvider).value ?? const DailyMetrics();
+        ref.watch(todayMetricsProvider).valueOrNull ?? const DailyMetrics();
     final score = ref.watch(dailyFitScoreProvider) ?? 0;
 
     final unlocked = access == FitAccess.full && profile != null;

@@ -24,7 +24,7 @@ class SettingsScreen extends ConsumerWidget {
     final firebaseReady = ref.watch(firebaseReadyProvider);
     final themeMode = ref.watch(appearanceProvider);
     final user = ref.watch(authRepositoryProvider).currentUser;
-    final plan = ref.watch(userPlanProvider).value ?? 'free';
+    final plan = ref.watch(userPlanProvider).valueOrNull ?? 'free';
 
     ShapeBorder tileShape() => RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
