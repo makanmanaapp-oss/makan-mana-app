@@ -451,12 +451,11 @@ void main() {
   // --------------------------------------------------- HIASAN / GAGAL-TUTUP
   group('Skrin tetap dibina apabila bacaan hiasan ditolak', () {
     testWidgets('Tetapan: dokumen pengguna DITOLAK', (tester) async {
-      // Skrin Tetapan SUDAH mencetuskan penegasan mod-debug "ListTile
+      // Skrin Tetapan DAHULU mencetuskan penegasan mod-debug "ListTile
       // background color or ink splashes may be invisible" (6x) walaupun
-      // dokumen pengguna BERJAYA dibaca - dibuktikan pada abfcf41 sebelum
-      // tampalan ini. Ia tiada kaitan dengan Riverpod dan dibuang dalam
-      // binaan keluaran. Jadi ujian ini menegaskan dengan tepat: bacaan yang
-      // ditolak tidak MENAMBAH sebarang ralat.
+      // dokumen pengguna BERJAYA dibaca. Itu kini dibaiki (lihat
+      // ux_defects_test.dart), jadi ujian ini menuntut SIFAR ralat - bukan
+      // lagi "hanya penegasan ListTile yang dibenarkan".
       final errors = <FlutterErrorDetails>[];
       final previous = FlutterError.onError;
       FlutterError.onError = errors.add;
@@ -473,12 +472,8 @@ void main() {
           .where((e) => e.exceptionAsString().contains('permission-denied'));
       expect(fromDeniedRead, isEmpty,
           reason: 'bacaan dokumen pengguna yang ditolak meruntuhkan Tetapan');
-      expect(
-          errors.where((e) => !e
-              .exceptionAsString()
-              .contains('ListTile background color or ink splashes')),
-          isEmpty,
-          reason: 'hanya penegasan ListTile sedia ada yang dibenarkan');
+      expect(errors, isEmpty,
+          reason: 'Tetapan mesti bersih daripada sebarang ralat build');
     });
 
     testWidgets('Kupon: dokumen pengguna DITOLAK', (tester) async {

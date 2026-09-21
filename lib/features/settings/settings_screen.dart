@@ -87,30 +87,41 @@ class SettingsScreen extends ConsumerWidget {
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: context.tBorder),
             ),
-            child: Column(
-              children: [
-                for (final (mode, prefValue, key, icon) in [
-                  (ThemeMode.system, 'system', 'appearanceSystem',
-                      Icons.brightness_auto_outlined),
-                  (ThemeMode.light, 'light', 'appearanceLight',
-                      Icons.light_mode_outlined),
-                  (ThemeMode.dark, 'dark', 'appearanceDark',
-                      Icons.dark_mode_outlined),
-                ])
-                  ListTile(
-                    onTap: () => ref
-                        .read(appearanceProvider.notifier)
-                        .setAppearance(prefValue),
-                    leading: Icon(icon, size: 20, color: context.tMuted),
-                    title: Text(l.t(key),
-                        style: const TextStyle(fontWeight: FontWeight.w600)),
-                    trailing: themeMode == mode
-                        ? const Icon(Icons.check_circle,
-                            color: AppColors.primaryRed, size: 22)
-                        : Icon(Icons.circle_outlined,
-                            color: context.tBorder, size: 22),
-                  ),
-              ],
+            // ListTile melukis percikan dakwatnya pada Material TERDEKAT.
+            // Tanpa Material di dalam Container berwarna ini, percikan
+            // dilukis DI BAWAH latar dan tidak kelihatan - Flutter
+            // menegaskannya dalam debug. ClipRRect mengekalkan bucu bulat.
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Material(
+                type: MaterialType.transparency,
+                child: Column(
+                  children: [
+                    for (final (mode, prefValue, key, icon) in [
+                      (ThemeMode.system, 'system', 'appearanceSystem',
+                          Icons.brightness_auto_outlined),
+                      (ThemeMode.light, 'light', 'appearanceLight',
+                          Icons.light_mode_outlined),
+                      (ThemeMode.dark, 'dark', 'appearanceDark',
+                          Icons.dark_mode_outlined),
+                    ])
+                      ListTile(
+                        onTap: () => ref
+                            .read(appearanceProvider.notifier)
+                            .setAppearance(prefValue),
+                        leading: Icon(icon, size: 20, color: context.tMuted),
+                        title: Text(l.t(key),
+                            style:
+                                const TextStyle(fontWeight: FontWeight.w600)),
+                        trailing: themeMode == mode
+                            ? const Icon(Icons.check_circle,
+                                color: AppColors.primaryRed, size: 22)
+                            : Icon(Icons.circle_outlined,
+                                color: context.tBorder, size: 22),
+                      ),
+                  ],
+                ),
+              ),
             ),
           ),
           const SizedBox(height: 10),

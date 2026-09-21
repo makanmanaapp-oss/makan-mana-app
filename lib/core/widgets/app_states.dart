@@ -131,6 +131,51 @@ class AppErrorState extends StatelessWidget {
   }
 }
 
+/// Data LAMA masih dipapar, tetapi bacaan terbaharu GAGAL.
+///
+/// Berbeza daripada [AppErrorState]: di sana tiada apa-apa untuk ditunjuk,
+/// jadi ralat mengambil seluruh ruang. Di sini pengguna MEMANG ada
+/// kandungan (cache Firestore), dan menyembunyikannya adalah regresi -
+/// tetapi membiarkannya tanpa penanda memberitahu pengguna senarai itu
+/// terkini sedangkan ia tidak.
+class StaleDataNotice extends StatelessWidget {
+  const StaleDataNotice({
+    super.key,
+    required this.message,
+    this.onRetry,
+    this.retryLabel,
+  });
+
+  final String message;
+  final VoidCallback? onRetry;
+  final String? retryLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        children: [
+          const Icon(Icons.cloud_off_outlined,
+              size: 16, color: AppColors.mutedText),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              message,
+              style: const TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.mutedText),
+            ),
+          ),
+          if (onRetry != null && retryLabel != null)
+            TextButton(onPressed: onRetry, child: Text(retryLabel!)),
+        ],
+      ),
+    );
+  }
+}
+
 /// Keadaan preview terkunci (Free/Plus) dengan CTA Unlock Pro.
 class AppLockedPreviewState extends StatelessWidget {
   const AppLockedPreviewState({

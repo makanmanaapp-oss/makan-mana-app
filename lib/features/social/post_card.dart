@@ -116,6 +116,14 @@ class _PostCardState extends ConsumerState<PostCard> {
         _likedOverride = currentlyLiked;
         _likeDelta += currentlyLiked ? 1 : -1;
       });
+      // Berbalik SAHAJA ialah kegagalan senyap: di luar talian panggilan
+      // ditolak dalam milisaat, jadi hati berkelip dan kembali tanpa
+      // sebarang penjelasan. Kiraan tetap berbalik seperti dahulu - ini
+      // hanya MENAMBAH maklum balas.
+      final messenger = ScaffoldMessenger.maybeOf(context);
+      messenger?.showSnackBar(SnackBar(
+        content: Text(AppLocalizations.of(context).t('actionFailed')),
+      ));
     }
   }
 
@@ -884,6 +892,35 @@ class _PostCardState extends ConsumerState<PostCard> {
                       ),
                     ),
                   ],
+                  // Siaran berstatus 'hidden' hanya boleh dibaca oleh
+                  // pengarangnya (rules WAVE 3C), tetapi ia dirender sama
+                  // seperti siaran aktif - pemilik tidak tahu orang lain
+                  // tidak nampaknya. Label sahaja; tiada tingkah laku lain
+                  // berubah. Semakan pengarang dikekalkan supaya label ini
+                  // tidak pernah mendakwa sesuatu tentang siaran orang lain.
+                  if (data['status'] == 'hidden' &&
+                      data['authorUid'] ==
+                          ref.read(authRepositoryProvider).currentUser?.uid)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Row(
+                        children: [
+                          Icon(Icons.visibility_off_outlined,
+                              size: 14, color: AppColors.threadsMuted),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              l.t('postStatusHidden'),
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.threadsMuted,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   if (text != null && text.isNotEmpty) ...[
                     const SizedBox(height: 4),
                     Text(

@@ -632,6 +632,14 @@ class _GroupFeedTab extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 120),
       children: [
+        // Ada siaran dalam cache, tetapi bacaan terbaharu gagal: kekalkan
+        // kandungan, tandakan ia mungkin lama.
+        if (postsAsync.hasError && posts.isNotEmpty)
+          StaleDataNotice(
+            message: l.t('staleDataNotice'),
+            retryLabel: l.t('retryAction'),
+            onRetry: () => ref.invalidate(groupFeedProvider(groupId)),
+          ),
         if (group?.pinnedAnnouncement != null &&
             group!.pinnedAnnouncement!.isNotEmpty)
           _pinnedCard(Icons.push_pin_outlined, group.pinnedAnnouncement!),
@@ -859,6 +867,13 @@ class _GroupPollsTab extends ConsumerWidget {
           : ListView(
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 120),
               children: [
+                if (pollsAsync.hasError && polls.isNotEmpty)
+                  StaleDataNotice(
+                    message: l.t('staleDataNotice'),
+                    retryLabel: l.t('retryAction'),
+                    onRetry: () =>
+                        ref.invalidate(groupPollsProvider(groupId)),
+                  ),
                 if (active.isNotEmpty) ...[
                   _sectionLabel(l.t('pollsActiveSection')),
                   ...active
@@ -915,7 +930,14 @@ class _GroupMembersTab extends ConsumerWidget {
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(12, 14, 12, 120),
-      children: members.map((m) {
+      children: [
+        if (membersAsync.hasError && members.isNotEmpty)
+          StaleDataNotice(
+            message: l.t('staleDataNotice'),
+            retryLabel: l.t('retryAction'),
+            onRetry: () => ref.invalidate(groupMembersProvider(groupId)),
+          ),
+        ...members.map((m) {
         final uid = m['uid'] as String? ?? '';
         final role = (m['role'] as String?) ?? 'member';
         final joined = m['joinedAt'];
@@ -1008,7 +1030,8 @@ class _GroupMembersTab extends ConsumerWidget {
                 )
               : null,
         );
-      }).toList(),
+        }),
+      ],
     );
   }
 

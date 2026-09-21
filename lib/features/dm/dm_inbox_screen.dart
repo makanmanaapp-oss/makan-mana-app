@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/localization/app_localizations.dart';
+import '../../core/widgets/app_states.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/events/event_types.dart';
 import '../../core/providers.dart';
@@ -112,7 +113,20 @@ class _DmInboxScreenState extends ConsumerState<DmInboxScreen> {
                     ),
                   ),
                 )
-              : ListView.separated(
+              : Column(children: [
+                  // Thread daripada cache, bacaan terbaharu gagal: kekalkan
+                  // senarai, tandakan ia mungkin lama.
+                  if (threadsAsync.hasError)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+                      child: StaleDataNotice(
+                        message: l.t('staleDataNotice'),
+                        retryLabel: l.t('retryAction'),
+                        onRetry: () => ref.invalidate(myDmThreadsProvider),
+                      ),
+                    ),
+                  Expanded(
+                    child: ListView.separated(
                   padding: const EdgeInsets.fromLTRB(12, 8, 12, 40),
                   itemCount: threads.length,
                   separatorBuilder: (_, __) => Divider(
@@ -138,7 +152,9 @@ class _DmInboxScreenState extends ConsumerState<DmInboxScreen> {
                       unread: unread,
                     );
                   },
-                ),
+                    ),
+                  ),
+                ]),
     );
   }
 }

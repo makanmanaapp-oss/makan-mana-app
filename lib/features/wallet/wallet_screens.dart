@@ -79,6 +79,17 @@ class MealWalletScreen extends ConsumerWidget {
           : ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
         children: [
+          // Nombor wang daripada cache, bacaan terbaharu gagal: kekalkan
+          // nombor, tandakan ia mungkin lama.
+          if ((expensesAsync.hasError || budgetAsync.hasError) && !loadFailed)
+            StaleDataNotice(
+              message: l.t('staleDataNotice'),
+              retryLabel: l.t('retryAction'),
+              onRetry: () {
+                ref.invalidate(monthExpensesProvider);
+                ref.invalidate(budgetProfileProvider);
+              },
+            ),
           // Ringkasan hari/minggu/bulan.
           Container(
             margin: const EdgeInsets.only(bottom: 14),
