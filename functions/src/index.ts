@@ -87,8 +87,10 @@ export {redeemCoupon} from "./callable/redeemCoupon";
 export {refreshMyPlanStatus} from "./callable/refreshMyPlanStatus";
 // FINAL PRE-AAB — verifikasi langganan Google Play (server-authoritative).
 export {prepareGooglePlayBilling} from "./callable/prepareGooglePlayBilling";
+export {prepareAppleBilling} from "./callable/prepareAppleBilling";
 export {verifyGooglePlaySubscription} from "./callable/verifyGooglePlaySubscription";
 export {verifyAppleSubscription} from "./callable/verifyAppleSubscription";
+export {appStoreServerNotifications} from "./callable/appStoreServerNotifications";
 export {handleGooglePlayRtdn} from "./triggers/handleGooglePlayRtdn";
 export {createCoupon} from "./callable/createCoupon";
 export {expireCouponTrials} from "./scheduled/expireCouponTrials";
