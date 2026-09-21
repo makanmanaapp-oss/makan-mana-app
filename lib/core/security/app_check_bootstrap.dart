@@ -105,12 +105,20 @@ class FirebaseAppCheckBootstrap {
           _debugTokenFromEnv.isNotEmpty ? _debugTokenFromEnv : null;
       await FirebaseAppCheck.instance.activate(
         providerAndroid: AndroidDebugProvider(debugToken: token),
+        // iOS: penyedia debug setara. Tanpa ini, binaan debug iOS mengaktifkan
+        // App Check TANPA penyedia Apple langsung dan setiap panggilan yang
+        // dilindungi akan ditolak dengan cara yang mengelirukan.
+        providerApple: AppleDebugProvider(debugToken: token),
       );
       return;
     }
-    // Release/profile: Play Integrity SAHAJA — tiada token debug, tiada fallback.
+    // Release/profile: pengesahan platform SAHAJA — tiada token debug, tiada
+    // fallback debug. App Attest ialah cadangan Firebase; ia memerlukan iOS
+    // 14+, jadi varian fallback turun ke DeviceCheck pada peranti lama dan
+    // bukan gagal tanpa perlindungan.
     await FirebaseAppCheck.instance.activate(
       providerAndroid: const AndroidPlayIntegrityProvider(),
+      providerApple: const AppleAppAttestWithDeviceCheckFallbackProvider(),
     );
   }
 

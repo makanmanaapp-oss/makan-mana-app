@@ -172,4 +172,44 @@ void main() {
       expect(AppLocalizations.hasKey(k), isTrue, reason: k);
     }
   });
+
+  _appCheckAppleProviderTests();
+}
+
+/// iOS WAVE 1 — App Check mesti mengkonfigurasikan penyedia APPLE juga.
+///
+/// `_realActivate` memanggil SDK Firebase sebenar, jadi ia tidak boleh diuji
+/// unit secara langsung. Ujian ini membaca sumber dan menegaskan kedua-dua
+/// cabang membekalkan `providerApple`. Tanpanya, binaan iOS mengaktifkan App
+/// Check tanpa penyedia Apple langsung dan setiap panggilan yang dilindungi
+/// ditolak dengan cara yang mengelirukan.
+void _appCheckAppleProviderTests() {
+  test('App Check mengkonfigurasikan penyedia Apple dalam KEDUA-DUA cabang', () {
+    final src = File('lib/core/security/app_check_bootstrap.dart').readAsStringSync();
+
+    final androidCount = RegExp(r'providerAndroid:').allMatches(src).length;
+    final appleCount = RegExp(r'providerApple:').allMatches(src).length;
+    expect(androidCount, 2, reason: 'bilangan cabang aktivasi berubah');
+    expect(
+      appleCount,
+      androidCount,
+      reason: 'setiap cabang yang menetapkan providerAndroid mesti '
+          'menetapkan providerApple juga',
+    );
+
+    // Debug guna penyedia debug; release MESTI pengesahan platform sebenar.
+    expect(src.contains('AppleDebugProvider'), isTrue);
+    expect(
+      src.contains('AppleAppAttestWithDeviceCheckFallbackProvider'),
+      isTrue,
+      reason: 'release mesti App Attest dengan fallback DeviceCheck',
+    );
+    // Release tidak boleh jatuh balik kepada penyedia debug.
+    final releaseSegment = src.substring(src.indexOf('AndroidPlayIntegrityProvider'));
+    expect(
+      releaseSegment.contains('AppleDebugProvider'),
+      isFalse,
+      reason: 'cabang release tidak boleh menggunakan penyedia debug',
+    );
+  });
 }
