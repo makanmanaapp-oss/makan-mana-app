@@ -14,11 +14,13 @@ import {
   readPublicCmsCollections,
   readPublicCmsContent,
 } from "../services/cmsReadService";
+import type {PublicCmsContent} from "../domain/cms/cmsDocument";
 import {readFeaturedShops} from "../services/featuredShopReadService";
 import {
   isFeaturedShopPlacement,
   shopDestinationFor,
 } from "../domain/cms/featuredShop";
+import type {FeaturedShop} from "../domain/cms/featuredShop";
 
 /**
  * WAVE 5 — the single runtime CMS projection for mobile.
@@ -144,7 +146,17 @@ export const getCmsContent = onCall(
       // A featured-shop banner whose shop cannot be resolved is not a degraded
       // banner, it is a false one — so it is removed rather than rendered
       // without its shop. Ordinary editorial banners are untouched.
-      const publishedContent = content.flatMap((item) => {
+      // The return type is explicit BECAUSE the two branches differ: one yields
+      // `shop: null`, the other a resolved shop. Left to inference, TypeScript
+      // fixes the element type from the first branch and rejects the second —
+      // a real error in the DEPLOY build (`tsconfig.json` covers `src`) that the
+      // test build never sees, because `tsconfig.test.json` only includes
+      // `src/domain`.
+      type PublishedContent = PublicCmsContent & {
+        shop: FeaturedShop | null;
+        shopDestination: string | null;
+      };
+      const publishedContent = content.flatMap((item): PublishedContent[] => {
         const featured = isFeaturedShopPlacement(placement) && !!item.canonicalPlaceId;
         if (!featured) return [{...item, shop: null, shopDestination: null}];
         const shop = shopFor(item.canonicalPlaceId);

@@ -245,6 +245,16 @@ export interface CmsMirrorRecord {
   status: CmsStatus;
   effective_status: CmsStatus;
   canonical_place_id: string | null;
+  /**
+   * The DECLARED sponsorship, mirrored verbatim.
+   *
+   * Never null from this builder: Firestore always has a value (absent reads as
+   * editorial via `sponsorshipOf`). A NULL in the mirror therefore means
+   * exactly one thing — this row has not been re-mirrored since the column was
+   * added — and the console must say so rather than present it as a
+   * declaration somebody made.
+   */
+  sponsorship: CmsSponsorship;
   starts_at_ms: number | null;
   ends_at_ms: number | null;
   published_at_ms: number | null;
@@ -296,6 +306,7 @@ export function toCmsMirrorRecord(
     status: stored,
     effective_status: effectiveCmsStatus(stored, startsAtMs, endsAtMs, nowMs),
     canonical_place_id: nullable(data.canonicalPlaceId),
+    sponsorship: sponsorshipOf(data.sponsorship),
     starts_at_ms: startsAtMs,
     ends_at_ms: endsAtMs,
     published_at_ms: num(data.publishedAtMs),

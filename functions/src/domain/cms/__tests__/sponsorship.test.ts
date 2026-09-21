@@ -23,8 +23,11 @@ import {
 import {
   CMS_EDITABLE_FIELDS,
   buildCmsDocument,
+  toCmsMirrorRecord,
   toPublicCmsContent,
 } from "../cmsDocument";
+
+const NOW = 1_700_000_000_000;
 
 const base = {
   placement: "home_mid" as const,
@@ -109,4 +112,49 @@ test("an operator may correct a sponsorship later", () => {
   // otherwise the only remedy is deleting and re-creating the banner, which
   // loses its audit trail.
   assert.ok((CMS_EDITABLE_FIELDS as readonly string[]).includes("sponsorship"));
+});
+
+// ── THE MIRROR LEG ─────────────────────────────────────────────────────────
+//
+// Firebase is authoritative; the Control Center reads an operational mirror.
+// The mirror record used to carry no sponsorship at all, so a PAID declaration
+// reached Firestore and then vanished on its way to the console — and the admin
+// table, having nothing, printed "editorial" for every row.
+
+test("the mirror carries the declaration, both ways", () => {
+  const paid = toCmsMirrorRecord("c1", {
+    placement: "explore_top", title: "T", status: "active", sponsorship: "paid",
+  }, NOW);
+  assert.equal(paid?.sponsorship, SPONSORSHIP_PAID);
+
+  const editorial = toCmsMirrorRecord("c2", {
+    placement: "home_mid", title: "T", status: "active", sponsorship: "editorial",
+  }, NOW);
+  assert.equal(editorial?.sponsorship, SPONSORSHIP_EDITORIAL);
+});
+
+test("a Firestore row with no field mirrors as editorial, not as absent", () => {
+  // Firestore always resolves to one of the two values, so the mirror never
+  // sends null. A NULL in the mirror therefore means exactly one thing — the
+  // row has not been re-mirrored since the column existed — which is what lets
+  // the console distinguish "unknown" from "declared editorial".
+  const row = toCmsMirrorRecord("c3", {
+    placement: "home_top", title: "T", status: "active",
+  }, NOW);
+  assert.equal(row?.sponsorship, SPONSORSHIP_EDITORIAL);
+  assert.notEqual(row?.sponsorship, null);
+});
+
+test("the SAME declaration reaches the app and the console", () => {
+  // The whole point. If these two could disagree, a banner could be disclosed
+  // as paid to customers and listed as editorial to the operator auditing it.
+  const declarations = [SPONSORSHIP_PAID, SPONSORSHIP_EDITORIAL] as const;
+  for (const declared of declarations) {
+    const stored = buildCmsDocument({...base, sponsorship: declared});
+    const app = toPublicCmsContent("c", stored);
+    const console_ = toCmsMirrorRecord("c", {...stored, status: "active"}, NOW);
+    assert.equal(app?.sponsorship, declared);
+    assert.equal(console_?.sponsorship, declared);
+    assert.equal(app?.sponsorship, console_?.sponsorship);
+  }
 });
