@@ -15,6 +15,7 @@ import {
   planForAppleProduct,
   type AppleSubscriptionStatusLike,
 } from "../appStoreSubscription";
+import {appleAccountTokenFor} from "../appleAccountToken";
 
 const NOW = 1_700_000_000_000;
 const FUTURE = NOW + 86_400_000;
@@ -34,7 +35,7 @@ function sub(
       productId: "makanmana_pro_monthly",
       expiresDate: FUTURE,
       originalTransactionId: "ot-1",
-      appAccountToken: "uid-abc",
+      appAccountToken: appleAccountTokenFor("uid-abc"),
       bundleId: "com.makanmana.apps",
       ...(over.tx ?? {}),
     },
@@ -144,10 +145,20 @@ test("status tiada atau tidak dikenali → pending, tidak berhak", () => {
   assert.equal(unknown.planStatus, "pending");
 });
 
-test("pengikatan akaun: appAccountToken mesti sepadan uid", () => {
-  const tx = {appAccountToken: "UID-ABC"};
+test("pengikatan akaun guna UUID terbitan, bukan uid mentah", () => {
+  const token = appleAccountTokenFor("uid-abc");
+  const tx = {appAccountToken: token.toUpperCase()};
   assert.equal(appleAccountMatches(tx, "uid-abc"), true, "tidak peka huruf");
   assert.equal(appleAccountMatches(tx, "uid-lain"), false);
+
+  // REGRESI WAVE 1 — uid mentah BUKAN UUID dan Apple tidak akan pernah
+  // memulangkannya. Menerimanya akan menjadi pengikatan yang tidak boleh
+  // dipenuhi oleh pembelian sebenar.
+  assert.equal(
+    appleAccountMatches({appAccountToken: "uid-abc"}, "uid-abc"),
+    false,
+  );
+
   // KETIADAAN ialah gagal-tertutup, bukan lulus.
   assert.equal(appleAccountMatches({}, "uid-abc"), false);
   assert.equal(appleAccountMatches({appAccountToken: ""}, "uid-abc"), false);

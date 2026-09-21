@@ -9,6 +9,7 @@
 // Klien TIDAK PERNAH menghantar plan, harga atau tarikh luput; ia menghantar
 // `originalTransactionId` sahaja. Sumber kebenaran ialah App Store Server API.
 
+import {appleTokenBelongsTo} from "./appleAccountToken";
 import {
   PRODUCT_ALLOWLIST,
   type EntitlementResult,
@@ -93,16 +94,17 @@ export function planForAppleProduct(
  * pembelian, ia tiada. Kami memperlakukan KETIADAAN sebagai TIDAK SEPADAN,
  * bukan sebagai lulus, kerana resit tanpa pengikatan tidak boleh dibuktikan
  * milik sesiapa. Itu keputusan gagal-tertutup dan ia disengajakan.
+ *
+ * WAVE 2: dibandingkan dengan UUID terbitan pelayan, BUKAN dengan UID mentah.
+ * Apple menghendaki UUID RFC 4122 dan UID Firebase bukan UUID, jadi
+ * perbandingan Wave 1 akan menolak setiap pembelian yang sah.
+ * Lihat `appleAccountToken.ts`.
  */
 export function appleAccountMatches(
   tx: AppleTransactionInfoLike | null,
   uid: string,
 ): boolean {
-  const token = tx?.appAccountToken;
-  if (typeof token !== "string" || token.length === 0) return false;
-  if (uid.length === 0) return false;
-  // Apple menormalkan UUID kepada huruf kecil; bandingkan tanpa peka huruf.
-  return token.toLowerCase() === uid.toLowerCase();
+  return appleTokenBelongsTo(tx?.appAccountToken, uid);
 }
 
 /** Adakah bundle ID transaksi ialah aplikasi kita. */
