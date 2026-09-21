@@ -74,7 +74,13 @@ void main() {
           reason:
               'SDK queue hanya lengkap selepas backend menyatakan selamat.');
       expect(purchase.contains('GooglePlayPurchaseParam'), isTrue);
-      expect(purchase.contains('applicationUserName: opaqueAccountId'), isTrue);
+      // iOS WAVE 2: ID akaun kini betul-untuk-platform. Yang penting kekal
+      // sama — ia datang daripada PELAYAN, bukan dicipta klien.
+      expect(purchase.contains('applicationUserName: storeAccountId'), isTrue);
+      expect(purchase.contains('AppStorePurchaseParam'), isTrue,
+          reason: 'iOS mesti ada laluan beliannya sendiri');
+      expect(purchase.contains('_prepareAppleAccountToken'), isTrue,
+          reason: 'appAccountToken Apple mesti diterbitkan pelayan');
     });
     test('exposes a results stream for honest UX', () {
       expect(purchase.contains('Stream<PurchaseResult> get results'), isTrue);
@@ -92,7 +98,7 @@ void main() {
     });
     test('restore calls restorePurchases', () {
       expect(purchase.contains('restorePurchases('), isTrue);
-      expect(purchase.contains('applicationUserName: opaqueAccountId'), isTrue);
+      expect(purchase.contains('applicationUserName: storeAccountId'), isTrue);
     });
   });
 

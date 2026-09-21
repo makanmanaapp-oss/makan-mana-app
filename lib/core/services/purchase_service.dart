@@ -4,6 +4,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:in_app_purchase_android/in_app_purchase_android.dart';
+import 'package:in_app_purchase_storekit/in_app_purchase_storekit.dart';
 
 import '../constants/app_constants.dart';
 import '../constants/plan_constants.dart';
@@ -92,6 +93,39 @@ class PurchaseService {
     }
   }
 
+  /// iOS WAVE 2 — Apple MENGHENDAKI `appAccountToken` menjadi UUID RFC 4122,
+  /// jadi ID legap Play (32 hex) tidak boleh digunakan semula di sini. Backend
+  /// menerbitkan UUID yang stabil daripada UID; klien tidak pernah menciptanya.
+  Future<String?> _prepareAppleAccountToken(String uid) async {
+    if (!firebaseReady || uid.isEmpty) return null;
+
+    try {
+      final result = await _fns
+          .httpsCallable('prepareAppleBilling')
+          .call<Map<dynamic, dynamic>>();
+
+      final token = result.data['appAccountToken'];
+
+      if (token is String && token.isNotEmpty) {
+        return token;
+      }
+
+      return null;
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('MakanMana: prepareAppleBilling: ${e.code}');
+      return null;
+    } catch (_) {
+      debugPrint('MakanMana: Apple billing preparation failed.');
+      return null;
+    }
+  }
+
+  /// Betul untuk platform semasa. Android guna ID legap Play; iOS guna UUID.
+  Future<String?> _prepareStoreAccountId(String uid) =>
+      defaultTargetPlatform == TargetPlatform.iOS
+          ? _prepareAppleAccountToken(uid)
+          : _prepareOpaqueAccountId(uid);
+
   Future<PurchaseFlow> buy({
     required String uid,
     required String plan,
@@ -116,17 +150,27 @@ class PurchaseService {
       return PurchaseFlow.storeUnavailable;
     }
 
-    final opaqueAccountId = await _prepareOpaqueAccountId(uid);
+    final storeAccountId = await _prepareStoreAccountId(uid);
 
-    if (opaqueAccountId == null) {
+    if (storeAccountId == null) {
       return PurchaseFlow.storeUnavailable;
     }
 
+    final product = response.productDetails.first;
+
     await iap.buyNonConsumable(
-      purchaseParam: GooglePlayPurchaseParam(
-        productDetails: response.productDetails.first,
-        applicationUserName: opaqueAccountId,
-      ),
+      // StoreKit 2 memetakan `applicationUserName` kepada `appAccountToken`,
+      // iaitu medan yang App Store Server API pulangkan dan yang pelayan
+      // gunakan untuk membuktikan pemilikan.
+      purchaseParam: defaultTargetPlatform == TargetPlatform.iOS
+          ? AppStorePurchaseParam(
+              productDetails: product,
+              applicationUserName: storeAccountId,
+            )
+          : GooglePlayPurchaseParam(
+              productDetails: product,
+              applicationUserName: storeAccountId,
+            ),
     );
 
     return PurchaseFlow.storeStarted;
@@ -139,12 +183,12 @@ class PurchaseService {
 
     if (!await iap.isAvailable()) return;
 
-    final opaqueAccountId = await _prepareOpaqueAccountId(uid);
+    final storeAccountId = await _prepareStoreAccountId(uid);
 
-    if (opaqueAccountId == null) return;
+    if (storeAccountId == null) return;
 
     await iap.restorePurchases(
-      applicationUserName: opaqueAccountId,
+      applicationUserName: storeAccountId,
     );
   }
 
