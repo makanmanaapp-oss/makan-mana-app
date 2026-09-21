@@ -110,9 +110,12 @@ Write-Host "    SHA-256 AOT     : $aotSha ($entry, $($bytes.Length) bait)"
 
 # --- 5. Cari penanda dalam BAIT. Rentetan Dart disimpan sebagai UTF-8 dalam
 #        snapshot AOT; Latin1 mengekalkan pemetaan bait-ke-aksara untuk carian.
-$hay = [System.Text.Encoding]::Latin1.GetString($bytes)
+# ISO-8859-1 (28591), bukan ::Latin1 - sifat itu tidak wujud dalam
+# .NET Framework, jadi ia akan gagal pada Windows PowerShell 5.1.
+$latin1 = [System.Text.Encoding]::GetEncoding(28591)
+$hay = $latin1.GetString($bytes)
 function Find-Marker($m) {
-    $needle = [System.Text.Encoding]::Latin1.GetString([System.Text.Encoding]::UTF8.GetBytes($m))
+    $needle = $latin1.GetString([System.Text.Encoding]::UTF8.GetBytes($m))
     return $hay.IndexOf($needle, [StringComparison]::Ordinal) -ge 0
 }
 
