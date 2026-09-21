@@ -11,11 +11,22 @@ import 'core/providers.dart';
 import 'core/qa/qa_blocked_app.dart';
 import 'core/qa/qa_isolation_bootstrap.dart';
 import 'core/security/app_check_bootstrap.dart';
+import 'core/widgets/build_error_fallback.dart';
 import 'features/place_migration/qa_canonical_activation.dart';
 import 'firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Keluaran/profil: pengecualian build dilukis sebagai mesej yang boleh
+  // dibaca dan diterjemah, BUKAN RenderErrorBox kelabu tanpa mesej (tab Grup
+  // produksi 0.1.8). Pelaporan tidak berubah - FlutterError.onError (di bawah)
+  // menerima ralat SEBELUM builder ini dipanggil. Debug kekal dengan skrin
+  // merah untuk pembangun. Dipasang SEBELUM get QA supaya meliputi kedua-dua
+  // laluan. Pengendalian ralat khusus domain kekal penyelesaian utama.
+  if (!kDebugMode) {
+    ErrorWidget.builder = releaseErrorWidgetBuilder;
+  }
 
   // ISOLATION GATE — the QA flavour never reaches the production path below.
   //
