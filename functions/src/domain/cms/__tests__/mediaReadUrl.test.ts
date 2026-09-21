@@ -19,6 +19,8 @@ function item(overrides: Partial<PublicCmsContent> = {}): PublicCmsContent {
   return {
     contentId: "c1",
     placement: "home_top",
+    // Declared, never inferred — the projection always carries one.
+    sponsorship: "editorial",
     title: "Raya",
     subtitle: "",
     body: "",

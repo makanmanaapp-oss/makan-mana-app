@@ -69,6 +69,7 @@ CmsContent _banner() => const CmsContent(
       ),
       priority: 10,
       canonicalPlaceId: null,
+      sponsorship: CmsSponsorship.paid,
     );
 
 class _Calls {

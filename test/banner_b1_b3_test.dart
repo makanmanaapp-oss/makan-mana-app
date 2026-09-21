@@ -31,7 +31,10 @@ import 'package:makan_mana/features/cms/cms_content.dart';
 import 'package:makan_mana/features/cms/cms_providers.dart';
 import 'package:makan_mana/features/cms/cms_slot.dart';
 
-Map<String, Object?> payload({Object? readUrl = 'https://signed.example/a.webp'}) => {
+Map<String, Object?> payload({
+      Object? readUrl = 'https://signed.example/a.webp',
+      String sponsorship = 'editorial',
+    }) => {
       'contentId': 'cms-1',
       'placement': 'home_top',
       'title': 'Promosi Raya',
@@ -49,6 +52,7 @@ Map<String, Object?> payload({Object? readUrl = 'https://signed.example/a.webp'}
       },
       'priority': 10,
       'canonicalPlaceId': null,
+      'sponsorship': sponsorship,
     };
 
 String _read(String path) => File(path).readAsStringSync();
@@ -212,11 +216,15 @@ void main() {
     tester.view.devicePixelRatio = 3.0;
     addTearDown(tester.view.reset);
 
-    final content = CmsContent.fromMap(payload())!;
+    // A PAID banner, so the disclosure label is present and this stays a test
+    // about layout WITH the label rather than without it. The label used to be
+    // forced on by a `sponsored: true` flag the hosting screen passed; it is
+    // now the banner's own declared sponsorship.
+    final content = CmsContent.fromMap(payload(sponsorship: 'paid'))!;
     await tester.pumpWidget(_host(
       MediaQuery(
         data: const MediaQueryData(textScaler: TextScaler.linear(1.3)),
-        child: CmsBannerList(items: [content], sponsored: true),
+        child: CmsBannerList(items: [content]),
       ),
     ));
     await tester.pumpAndSettle();
@@ -224,6 +232,13 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(find.byType(CachedNetworkImage), findsOneWidget);
     expect(find.byKey(const Key('cms-sponsored-label')), findsOneWidget);
+
+    // And an EDITORIAL banner carries no badge, so no existing banner grew a
+    // row nobody asked for.
+    final editorial = CmsContent.fromMap(payload())!;
+    await tester.pumpWidget(_host(CmsBannerList(items: [editorial])));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('cms-sponsored-label')), findsNothing);
   });
 
   testWidgets('B1-10b. an empty slot still renders absolutely nothing',

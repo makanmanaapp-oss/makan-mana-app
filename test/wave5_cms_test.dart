@@ -136,12 +136,20 @@ void main() {
       expect(find.text('Lihat'), findsOneWidget);
     });
 
-    testWidgets('10. sponsored content is visibly labelled on discovery',
+    testWidgets('10. PAID content is visibly labelled, editorial is not',
         (tester) async {
-      final c = CmsContent.fromMap(_payload)!;
-      await tester.pumpWidget(_host(CmsBannerList(items: [c], sponsored: true)));
+      // The label now follows the banner's DECLARED sponsorship instead of the
+      // screen it is rendered on. A paid placement is disclosed everywhere; an
+      // editorial one is not dressed up as an advertisement.
+      final paid = CmsContent.fromMap({..._payload, 'sponsorship': 'paid'})!;
+      await tester.pumpWidget(_host(CmsBannerList(items: [paid])));
       await tester.pumpAndSettle();
       expect(find.byKey(const Key('cms-sponsored-label')), findsOneWidget);
+
+      final editorial = CmsContent.fromMap(_payload)!;
+      await tester.pumpWidget(_host(CmsBannerList(items: [editorial])));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('cms-sponsored-label')), findsNothing);
     });
 
     testWidgets('11. no internal identifier is rendered', (tester) async {
@@ -242,8 +250,20 @@ void main() {
       final explore = _read('lib/features/explore/explore_screen.dart');
       expect(explore, contains("l.t('searchHint')"));
       expect(explore, contains('_cuisineFilter'));
-      // Editorial content is labelled, never blended into results.
-      expect(explore, contains('sponsored: true'));
+      // Editorial content is still labelled, never blended into results — but
+      // the LABEL no longer comes from this screen.
+      //
+      // `sponsored: true` here meant "everything on Explore is a paid
+      // placement", which is a disclosure nobody had actually made: the flag
+      // was the hosting screen asserting a commercial relationship on behalf
+      // of every banner it happened to render. Sponsorship is now a declared
+      // field on the banner itself, so the label reads the same wherever the
+      // banner appears. See test/featured_shop_banner_test.dart, group
+      // "the sponsorship label states a declared fact".
+      expect(explore, isNot(contains('sponsored: true')),
+          reason: 'the screen must not assert paid status for its content');
+      expect(explore, contains('CmsPlacement.exploreTop'),
+          reason: 'the editorial slot itself must still be mounted');
     });
 
     test('19. Restaurant Detail keeps three tabs, Wave 3 and Wave 4 surfaces',

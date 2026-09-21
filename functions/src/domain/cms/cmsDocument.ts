@@ -9,7 +9,10 @@ import {
   CMS_STATUS_DRAFT,
   DEFAULT_TARGETING,
   PLACEMENT_RESTAURANT_DETAIL,
+  SPONSORSHIP_EDITORIAL,
+  sponsorshipOf,
   type CmsPlacement,
+  type CmsSponsorship,
   type CmsStatus,
   type CmsTargeting,
 } from "./cmsTypes";
@@ -30,6 +33,15 @@ export interface CmsContentInput {
   status: CmsStatus;
   /** Only meaningful for the restaurant_detail placement. */
   canonicalPlaceId: string | null;
+  /**
+   * DECLARED, never inferred. See cmsTypes.ts.
+   *
+   * Optional on INPUT because absent means editorial, which is the safe
+   * default and what every row written before this field existed means. It is
+   * REQUIRED on the public projection, because the app must never have to
+   * guess — guessing from the surface is the bug this field exists to kill.
+   */
+  sponsorship?: CmsSponsorship;
   /** Internal audit only — NEVER in the public projection. */
   actorAdminId: string;
   requestId: string;
@@ -51,6 +63,7 @@ export function buildCmsDocument(input: CmsContentInput): Record<string, unknown
     endsAtMs: input.endsAtMs,
     status: input.status,
     canonicalPlaceId: input.canonicalPlaceId,
+    sponsorship: input.sponsorship ?? SPONSORSHIP_EDITORIAL,
     // Audit block — internal plane only.
     createdByAdminId: input.actorAdminId,
     updatedByAdminId: input.actorAdminId,
@@ -65,6 +78,7 @@ export function buildCmsDocument(input: CmsContentInput): Record<string, unknown
 export const CMS_EDITABLE_FIELDS = [
   "title", "subtitle", "body", "ctaLabel", "ctaDestination", "media",
   "targeting", "priority", "startsAtMs", "endsAtMs", "canonicalPlaceId",
+  "sponsorship",
 ] as const;
 
 // ── PUBLIC PROJECTION ──────────────────────────────────────────────────────
@@ -97,6 +111,14 @@ export interface PublicCmsContent {
   media: PublicCmsMedia | null;
   priority: number;
   canonicalPlaceId: string | null;
+  /**
+   * What the app is allowed to say about WHY this banner is here.
+   *
+   * Sent explicitly rather than derived on the client, because the client has
+   * no way to know and would otherwise have to guess from the surface — which
+   * is precisely the inference the owner ruled out.
+   */
+  sponsorship: CmsSponsorship;
 }
 
 function str(value: unknown): string {
@@ -171,6 +193,7 @@ export function toPublicCmsContent(
     media: publicMedia(data.media),
     priority: num(data.priority) ?? 100,
     canonicalPlaceId: canonicalPlaceId || null,
+    sponsorship: sponsorshipOf(data.sponsorship),
   };
 }
 

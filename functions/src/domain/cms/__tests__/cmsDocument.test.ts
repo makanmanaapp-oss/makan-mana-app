@@ -66,9 +66,13 @@ test("mirror entity type matches the Control Center contract", () => {
 
 test("public projection carries exactly the allowlisted keys", () => {
   const pub = toPublicCmsContent("c1", doc());
+  // `sponsorship` is deliberate and required: the app must be TOLD whether a
+  // banner is a paid placement. Deriving it on the client is the bug this
+  // field exists to prevent — every Explore banner used to be labelled
+  // "Tajaan" purely because of the surface it sat on.
   assert.deepEqual(Object.keys(pub!).sort(), [
     "body", "canonicalPlaceId", "contentId", "ctaDestination", "ctaLabel",
-    "media", "placement", "priority", "subtitle", "title",
+    "media", "placement", "priority", "sponsorship", "subtitle", "title",
   ]);
 });
 

@@ -53,6 +53,7 @@ Map<String, Object?> _banner({
   String title = 'Pilihan minggu ini',
   String subtitle = 'Set sarapan dari RM6',
   Map<String, Object?>? shop,
+  String sponsorship = 'editorial',
 }) =>
     {
       'contentId': contentId,
@@ -67,15 +68,18 @@ Map<String, Object?> _banner({
       'canonicalPlaceId': shop == null ? null : shop['canonicalPlaceId'],
       'shop': shop,
       'shopDestination': shop == null ? null : shop['destination'],
+      'sponsorship': sponsorship,
     };
 
 Map<String, Object?> _collection({
   String id = 'col-1',
   String title = 'Sarapan terbaik',
   List<Map<String, Object?>>? shops,
+  String sponsorship = 'editorial',
 }) =>
     {
       'collectionId': id,
+      'sponsorship': sponsorship,
       'title': title,
       'description': 'Pilihan editor',
       'canonicalPlaceIds': (shops ?? [_shop()])
@@ -243,7 +247,7 @@ void main() {
   group('Home featured shop banner', () {
     testWidgets('shows the registry name, not the operator headline', (tester) async {
       final content = CmsContent.fromMap(_banner(shop: _shop()))!;
-      await tester.pumpWidget(_host(CmsBannerCard(content: content, sponsored: true)));
+      await tester.pumpWidget(_host(CmsBannerCard(content: content)));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const Key('featured-shop-banner-cms-shop-1')), findsOneWidget);
@@ -254,7 +258,7 @@ void main() {
       expect(find.text('Set sarapan dari RM6'), findsOneWidget);
       expect(find.text('12 Jalan Besar, Shah Alam'), findsOneWidget);
       expect(find.text('4.4 (231)'), findsOneWidget);
-      expect(find.byKey(const Key('featured-shop-sponsored')), findsOneWidget);
+      expect(find.byKey(const Key('featured-shop-editorial')), findsOneWidget);
     });
 
     testWidgets('an unproven rating is simply absent', (tester) async {
@@ -524,7 +528,7 @@ void main() {
       final content = CmsContent.fromMap(
           _banner(shop: _shop(name: 'Restoran Nasi Kandar Pulau Pinang Seksyen 13')))!;
       await tester.pumpWidget(_host(
-        CmsBannerCard(content: content, sponsored: true),
+        CmsBannerCard(content: content),
         textScale: 1.6,
       ));
       await tester.pumpAndSettle();
@@ -534,7 +538,7 @@ void main() {
     testWidgets('dark mode renders without error', (tester) async {
       final content = CmsContent.fromMap(_banner(shop: _shop()))!;
       await tester.pumpWidget(
-          _host(CmsBannerCard(content: content, sponsored: true), dark: true));
+          _host(CmsBannerCard(content: content), dark: true));
       await tester.pumpAndSettle();
       expect(find.text('Warung Pak Din'), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -544,15 +548,17 @@ void main() {
       testWidgets('renders in $lang with translated chrome', (tester) async {
         final content = CmsContent.fromMap(_banner(shop: _shop()))!;
         await tester.pumpWidget(_host(
-          CmsBannerCard(content: content, sponsored: true),
+          CmsBannerCard(content: content),
           lang: lang,
         ));
         await tester.pumpAndSettle();
 
         // The shop's own name is never translated.
         expect(find.text('Warung Pak Din'), findsOneWidget);
-        // The chrome around it is.
-        expect(find.text(_t('featuredShopSponsored', lang: lang)), findsOneWidget);
+        // The chrome around it is. The default banner is EDITORIAL, so the
+        // label must say so — not "Tajaan", which nobody declared.
+        expect(find.text(_t('featuredShopEditorial', lang: lang)), findsOneWidget);
+        expect(find.text(_t('featuredShopSponsored', lang: lang)), findsNothing);
         expect(find.text(_t('featuredShopViewShop', lang: lang)), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
@@ -573,6 +579,77 @@ void main() {
 
       expect(find.bySemanticsLabel('Warung Pak Din'), findsOneWidget);
       handle.dispose();
+    });
+  });
+
+  // ── 6. disclosure: declared, never inferred ─────────────────────────────
+
+  group('the sponsorship label states a declared fact', () {
+    testWidgets('a PAID banner says Tajaan, on HOME too', (tester) async {
+      // The old code passed a `sponsored` flag from the hosting screen, and
+      // Home never passed it — so a genuinely paid Home banner carried no
+      // disclosure at all.
+      final content =
+          CmsContent.fromMap(_banner(shop: _shop(), sponsorship: 'paid'))!;
+      await tester.pumpWidget(_host(CmsBannerCard(content: content)));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('featured-shop-paid')), findsOneWidget);
+      expect(find.text(_t('featuredShopSponsored')), findsOneWidget);
+      expect(find.text(_t('featuredShopEditorial')), findsNothing);
+    });
+
+    testWidgets('an EDITORIAL banner says Pilihan MakanMana', (tester) async {
+      final content = CmsContent.fromMap(_banner(shop: _shop()))!;
+      await tester.pumpWidget(_host(CmsBannerCard(content: content)));
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('featured-shop-editorial')), findsOneWidget);
+      expect(find.text(_t('featuredShopEditorial')), findsOneWidget);
+      expect(find.text(_t('featuredShopSponsored')), findsNothing);
+    });
+
+    testWidgets('the SURFACE cannot make a banner look paid', (tester) async {
+      // This is the regression. Every Explore banner used to be labelled
+      // "Tajaan" purely because Explore is a discovery surface — a paid
+      // placement disclosure nobody had actually declared.
+      final service = _StubCms(
+        result: CmsFetchResult(
+          content: const [],
+          collections: CmsCollection.listFromMap([_collection()]),
+        ),
+      );
+      await tester.pumpWidget(
+          _host(const FeaturedShopCarousel(), overrides: _cms(service)));
+      await tester.pumpAndSettle();
+
+      expect(find.text(_t('featuredShopSponsored')), findsNothing,
+          reason: 'Explore must not assert a paid placement by itself');
+      expect(find.text(_t('featuredShopEditorial')), findsOneWidget);
+    });
+
+    testWidgets('a paid CURATED ROW is disclosed on Explore', (tester) async {
+      final service = _StubCms(
+        result: CmsFetchResult(
+          content: const [],
+          collections:
+              CmsCollection.listFromMap([_collection(sponsorship: 'paid')]),
+        ),
+      );
+      await tester.pumpWidget(
+          _host(const FeaturedShopCarousel(), overrides: _cms(service)));
+      await tester.pumpAndSettle();
+      expect(find.text(_t('featuredShopSponsored')), findsOneWidget);
+    });
+
+    test('an unknown value is editorial, never paid', () {
+      // Reading an unknown value as paid would invent a commercial
+      // relationship; reading it as editorial only says nobody declared one.
+      for (final junk in [null, '', 'PAID', 'sponsored', 1]) {
+        expect(CmsSponsorship.parse(junk), CmsSponsorship.editorial,
+            reason: 'inferred paid from ${junk.runtimeType}: $junk');
+      }
+      expect(CmsSponsorship.parse('paid'), CmsSponsorship.paid);
     });
   });
 }

@@ -77,6 +77,48 @@ export const CMS_SETTABLE_STATUSES: CmsStatus[] = [
   CMS_STATUS_ARCHIVED,
 ];
 
+// ── SPONSORSHIP ────────────────────────────────────────────────────────────
+
+/**
+ * Whether a banner is a PAID placement or MakanMana's own editorial choice.
+ *
+ * This is a DECLARED fact with an audit trail, never an inference. Being in the
+ * CMS does not make content paid, and appearing on a discovery surface does not
+ * make it paid either — the app used to label every Explore banner "Tajaan" for
+ * exactly that reason, which is a disclosure the operator never actually made.
+ *
+ * Default is EDITORIAL. A paid placement has to be declared by a named admin,
+ * so "sponsored" is always something somebody asserted and the audit block can
+ * be asked about later.
+ */
+export const SPONSORSHIP_EDITORIAL = "editorial";
+export const SPONSORSHIP_PAID = "paid";
+
+export const CMS_SPONSORSHIPS = [
+  SPONSORSHIP_EDITORIAL,
+  SPONSORSHIP_PAID,
+] as const;
+
+export type CmsSponsorship = (typeof CMS_SPONSORSHIPS)[number];
+
+export function isCmsSponsorship(value: unknown): value is CmsSponsorship {
+  return typeof value === "string" &&
+    (CMS_SPONSORSHIPS as readonly string[]).includes(value);
+}
+
+/**
+ * Read a stored sponsorship value.
+ *
+ * Anything unrecognised — including a row written before this field existed —
+ * reads as EDITORIAL. That direction is deliberate and is the owner's explicit
+ * rule: paid status may not be inferred. It is safe here because the CMS admin
+ * bridge has never been deployed, so no stored row can be a real paid
+ * placement whose disclosure would be lost.
+ */
+export function sponsorshipOf(value: unknown): CmsSponsorship {
+  return isCmsSponsorship(value) ? value : SPONSORSHIP_EDITORIAL;
+}
+
 // ── TARGETING ──────────────────────────────────────────────────────────────
 
 /**

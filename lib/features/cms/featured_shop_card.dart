@@ -10,6 +10,8 @@ import '../../core/events/event_types.dart';
 import '../../core/providers.dart';
 import '../../models/place_summary.dart';
 import 'cms_content.dart';
+import 'cms_impression_tracker.dart';
+import 'cms_providers.dart';
 
 /// FEATURED SHOP BANNER — the shared pieces for presenting a real shop.
 ///
@@ -240,27 +242,48 @@ class FeaturedShopFacts extends StatelessWidget {
   }
 }
 
-/// The small "Tajaan"/"Sponsored" pill.
+/// The disclosure pill: "Tajaan" for a paid placement, "Pilihan MakanMana" for
+/// an editorial one.
 ///
-/// Localised, unlike the hardcoded one the editorial card still carries — a
-/// promotional marker that only Malay speakers can read is not a marker.
-class FeaturedShopSponsoredPill extends StatelessWidget {
-  const FeaturedShopSponsoredPill({super.key});
+/// It states a DECLARED fact. The previous version took a `sponsored` boolean
+/// from whichever screen happened to host the widget, so every Explore banner
+/// was labelled paid and every Home banner was labelled nothing — neither of
+/// which anybody had asserted. The label now comes from the banner itself, so
+/// it reads the same wherever the banner appears.
+class FeaturedShopSponsorPill extends StatelessWidget {
+  const FeaturedShopSponsorPill({super.key, required this.sponsorship});
+
+  final CmsSponsorship sponsorship;
+
+  /// Malay is the app's default language and the fallback here, so a missing
+  /// delegate degrades to a readable label rather than an exception.
+  static String _label(BuildContext context, bool paid) {
+    final l = Localizations.of<AppLocalizations>(context, AppLocalizations);
+    final key = paid ? 'featuredShopSponsored' : 'featuredShopEditorial';
+    return l?.t(key) ?? (paid ? 'Tajaan' : 'Pilihan MakanMana');
+  }
 
   @override
   Widget build(BuildContext context) {
     final mm = context.mm;
+    final paid = sponsorship.isPaid;
     return Container(
-      key: const Key('featured-shop-sponsored'),
+      key: Key(paid ? 'featured-shop-paid' : 'featured-shop-editorial'),
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
       decoration: BoxDecoration(
-        color: mm.chipBackground,
+        // A paid placement is the one that must stand out; an editorial badge
+        // is a quiet attribution, not an advertisement for itself.
+        color: paid ? mm.chipBackground : mm.softFill,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
-        AppLocalizations.of(context).t('featuredShopSponsored'),
+        // `maybeOf`, never `of`. A disclosure label must not be able to crash
+        // the screen it sits on: `AppLocalizations.of` throws where no
+        // delegate is installed, and a banner is a guest on every screen it
+        // appears on. Same rule the release ErrorWidget fallback follows.
+        _label(context, paid),
         style: TextStyle(
-          color: mm.chipText,
+          color: paid ? mm.chipText : mm.onCardMuted,
           fontSize: 11,
           fontWeight: FontWeight.w800,
         ),
@@ -470,12 +493,10 @@ class FeaturedShopBanner extends ConsumerWidget {
   const FeaturedShopBanner({
     super.key,
     required this.content,
-    this.sponsored = false,
     this.sourceScreen,
   });
 
   final CmsContent content;
-  final bool sponsored;
   final String? sourceScreen;
 
   @override
@@ -513,11 +534,12 @@ class FeaturedShopBanner extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (sponsored)
-                  const Padding(
-                    padding: EdgeInsets.only(bottom: 8),
-                    child: FeaturedShopSponsoredPill(),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: FeaturedShopSponsorPill(
+                    sponsorship: content.sponsorship,
                   ),
+                ),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -606,6 +628,83 @@ class FeaturedShopBanner extends ConsumerWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// HOME — the "Kedai Pilihan" section, between `Near you` and `Fit Coach`.
+///
+/// WHY THIS EXISTS AS ITS OWN SECTION. The owner's layout puts the shop banner
+/// after `Near you` and before `Fit Coach`. Neither CMS placement sits there:
+/// `home_top` renders above the mood chips and `home_mid` between the
+/// recommendation and the nearby list — both documented positions that other,
+/// already-scheduled editorial banners rely on. Moving either slot would
+/// relocate content nobody asked to move, so the shop banner gets the position
+/// the owner asked for and the editorial slots stay exactly where they are.
+///
+/// NO DUPLICATION: [CmsSlot] drops featured-shop banners on Home precisely
+/// because they are rendered here instead. A banner appears once, in one place.
+///
+/// Both Home placements feed this section, ordered by the priority the server
+/// already applied, so an operator does not have to learn a new placement name
+/// to put a shop on Home.
+class FeaturedShopHomeSection extends ConsumerWidget {
+  const FeaturedShopHomeSection({super.key, this.sourceScreen});
+
+  final String? sourceScreen;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    // The same request objects the CmsSlots above already use, so these resolve
+    // from Riverpod's cache rather than costing a second fetch.
+    const requests = [
+      CmsRequest(placement: CmsPlacement.homeTop),
+      CmsRequest(placement: CmsPlacement.homeMid),
+    ];
+
+    final items = <CmsContent>[];
+    for (final request in requests) {
+      final result = ref.watch(cmsContentProvider(request)).valueOrNull;
+      if (result == null) continue;
+      items.addAll(result.content.where((c) => c.isFeaturedShop));
+    }
+    // Nothing to feature: Home is byte-for-byte the layout it had before.
+    if (items.isEmpty) return const SizedBox.shrink();
+
+    items.sort((a, b) => a.priority.compareTo(b.priority));
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text(
+              AppLocalizations.of(context).t('featuredShopHomeTitle'),
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: context.mm.onCard,
+              ),
+            ),
+          ),
+          for (final item in items)
+            // The same tracker the banner list uses, so an impression here
+            // counts exactly as it did before the section moved.
+            CmsImpressionTracker(
+              key: Key('cms-impression-${item.contentId}'),
+              contentId: item.contentId,
+              placement: item.placement.wire,
+              sourceScreen: sourceScreen,
+              child: FeaturedShopBanner(
+                content: item,
+                sourceScreen: sourceScreen,
+              ),
+            ),
+        ],
       ),
     );
   }

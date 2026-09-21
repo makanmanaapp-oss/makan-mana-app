@@ -13,7 +13,11 @@ import {
   CMS_STATUS_DRAFT,
   CMS_STATUS_SCHEDULED,
   PLACEMENT_RESTAURANT_DETAIL,
+  SPONSORSHIP_EDITORIAL,
+  isCmsSponsorship,
+  sponsorshipOf,
   isCmsStatus,
+  type CmsSponsorship,
   type CmsStatus,
 } from "../domain/cms/cmsTypes";
 import {
@@ -211,6 +215,19 @@ function validateContentFields(
     if (!v.ok) return {ok: false, error: v.error};
     patch.priority = v.value;
   }
+  // SPONSORSHIP — declared, never inferred. Absent on create means editorial;
+  // an unrecognised value is REFUSED rather than quietly downgraded, because
+  // silently turning a "paid" an operator typed into "editorial" would drop a
+  // disclosure they believed they had made.
+  if (requireAll || has("sponsorship")) {
+    if (payload.sponsorship === undefined) {
+      patch.sponsorship = SPONSORSHIP_EDITORIAL;
+    } else if (isCmsSponsorship(payload.sponsorship)) {
+      patch.sponsorship = payload.sponsorship as CmsSponsorship;
+    } else {
+      return {ok: false, error: "sponsorship_invalid"};
+    }
+  }
   if (requireAll || has("altText")) {
     const v = validateAltText(payload.altText);
     if (!v.ok) return {ok: false, error: v.error};
@@ -403,6 +420,7 @@ export const controlCenterCmsAdminBridge = onRequest(
               endsAtMs: window.value.endsAtMs,
               status,
               canonicalPlaceId,
+              sponsorship: sponsorshipOf(fields.patch.sponsorship),
               // The console's admin id is recorded in ITS audit trail; Firebase
               // stores only the request id that correlates the two.
               actorAdminId: "",

@@ -209,7 +209,9 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                   padding: EdgeInsets.fromLTRB(20, 4, 20, 0),
                   child: CmsSlot(
                     placement: CmsPlacement.exploreTop,
-                    sponsored: true,
+                    // No `sponsored` flag any more: whether a banner is a paid
+                    // placement is a declared fact carried by the banner, not
+                    // something the hosting screen gets to assert.
                     sourceScreen: SourceScreen.explore,
                   ),
                 ),

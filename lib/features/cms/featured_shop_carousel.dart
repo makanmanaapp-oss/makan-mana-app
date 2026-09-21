@@ -178,7 +178,7 @@ class _Collection extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                const FeaturedShopSponsoredPill(),
+                FeaturedShopSponsorPill(sponsorship: collection.sponsorship),
               ],
             ),
           ),

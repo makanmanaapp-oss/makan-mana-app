@@ -142,6 +142,8 @@ async function main() {
     endsAtMs: now + 30 * 24 * HOUR,
     status: "active",
     canonicalPlaceId: "PLC-QA-1",
+    // Editorial: the app must attribute it, not advertise it.
+    sponsorship: "editorial",
   });
 
   // A second Home banner pointing at the UNPROVABLE shop. It must NOT render.
@@ -196,6 +198,8 @@ async function main() {
     startsAtMs: now - HOUR,
     endsAtMs: now + 30 * 24 * HOUR,
     status: "active",
+    // PAID: proves "Tajaan" appears only where somebody declared it.
+    sponsorship: "paid",
   });
 
   await batch.commit();
@@ -207,11 +211,13 @@ async function main() {
   console.log("  cms_collections        : 1 (5 members, 1 unprovable)");
   console.log("");
   console.log("EXPECTED on device:");
-  console.log("  Home  : ONE shop banner — Warung Ujian Satu, 4.4 (231)");
+  console.log("  Home  : ONE shop banner BETWEEN 'Near you' and 'Fit Coach'");
+  console.log("          Warung Ujian Satu, 4.4 (231), 'Pilihan MakanMana'");
   console.log("  Home  : the PLC-QA-5 banner must NOT appear");
   console.log("  Home  : the editorial banner renders as before");
   console.log("  Explore: a row of FOUR tiles (QA-5 dropped)");
   console.log("           QA-2 monogram, QA-3 no rating, QA-4 name clipped");
+  console.log("           row is PAID -> 'Tajaan'");
 }
 
 main().catch((error) => {

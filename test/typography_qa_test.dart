@@ -314,7 +314,7 @@ void main() {
     //   dan Ahli grup, tetapan grup, Meal Wallet, sheet taxonomy dan Fit yang
     //   GAGAL dibaca kini berkata begitu, bukannya menunjukkan senarai kosong,
     //   RM0, sifar, atau (tab Ahli) "Profile tak dapat dibuka".
-    expect(msKeys, hasLength(1845));
+    expect(msKeys, hasLength(1847));
     final placeholder = RegExp(r'\{[^}]+\}');
     final msValues = AppLocalizations.valuesForTesting(const Locale('ms'));
     for (final language in ['en', 'zh', 'ta']) {

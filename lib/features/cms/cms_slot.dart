@@ -19,7 +19,6 @@ class CmsSlot extends ConsumerWidget {
     super.key,
     required this.placement,
     this.canonicalPlaceId,
-    this.sponsored = false,
     this.sourceScreen,
   });
 
@@ -33,8 +32,6 @@ class CmsSlot extends ConsumerWidget {
   /// Required for [CmsPlacement.restaurantDetail]; a banner targeted at one
   /// restaurant may never appear on another.
   final String? canonicalPlaceId;
-
-  final bool sponsored;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -53,15 +50,24 @@ class CmsSlot extends ConsumerWidget {
 
     // Defence in depth: the server scoped this already, but a mis-scoped row
     // must not reach another restaurant's page.
-    final items = placement == CmsPlacement.restaurantDetail
+    var items = placement == CmsPlacement.restaurantDetail
         ? result.content
             .where((c) => c.canonicalPlaceId == canonicalPlaceId!.trim())
             .toList(growable: false)
         : result.content;
 
+    // On HOME, a featured-shop banner belongs to the "Kedai Pilihan" section
+    // between `Near you` and `Fit Coach`, which is where the owner's layout
+    // puts it. Dropping it here is what stops it rendering TWICE; the editorial
+    // banners these slots exist for are untouched. Explore is unaffected — its
+    // shop banners belong in the explore_top slot.
+    if (placement == CmsPlacement.homeTop || placement == CmsPlacement.homeMid) {
+      items = items.where((c) => !c.isFeaturedShop).toList(growable: false);
+    }
+    if (items.isEmpty) return const SizedBox.shrink();
+
     return CmsBannerList(
       items: items,
-      sponsored: sponsored,
       sourceScreen: sourceScreen,
     );
   }

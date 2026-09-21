@@ -19,6 +19,7 @@ import {
   type CmsPlacement,
   type CmsStatus,
 } from "../domain/cms/cmsTypes";
+import {sponsorshipOf, type CmsSponsorship} from "../domain/cms/cmsTypes";
 import {
   compareCmsOrder,
   isCmsPubliclyVisible,
@@ -47,6 +48,8 @@ export interface PublicCmsCollection {
   canonicalPlaceIds: string[];
   placement: string;
   priority: number;
+  /** Declared for the whole curated row; never derived from the surface. */
+  sponsorship: CmsSponsorship;
 }
 
 /**
@@ -170,6 +173,7 @@ export async function readPublicCmsCollections(params: {
         canonicalPlaceIds: ids,
         placement: params.placement,
         priority: typeof data.priority === "number" ? data.priority : 100,
+        sponsorship: sponsorshipOf(data.sponsorship),
       },
       startsAtMs: startsAtMs ?? 0,
     });

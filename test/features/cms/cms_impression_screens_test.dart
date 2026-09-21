@@ -63,6 +63,7 @@ CmsContent _banner(CmsPlacement placement, {String? canonicalPlaceId}) =>
       ),
       priority: 10,
       canonicalPlaceId: canonicalPlaceId,
+      sponsorship: CmsSponsorship.editorial,
     );
 
 class _RecordingLogger extends EventLogger {

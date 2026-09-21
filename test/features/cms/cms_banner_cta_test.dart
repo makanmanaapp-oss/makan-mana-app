@@ -69,6 +69,7 @@ CmsContent _content(String label) => CmsContent(
       media: null,
       priority: 10,
       canonicalPlaceId: null,
+      sponsorship: CmsSponsorship.editorial,
     );
 
 void _device(WidgetTester t, {required double width, required double scale}) {
@@ -93,7 +94,6 @@ Future<List<(String, Map<String, dynamic>?)>> _pump(
             padding: const EdgeInsets.fromLTRB(20, 40, 20, 0),
             child: CmsBannerCard(
               content: _content(label),
-              sponsored: true,
               sourceScreen: 'explore',
             ),
           ),

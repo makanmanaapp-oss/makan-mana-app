@@ -23,15 +23,10 @@ class CmsBannerList extends StatelessWidget {
   const CmsBannerList({
     super.key,
     required this.items,
-    this.sponsored = false,
     this.sourceScreen,
   });
 
   final List<CmsContent> items;
-
-  /// Marks the block as promotional. Used on discovery surfaces so editorial
-  /// content is never mistaken for an organic recommendation.
-  final bool sponsored;
 
   /// Which surface this block is sitting on, carried into analytics so an
   /// operator can tell a Home impression from an Explore one.
@@ -57,7 +52,6 @@ class CmsBannerList extends StatelessWidget {
               sourceScreen: sourceScreen,
               child: CmsBannerCard(
                 content: item,
-                sponsored: sponsored,
                 sourceScreen: sourceScreen,
               ),
             ),
@@ -71,12 +65,10 @@ class CmsBannerCard extends ConsumerWidget {
   const CmsBannerCard({
     super.key,
     required this.content,
-    this.sponsored = false,
     this.sourceScreen,
   });
 
   final CmsContent content;
-  final bool sponsored;
   final String? sourceScreen;
 
   /// B5 — a CTA activation, recorded only once it is genuinely one.
@@ -138,7 +130,6 @@ class CmsBannerCard extends ConsumerWidget {
     if (content.isFeaturedShop) {
       return FeaturedShopBanner(
         content: content,
-        sponsored: sponsored,
         sourceScreen: sourceScreen,
       );
     }
@@ -200,25 +191,28 @@ class CmsBannerCard extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    if (sponsored)
+                    // DISCLOSURE, on the plain editorial card.
+                    //
+                    // Shown only for a PAID placement, and shown wherever that
+                    // banner appears. It used to be a hardcoded Malay 'Tajaan'
+                    // displayed whenever the HOST screen passed
+                    // `sponsored: true` — so every Explore banner claimed a
+                    // paid placement nobody had declared, a paid Home banner
+                    // disclosed nothing, and only Malay speakers could read
+                    // the claim either way.
+                    //
+                    // An EDITORIAL banner gets no badge here on purpose:
+                    // attribution belongs on the featured-shop surfaces the
+                    // owner asked for it on, and adding one to every existing
+                    // banner would grow each of them by a row nobody asked
+                    // for. Disclosure of PAID content is the obligation; an
+                    // editorial badge is not.
+                    if (content.sponsorship.isPaid)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 6),
-                        child: Container(
+                        child: FeaturedShopSponsorPill(
                           key: const Key('cms-sponsored-label'),
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: mm.chipBackground,
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          child: Text(
-                            'Tajaan',
-                            style: TextStyle(
-                              color: mm.chipText,
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
+                          sponsorship: content.sponsorship,
                         ),
                       ),
                     Text(

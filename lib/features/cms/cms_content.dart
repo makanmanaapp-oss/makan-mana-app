@@ -28,6 +28,32 @@ enum CmsPlacement {
   }
 }
 
+/// Why a banner is on screen: MakanMana chose it, or somebody paid for it.
+///
+/// DECLARED by an admin and sent by the server. The client must never derive
+/// this — the app used to print "Tajaan" on every Explore banner purely because
+/// of the surface it sat on, which is a paid-placement disclosure nobody made,
+/// while a genuinely paid Home banner carried no label at all.
+enum CmsSponsorship {
+  editorial('editorial'),
+  paid('paid');
+
+  const CmsSponsorship(this.wire);
+  final String wire;
+
+  /// Anything unrecognised — including a row written before the field existed —
+  /// is EDITORIAL. Reading an unknown value as paid would invent a commercial
+  /// relationship; reading it as editorial only says nobody declared one.
+  static CmsSponsorship parse(Object? value) {
+    for (final s in CmsSponsorship.values) {
+      if (s.wire == value) return s;
+    }
+    return CmsSponsorship.editorial;
+  }
+
+  bool get isPaid => this == CmsSponsorship.paid;
+}
+
 class CmsMedia {
   const CmsMedia({
     required this.storagePath,
@@ -190,6 +216,7 @@ class CmsContent {
     required this.media,
     required this.priority,
     required this.canonicalPlaceId,
+    required this.sponsorship,
     this.shop,
   });
 
@@ -203,6 +230,9 @@ class CmsContent {
   final CmsMedia? media;
   final int priority;
   final String? canonicalPlaceId;
+
+  /// Declared by an admin, carried by the server. Never derived here.
+  final CmsSponsorship sponsorship;
 
   /// Present ONLY on a featured-shop banner: the proven registry identity of
   /// the shop this banner is about. Null on an ordinary editorial banner, which
@@ -233,6 +263,7 @@ class CmsContent {
       media: CmsMedia.fromMap(value['media']),
       priority: (value['priority'] as num?)?.toInt() ?? 100,
       canonicalPlaceId: (value['canonicalPlaceId'] as String?)?.trim(),
+      sponsorship: CmsSponsorship.parse(value['sponsorship']),
       // The server sends the destination alongside the shop; fold it in so the
       // rest of the app only ever sees one object with everything proven.
       shop: CmsShop.fromMap(value['shop'] is Map
@@ -257,6 +288,7 @@ class CmsCollection {
     required this.description,
     required this.canonicalPlaceIds,
     required this.shops,
+    required this.sponsorship,
   });
 
   final String collectionId;
@@ -270,6 +302,9 @@ class CmsCollection {
   /// Shorter than [canonicalPlaceIds] when a member could not be proven on this
   /// request — a shop that was taken down simply stops appearing.
   final List<CmsShop> shops;
+
+  /// Declared for the whole curated row. Never derived from the surface.
+  final CmsSponsorship sponsorship;
 
   static CmsCollection? fromMap(Object? value) {
     if (value is! Map) return null;
@@ -296,6 +331,7 @@ class CmsCollection {
       description: (value['description'] as String?) ?? '',
       canonicalPlaceIds: ids,
       shops: shops,
+      sponsorship: CmsSponsorship.parse(value['sponsorship']),
     );
   }
 

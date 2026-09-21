@@ -18,6 +18,7 @@ import '../../core/mood/availability_label.dart';
 import '../../core/mood/mood_formula.dart';
 import '../../core/providers.dart';
 import '../cms/cms_content.dart';
+import '../cms/featured_shop_card.dart';
 import '../cms/cms_slot.dart';
 import '../../core/providers/makanmana_user_context_provider.dart';
 import '../../core/widgets/mm_icons.dart';
@@ -1091,6 +1092,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                   ),
                 const SizedBox(height: 24),
+
+                // KEDAI PILIHAN — antara `Near you` dan `Fit Coach`, seperti
+                // susunan asal owner. Ia seksyennya sendiri kerana TIADA
+                // penempatan CMS berada di kedudukan ini: `home_top` di atas
+                // cip mood dan `home_mid` antara cadangan dan senarai
+                // berdekatan. Memindahkan salah satu slot itu akan mengalihkan
+                // banner editorial yang tiada sesiapa minta dialihkan.
+                const FeaturedShopHomeSection(sourceScreen: SourceScreen.home),
 
                 // Front Page Redesign 1 — Fit Coach DI BAWAH AI Pick + Nearby
                 // (bukan antara Mood dan AI Pick). Susunan: Mood → AI Pick →
