@@ -1,0 +1,4 @@
+/* Rentetan tujuan kebenaran - dipaparkan oleh iOS dalam dialog sistem. */
+"NSLocationWhenInUseUsageDescription" = "அருகிலுள்ள உணவகங்களைப் பரிந்துரைக்க MakanMana உங்கள் இருப்பிடத்தைப் பயன்படுத்துகிறது.";
+"NSPhotoLibraryUsageDescription" = "இடுகை அல்லது பில்லில் படத்தை இணைக்க MakanMana புகைப்படங்களை அணுக வேண்டும்.";
+"NSCameraUsageDescription" = "உணவு அல்லது ரசீதைப் படமெடுக்க MakanMana கேமரா தேவை.";

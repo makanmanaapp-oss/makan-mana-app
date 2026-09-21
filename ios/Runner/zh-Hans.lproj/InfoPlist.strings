@@ -1,0 +1,4 @@
+/* Rentetan tujuan kebenaran - dipaparkan oleh iOS dalam dialog sistem. */
+"NSLocationWhenInUseUsageDescription" = "MakanMana 使用您的位置来推荐附近的美食。";
+"NSPhotoLibraryUsageDescription" = "MakanMana 需要访问照片，以便您在帖子或账单中附加图片。";
+"NSCameraUsageDescription" = "MakanMana 需要相机，以便您拍摄食物或收据照片。";
