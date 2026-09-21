@@ -76,7 +76,7 @@ test("PRODUKSI: pengangkutan HTTP palsu dipanggil seperti biasa", () => {
 
 test("QA: pengangkutan FCM palsu TIDAK PERNAH dipanggil", () => {
   const fcm = fakeFcm();
-  assert.throws(() => fcm.send(3, QA), /FCM tiada emulator/);
+  assert.throws(() => fcm.send(3, QA), /fcm_push DISEKAT/);
   assert.deepEqual(fcm.calls, []);
 });
 
@@ -107,6 +107,11 @@ test("tapak SEBENAR berpagar: pagar mendahului pengangkutan", () => {
       file: "src/services/pushService.ts",
       guard: /decideEgress\(\{kind: "fcm_push"\}\)/,
       transport: /admin\.messaging\(\)\.send\(\{/,
+    },
+    {
+      file: "src/services/appleSubscriptionService.ts",
+      guard: /decideEgress\(\{kind: "app_store_api"\}\)/,
+      transport: /await fetch\(/,
     },
   ];
 

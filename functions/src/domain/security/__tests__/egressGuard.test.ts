@@ -58,7 +58,7 @@ test("QA TIDAK boleh menghantar FCM sebenar, walaupun ke gelung-balik", () => {
   for (const destination of [undefined, LOOPBACK_MIRROR]) {
     const d = decideEgress({kind: "fcm_push", destination, env: qaEnv});
     assert.equal(d.allowed, false);
-    assert.match(d.reason, /FCM tiada emulator/);
+    assert.match(d.reason, /fcm_push DISEKAT/);
   }
 });
 
@@ -163,4 +163,21 @@ test("diagnostik TIDAK PERNAH membocorkan rahsia", () => {
   });
   assert.equal(d.allowed, false);
   assert.equal(d.reason.includes(secret), false);
+});
+
+test("App Store Server API TIDAK boleh dipanggil dari QA", () => {
+  const d = decideEgress({kind: "app_store_api", env: qaEnv});
+  assert.equal(d.allowed, false);
+  assert.match(d.reason, /tiada emulator/);
+});
+
+test("App Store Server API dibenarkan dalam PRODUKSI", () => {
+  const d = decideEgress({kind: "app_store_api", env: prodEnv});
+  assert.equal(d.allowed, true);
+});
+
+test("FCM kekal disekat dalam QA selepas pagar diluaskan", () => {
+  const d = decideEgress({kind: "fcm_push", env: qaEnv});
+  assert.equal(d.allowed, false);
+  assert.match(d.reason, /tiada emulator/);
 });

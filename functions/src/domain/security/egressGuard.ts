@@ -35,7 +35,10 @@ export const QA_PROJECT_PREFIX = "demo-";
 export const APPROVED_QA_PROJECT_ID = "demo-makanmana-qa";
 
 /** Operasi luaran yang dilindungi. */
-export type EgressKind = "control_center_mirror" | "fcm_push";
+export type EgressKind =
+  | "control_center_mirror"
+  | "fcm_push"
+  | "app_store_api";
 
 export interface EgressEnvironment {
   /** Identiti projek, atau null jika ia tidak dapat ditentukan langsung. */
@@ -151,12 +154,16 @@ export function decideEgress(params: {
 
   // 4. Proses QA tulen: projek `demo-` DAN di dalam emulator.
   if (qaProject && inEmulator) {
-    if (params.kind === "fcm_push") {
+    // HANYA cermin Control Center mempunyai setara gelung-balik. Setiap
+    // perkhidmatan luaran yang lain (FCM, App Store Server API) tiada emulator,
+    // jadi panggilan dari QA akan keluar SEBENAR menggunakan kredensial
+    // pemilik. Disekat mengikut jenis, bukan mengikut destinasi.
+    if (params.kind !== "control_center_mirror") {
       return {
         allowed: false,
         reason:
-          `Egress fcm_push DISEKAT: FCM tiada emulator, jadi penghantaran ` +
-          `dari larian QA akan keluar sebenar (${where}).`,
+          `Egress ${params.kind} DISEKAT: perkhidmatan ini tiada emulator, ` +
+          `jadi panggilan dari larian QA akan keluar sebenar (${where}).`,
       };
     }
     const destination = params.destination ?? "";
