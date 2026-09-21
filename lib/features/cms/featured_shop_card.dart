@@ -8,6 +8,7 @@ import '../../app/localization/app_localizations.dart';
 import '../../app/theme.dart';
 import '../../core/events/event_types.dart';
 import '../../core/providers.dart';
+import '../../models/place_summary.dart';
 import 'cms_content.dart';
 
 /// FEATURED SHOP BANNER — the shared pieces for presenting a real shop.
@@ -26,6 +27,52 @@ import 'cms_content.dart';
 /// The destination is the SERVER-DERIVED shop route, re-validated here because
 /// a cached payload could outlive a rules change. `push`, never `go`: a shop is
 /// an ordinary page, so Back returns to the banner the customer tapped.
+/// The identity a featured shop carries INTO the restaurant page.
+///
+/// FOUND ON A REAL DEVICE, and the reason this function exists. Tapping a
+/// featured shop pushed `/restaurant/<id>` with nothing attached.
+/// `RestaurantDetailScreen` resolves a bare id from the CURRENT suggestion or a
+/// dummy list — neither of which knows a curated shop — so the page it landed
+/// on was a dead end: a "not found" card in QA, and in a production build
+/// (where the canonical flag is off) a bare error icon. A banner that names a
+/// real restaurant and then opens nothing is worse than no banner.
+///
+/// The screen already accepts a [PlaceSummary] as route `extra`, so the fix
+/// hands it the identity the server already proved, through a mechanism that
+/// already exists.
+///
+/// WHAT IS DELIBERATELY NOT FILLED IN. `PlaceSummary` has fields a CMS read
+/// cannot know, and each is left at a value the page reads as "nothing to say"
+/// rather than as a fact:
+///
+///   distanceKm 0       distance renders only when > 0
+///   matchScore 0       the match badge appears only when > 0
+///   priceLevel 0       no price band is shown
+///   cuisine ''         no cuisine line
+///   hours_unverified   the EXISTING evidence rule, so the page shows
+///                      "hours not verified" and can never claim "Open now"
+///
+/// That last one matters most. `isOpen` is false here, but it is the negative
+/// SIGNAL — not the false — that stops the page asserting the shop is CLOSED,
+/// which would be an invented fact rather than a missing one.
+PlaceSummary placeSummaryFromShop(CmsShop shop) => PlaceSummary(
+  placeId: shop.canonicalPlaceId,
+  name: shop.name,
+  cuisine: '',
+  emoji: '',
+  rating: shop.rating ?? 0,
+  userRatingCount: shop.ratingCount ?? 0,
+  priceLevel: 0,
+  distanceKm: 0,
+  isOpen: false,
+  address: shop.address ?? '',
+  matchScore: 0,
+  matchReasonKeys: const [],
+  photoUrl: shop.photoUrl,
+  canonicalPlaceId: shop.canonicalPlaceId,
+  negativeSignals: const ['hours_unverified'],
+);
+
 void openFeaturedShop(
   BuildContext context,
   WidgetRef ref,
@@ -44,7 +91,9 @@ void openFeaturedShop(
       'ctaKind': 'featured_shop',
     },
   );
-  context.push(shop.destination);
+  // The proven identity travels WITH the navigation. Without it the
+  // destination cannot resolve a curated shop at all.
+  context.push(shop.destination, extra: placeSummaryFromShop(shop));
 }
 
 /// The shop's picture, or a monogram when there is none.

@@ -24,6 +24,7 @@ import 'package:makan_mana/features/cms/cms_content.dart';
 import 'package:makan_mana/features/cms/cms_providers.dart';
 import 'package:makan_mana/features/cms/featured_shop_card.dart';
 import 'package:makan_mana/features/cms/featured_shop_carousel.dart';
+import 'package:makan_mana/core/mood/availability_label.dart';
 
 const _shopId = 'PLC-warung-1';
 
@@ -350,6 +351,54 @@ void main() {
       await tester.tap(find.text('Kedai B'));
       await tester.pumpAndSettle();
       expect(spy.visited, ['/restaurant/PLC-b']);
+    });
+  });
+
+
+  // ── 3b. the destination must be able to RENDER the shop ─────────────────
+  //
+  // Device-found: the CTA navigated correctly and landed on a dead page,
+  // because a bare `/restaurant/<id>` has nothing for the screen to resolve.
+  // These lock the identity that now travels with it.
+  group('the shop identity travels with the navigation', () {
+    test('a proven shop becomes a renderable PlaceSummary', () {
+      final shop = CmsShop.fromMap(_shop())!;
+      final summary = placeSummaryFromShop(shop);
+      expect(summary.placeId, _shopId);
+      expect(summary.canonicalPlaceId, _shopId);
+      expect(summary.name, 'Warung Pak Din');
+      expect(summary.photoUrl, 'https://photos.example/pakdin.jpg');
+      expect(summary.address, '12 Jalan Besar, Shah Alam');
+      expect(summary.rating, 4.4);
+      expect(summary.userRatingCount, 231);
+    });
+
+    test('nothing a CMS read cannot know is filled in', () {
+      final summary = placeSummaryFromShop(CmsShop.fromMap(_shop())!);
+      // Each of these is the value the detail screen reads as "say nothing":
+      // distance and the match badge render only when > 0, and an empty
+      // cuisine draws no line.
+      expect(summary.distanceKm, 0, reason: 'a CMS read has no location');
+      expect(summary.matchScore, 0, reason: 'no algorithm ran');
+      expect(summary.priceLevel, 0);
+      expect(summary.cuisine, isEmpty);
+    });
+
+    test('the page can never claim the shop is open OR closed', () {
+      final summary = placeSummaryFromShop(CmsShop.fromMap(_shop())!);
+      // `place_details` carries no opening hours at all. Without this signal
+      // the screen would fall through to isOpen:false and tell the customer
+      // the restaurant is CLOSED — an invented fact, not a missing one.
+      expect(summary.negativeSignals, contains('hours_unverified'));
+      expect(showsOpenNow(summary), isFalse);
+      expect(availabilityDisplay(summary), AvailabilityDisplay.hoursNotVerified);
+    });
+
+    test('an unrated shop carries no rating into the page', () {
+      final shop = CmsShop.fromMap(_shop(rating: 4.9, ratingCount: 0))!;
+      final summary = placeSummaryFromShop(shop);
+      expect(summary.rating, 0);
+      expect(summary.userRatingCount, 0);
     });
   });
 

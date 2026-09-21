@@ -20,6 +20,7 @@
 /// 10. `placeId` stabil DIKEKALKAN untuk semua tindakan.
 library;
 
+import '../../../core/mood/availability_label.dart';
 import '../../../models/place_summary.dart';
 import 'restaurant_detail_view_model.dart';
 
@@ -63,7 +64,31 @@ CardPriceModel _price(PlaceSummary p) {
   return CardPriceModel(state: CardPriceState.estimatedRange, amountLabel: label);
 }
 
+/// Availability for the canonical detail page.
+///
+/// FOUND ON A REAL DEVICE: a featured shop opened a page showing a red "Tutup"
+/// pill directly above the line "Waktu operasi belum disahkan". The page
+/// asserted the restaurant was CLOSED and admitted, three lines down, that it
+/// had no evidence for it.
+///
+/// The cause was the `false` branch. `place_details` carries no opening hours
+/// at all, so a place with unverified hours arrives here with `isOpen: false` —
+/// which is an ABSENCE of evidence, not evidence of closure — and was reported
+/// as `closedNow`.
+///
+/// The `true` branch is deliberately LEFT ALONE. Legacy `isOpen` comes from a
+/// cached provider snapshot and is not trusted enough to claim "open now" on
+/// this page; downgrading it to `hoursUnknown` is an existing, intentional
+/// decision (see restaurant_detail_test.dart, "isOpen true -> hoursUnknown").
+/// The bug was never that conservatism — it was that the same doubt was not
+/// applied to the closed direction.
 CardHoursModel _hours(PlaceSummary p) {
+  // Evidence first: unverified hours can never become a claim, in either
+  // direction. `availabilityDisplay` is the documented single source of truth
+  // for that question, so the page and the cards cannot drift apart.
+  if (availabilityDisplay(p) == AvailabilityDisplay.hoursNotVerified) {
+    return const CardHoursModel(state: CardHoursState.hoursUnknown);
+  }
   return CardHoursModel(
     state: p.isOpen ? CardHoursState.hoursUnknown : CardHoursState.closedNow,
   );
