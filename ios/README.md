@@ -1,5 +1,29 @@
 # Asas iOS — disediakan pada Windows, BELUM DIBINA
 
+## Calon keluaran (21 Sep 2026)
+
+Cawangan `ios/candidate-rc-20260921` @ **`22ba143`** — asas iOS di atas calon
+Android/Flutter TERKINI (`4138789`), termasuk Banner Kedai Pilihan penuh.
+
+Disahkan dalam worktree ini pada Windows:
+
+| Semakan | Keputusan |
+| --- | --- |
+| `flutter analyze` | **No issues found!** |
+| `flutter test` | **1807 / 0** |
+| Kod Flutter dikongsi (Featured Shop, Home, Explore) | hadir |
+| Perancah iOS (`Runner.xcodeproj`, `Info.plist`) | hadir |
+| Audit plugin — 25 kebergantungan, 18 plugin | **hanya `in_app_purchase_android` tiada iOS**, dan itu memang pelaksanaan Android bagi plugin bersekutu |
+
+**Ini BUKAN dakwaan iOS membina.** Analyze dan ujian Flutter menjalankan kod
+Dart pada mesin pembangunan; kedua-duanya lulus dengan sama baiknya untuk
+projek yang tidak akan pernah menaut pada iOS. Apa yang mereka buktikan ialah
+kod DIKONGSI itu utuh — bukan bahawa toolchain iOS menerimanya.
+
+Gate sebenar kekal di bawah: kredensial Apple, macOS/Xcode, Podfile,
+`GoogleService-Info.plist`, dan keputusan isolasi QA iOS.
+
+
 Folder ini dijana dan disesuaikan pada mesin Windows. **Tiada binaan iOS
 pernah dijalankan, tiada IPA wujud, dan tiada apa-apa dihantar ke Apple.**
 Toolchain iOS tidak wujud pada Windows, jadi tiada dakwaan "berfungsi"
