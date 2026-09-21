@@ -9,6 +9,7 @@ import '../../core/events/event_types.dart';
 import '../../core/providers.dart';
 import 'cms_content.dart';
 import 'cms_impression_tracker.dart';
+import 'featured_shop_card.dart';
 
 /// WAVE 5 — the CMS banner surface.
 ///
@@ -130,6 +131,18 @@ class CmsBannerCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // A banner that carries a PROVEN shop is presented as that shop, not as
+    // operator text with a picture. The editorial card below is untouched and
+    // still renders every banner that has no shop — which is all of them until
+    // an operator names one.
+    if (content.isFeaturedShop) {
+      return FeaturedShopBanner(
+        content: content,
+        sponsored: sponsored,
+        sourceScreen: sourceScreen,
+      );
+    }
+
     final mm = context.mm;
     final media = content.media;
 

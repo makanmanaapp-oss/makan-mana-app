@@ -14,6 +14,11 @@ import {
   readPublicCmsCollections,
   readPublicCmsContent,
 } from "../services/cmsReadService";
+import {readFeaturedShops} from "../services/featuredShopReadService";
+import {
+  isFeaturedShopPlacement,
+  shopDestinationFor,
+} from "../domain/cms/featuredShop";
 
 /**
  * WAVE 5 — the single runtime CMS projection for mobile.
@@ -118,7 +123,59 @@ export const getCmsContent = onCall(
         ? await readPublicCmsCollections({placement, viewer})
         : [];
 
-      return {ok: true, placement, content, collections};
+      // ── FEATURED SHOP BANNER ────────────────────────────────────────────
+      //
+      // Identity is proven HERE, on every read, not just when the operator
+      // saved the row: a restaurant can be merged, blocked or taken down long
+      // after a banner went live. Anything that cannot be proven right now is
+      // dropped, so a banner can never promote a shop that is gone.
+      const shopIds = [
+        ...(isFeaturedShopPlacement(placement)
+          ? content.map((c) => c.canonicalPlaceId ?? "").filter(Boolean)
+          : []),
+        ...collections.flatMap((c) => c.canonicalPlaceIds),
+      ];
+      const resolution = shopIds.length > 0
+        ? await readFeaturedShops(shopIds)
+        : null;
+      const shopFor = (id: string | null | undefined) =>
+        (id && resolution?.shops.get(id)) || null;
+
+      // A featured-shop banner whose shop cannot be resolved is not a degraded
+      // banner, it is a false one — so it is removed rather than rendered
+      // without its shop. Ordinary editorial banners are untouched.
+      const publishedContent = content.flatMap((item) => {
+        const featured = isFeaturedShopPlacement(placement) && !!item.canonicalPlaceId;
+        if (!featured) return [{...item, shop: null, shopDestination: null}];
+        const shop = shopFor(item.canonicalPlaceId);
+        if (!shop) return [];
+        // The destination is DERIVED from the proven id, never taken from the
+        // operator's destination field, so the card cannot name one shop and
+        // open another.
+        const destination = shopDestinationFor(shop.canonicalPlaceId);
+        if (!destination) return [];
+        return [{...item, shop, shopDestination: destination}];
+      });
+
+      // A collection presents its members as shop cards. Members that cannot be
+      // resolved drop out; a collection left with nobody drops out entirely,
+      // because an empty carousel is worse than no carousel.
+      const publishedCollections = collections.flatMap((collection) => {
+        const shops = collection.canonicalPlaceIds
+          .map((id) => shopFor(id))
+          .filter((s): s is NonNullable<typeof s> => !!s)
+          .map((shop) => ({...shop, destination: shopDestinationFor(shop.canonicalPlaceId)}))
+          .filter((s) => !!s.destination);
+        if (shops.length === 0) return [];
+        return [{...collection, shops}];
+      });
+
+      return {
+        ok: true,
+        placement,
+        content: publishedContent,
+        collections: publishedCollections,
+      };
     } catch (error) {
       console.error("getCmsContent failed", {
         placement,

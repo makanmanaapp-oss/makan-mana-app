@@ -47,21 +47,42 @@ class CmsService {
         collections: CmsCollection.listFromMap(root['collections']),
       );
     } on FirebaseFunctionsException {
-      return const CmsFetchResult.empty();
+      return const CmsFetchResult.failure();
     } catch (_) {
-      return const CmsFetchResult.empty();
+      return const CmsFetchResult.failure();
     }
   }
 }
 
 class CmsFetchResult {
-  const CmsFetchResult({required this.content, required this.collections});
-  const CmsFetchResult.empty()
+  const CmsFetchResult({
+    required this.content,
+    required this.collections,
+    this.failed = false,
+  });
+
+  /// The fetch did not succeed.
+  ///
+  /// Kept SEPARATE from "empty" on purpose. An ordinary banner slot treats both
+  /// the same and renders nothing — that behaviour is unchanged. But a named
+  /// section that has already drawn a heading needs to tell a customer that
+  /// something failed rather than sit there looking deliberately empty.
+  const CmsFetchResult.failure()
       : content = const [],
+        collections = const [],
+        failed = true;
+
+  const CmsFetchResult.empty()
+      : failed = false,
+        content = const [],
         collections = const [];
 
   final List<CmsContent> content;
   final List<CmsCollection> collections;
+
+  /// True when the fetch itself failed, as opposed to succeeding with nothing
+  /// to show. See [CmsFetchResult.failure].
+  final bool failed;
 
   bool get isEmpty => content.isEmpty && collections.isEmpty;
 }

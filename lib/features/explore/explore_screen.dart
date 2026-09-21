@@ -9,6 +9,7 @@ import '../../core/constants/app_constants.dart';
 import '../../core/providers.dart';
 import '../cms/cms_content.dart';
 import '../cms/cms_slot.dart';
+import '../cms/featured_shop_carousel.dart';
 import '../../core/location/location_display.dart';
 import '../../core/providers/makanmana_user_context_provider.dart';
 import '../../core/widgets/place_image.dart';
@@ -211,6 +212,16 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
                     sponsored: true,
                     sourceScreen: SourceScreen.explore,
                   ),
+                ),
+              ),
+              // FEATURED SHOPS — the curated row. Its own sliver rather than a
+              // child of the padding above, because the carousel bleeds to the
+              // screen edge so a tile can be half-visible and invite a swipe,
+              // while its heading keeps the page's 20 px gutter.
+              const SliverToBoxAdapter(
+                child: FeaturedShopCarousel(
+                  placement: CmsPlacement.exploreTop,
+                  sourceScreen: SourceScreen.explore,
                 ),
               ),
               if (pinChips)

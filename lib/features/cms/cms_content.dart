@@ -85,6 +85,99 @@ class CmsMedia {
   }
 }
 
+
+/// FEATURED SHOP — the registry-owned identity behind a shop banner.
+///
+/// Every field here was resolved SERVER-SIDE from the place registry and proven
+/// to exist on this very request. The operator supplies the pitch (headline,
+/// promo copy, CTA wording); this supplies who the shop actually is.
+///
+/// There is deliberately no `isOpen`, no `distanceKm` and no opening hours.
+/// `place_details` does not carry opening hours or business status at all, and
+/// a CMS read has no location context, so a distance here would be invented.
+/// They are absent rather than nullable so a later edit cannot start filling
+/// them in with something plausible.
+class CmsShop {
+  const CmsShop({
+    required this.canonicalPlaceId,
+    required this.name,
+    required this.photoUrl,
+    required this.address,
+    required this.rating,
+    required this.ratingCount,
+    required this.destination,
+  });
+
+  final String canonicalPlaceId;
+
+  /// The real registry name. Never an id, never operator text.
+  final String name;
+
+  /// A real https photo, or null — the card then draws a monogram, exactly as
+  /// the Explore list already does for photo-less places.
+  final String? photoUrl;
+  final String? address;
+
+  /// Non-null ONLY when a rating and a review count both exist.
+  final double? rating;
+  final int? ratingCount;
+
+  /// Where tapping this shop goes. DERIVED server-side from the proven id, so
+  /// a card can never name one shop and open another.
+  final String destination;
+
+  bool get hasPhoto => (photoUrl?.trim().isNotEmpty ?? false);
+  bool get hasRating => rating != null && ratingCount != null;
+
+  /// Up to two initials for the monogram fallback tile.
+  String get monogram {
+    final words = name.trim().split(RegExp(r'\s+')).where((w) => w.isNotEmpty);
+    if (words.isEmpty) return '?';
+    final letters = words.take(2).map((w) => w[0].toUpperCase()).join();
+    return letters.isEmpty ? '?' : letters;
+  }
+
+  static CmsShop? fromMap(Object? value) {
+    if (value is! Map) return null;
+    final id = (value['canonicalPlaceId'] as String?)?.trim() ?? '';
+    final name = (value['name'] as String?)?.trim() ?? '';
+    final destination = (value['destination'] as String?)?.trim() ??
+        (value['shopDestination'] as String?)?.trim() ??
+        '';
+    // A shop with no name or no way to reach it is not a shop card. The server
+    // already drops these; refusing again here means a stale cached payload
+    // cannot resurrect one.
+    if (id.isEmpty || name.isEmpty) return null;
+    if (!isSafeCtaDestination(destination)) return null;
+
+    final rating = (value['rating'] as num?)?.toDouble();
+    final ratingCount = (value['ratingCount'] as num?)?.toInt();
+    final photo = (value['photoUrl'] as String?)?.trim();
+    final address = (value['address'] as String?)?.trim();
+    return CmsShop(
+      canonicalPlaceId: id,
+      name: name,
+      photoUrl: (photo == null || photo.isEmpty) ? null : photo,
+      address: (address == null || address.isEmpty) ? null : address,
+      // Both, and both meaningful. A score of 0, or a score with no reviews
+      // behind it, is not a rating — the server already applies this rule, and
+      // repeating it here means a stale cached payload cannot smuggle one
+      // through after the fact.
+      rating: _ratingShown(rating, ratingCount) ? rating : null,
+      ratingCount: _ratingShown(rating, ratingCount) ? ratingCount : null,
+      destination: destination,
+    );
+  }
+
+  static bool _ratingShown(double? rating, int? count) =>
+      rating != null && rating > 0 && count != null && count > 0;
+
+  static List<CmsShop> listFromMap(Object? value) {
+    if (value is! List) return const [];
+    return value.map(CmsShop.fromMap).whereType<CmsShop>().toList(growable: false);
+  }
+}
+
 class CmsContent {
   const CmsContent({
     required this.contentId,
@@ -97,6 +190,7 @@ class CmsContent {
     required this.media,
     required this.priority,
     required this.canonicalPlaceId,
+    this.shop,
   });
 
   final String contentId;
@@ -109,6 +203,14 @@ class CmsContent {
   final CmsMedia? media;
   final int priority;
   final String? canonicalPlaceId;
+
+  /// Present ONLY on a featured-shop banner: the proven registry identity of
+  /// the shop this banner is about. Null on an ordinary editorial banner, which
+  /// is what every banner was before this feature.
+  final CmsShop? shop;
+
+  /// A banner that presents a real shop rather than operator text alone.
+  bool get isFeaturedShop => shop != null;
 
   bool get hasCta => ctaLabel.trim().isNotEmpty && isSafeCtaDestination(ctaDestination);
 
@@ -131,6 +233,14 @@ class CmsContent {
       media: CmsMedia.fromMap(value['media']),
       priority: (value['priority'] as num?)?.toInt() ?? 100,
       canonicalPlaceId: (value['canonicalPlaceId'] as String?)?.trim(),
+      // The server sends the destination alongside the shop; fold it in so the
+      // rest of the app only ever sees one object with everything proven.
+      shop: CmsShop.fromMap(value['shop'] is Map
+          ? {
+              ...(value['shop'] as Map),
+              'destination': value['shopDestination'],
+            }
+          : null),
     );
   }
 
@@ -146,12 +256,20 @@ class CmsCollection {
     required this.title,
     required this.description,
     required this.canonicalPlaceIds,
+    required this.shops,
   });
 
   final String collectionId;
   final String title;
   final String description;
   final List<String> canonicalPlaceIds;
+
+  /// The resolved shops, in the operator's chosen order. The ORDER is the
+  /// product, so it is preserved exactly as the server sent it.
+  ///
+  /// Shorter than [canonicalPlaceIds] when a member could not be proven on this
+  /// request — a shop that was taken down simply stops appearing.
+  final List<CmsShop> shops;
 
   static CmsCollection? fromMap(Object? value) {
     if (value is! Map) return null;
@@ -163,13 +281,21 @@ class CmsCollection {
             .where((e) => e.isNotEmpty)
             .toList(growable: false) ??
         const <String>[];
+    final shops = CmsShop.listFromMap(value['shops']);
     // A curated row with nothing in it is worse than no row.
+    //
+    // Note what is NOT checked here: an empty `shops`. This model stays a
+    // faithful reading of what the server sent, so a collection whose members
+    // could not all be resolved is still representable. Deciding that such a
+    // row cannot be DRAWN belongs to the carousel, which skips it — a parser
+    // that silently discarded it would make the two cases indistinguishable.
     if (id.isEmpty || title.isEmpty || ids.isEmpty) return null;
     return CmsCollection(
       collectionId: id,
       title: title,
       description: (value['description'] as String?) ?? '',
       canonicalPlaceIds: ids,
+      shops: shops,
     );
   }
 

@@ -43,6 +43,7 @@ import {
   validateCollectionTitle,
 } from "../domain/cms/collectionDocument";
 import {normalizeCanonicalPlaceId} from "../domain/restaurantEngagement/identity";
+import {isFeaturedShopPlacement} from "../domain/cms/featuredShop";
 import {resolveProvenCanonicalRestaurantPlaceId} from "../services/restaurantProfileV2ReadService";
 
 /**
@@ -277,6 +278,60 @@ export const controlCenterCmsAdminBridge = onRequest(
       return;
     }
 
+    // ── FEATURED SHOP identity, proven BEFORE the transaction ──────────────
+    //
+    // Resolution is I/O, and a Firestore transaction may not do unrelated
+    // reads mid-flight — the collections path resolves its restaurants the
+    // same way for the same reason.
+    //
+    // `undefined` means the operator did not touch the field; `null` means
+    // they cleared it, turning a featured-shop banner back into a plain
+    // editorial one. Both are different from "a shop was named", so the three
+    // cases stay distinguishable all the way to the write.
+    let provenShopId: string | null | undefined;
+    if (payload.canonicalPlaceId !== undefined) {
+      const raw = typeof payload.canonicalPlaceId === "string"
+        ? payload.canonicalPlaceId.trim() : "";
+
+      let placementForShop: unknown = null;
+      if (action === ACTION_CREATE) {
+        placementForShop = payload.placement;
+      } else if (resourceId) {
+        // Read only to learn the placement. The transaction below still reads
+        // the authoritative row; this never decides anything but which rule
+        // applies to the id.
+        const pre = await db.collection(CMS_COLLECTION).doc(resourceId).get();
+        placementForShop = pre.exists ? pre.data()?.placement : null;
+      }
+
+      if (isFeaturedShopPlacement(placementForShop)) {
+        if (!raw) {
+          provenShopId = null;
+        } else {
+          const normalized = normalizeCanonicalPlaceId(raw);
+          if (!normalized) {
+            response.status(400).json({
+              status: "ERROR", errorCode: "CANONICAL_PLACE_ID_INVALID",
+            });
+            return;
+          }
+          // The id must name a restaurant that ACTUALLY resolves today. An
+          // operator who mistypes deserves to be told, not to publish a banner
+          // that quietly renders nothing.
+          const proven = await resolveProvenCanonicalRestaurantPlaceId(normalized);
+          if (!proven) {
+            response.status(400).json({
+              status: "ERROR", errorCode: "CANONICAL_RESTAURANT_INVALID",
+            });
+            return;
+          }
+          // Store the RESOLVED id, never the one the console happened to send,
+          // so an alias can never become the stored identity.
+          provenShopId = proven;
+        }
+      }
+    }
+
     try {
       const requestRef = db.collection(C_REQUESTS).doc(requestId);
 
@@ -313,6 +368,11 @@ export const controlCenterCmsAdminBridge = onRequest(
           if (placement.value === PLACEMENT_RESTAURANT_DETAIL) {
             canonicalPlaceId = normalizeCanonicalPlaceId(payload.canonicalPlaceId);
             if (!canonicalPlaceId) return {ok: false as const, error: "canonical_place_id_required"};
+          } else if (provenShopId !== undefined) {
+            // FEATURED SHOP — optional on a discovery surface, and already
+            // proven above. Absent means an ordinary editorial banner, which
+            // is what every existing row is.
+            canonicalPlaceId = provenShopId;
           }
 
           // Content is born draft or scheduled; going live is a separate,
@@ -383,9 +443,15 @@ export const controlCenterCmsAdminBridge = onRequest(
           }
 
           if (payload.canonicalPlaceId !== undefined) {
-            const canonical = normalizeCanonicalPlaceId(payload.canonicalPlaceId);
-            if (!canonical) return {ok: false as const, error: "canonical_place_id_invalid"};
-            patch.canonicalPlaceId = canonical;
+            if (provenShopId !== undefined) {
+              // A discovery-surface banner: the id was proven before the
+              // transaction, and null clears the shop.
+              patch.canonicalPlaceId = provenShopId;
+            } else {
+              const canonical = normalizeCanonicalPlaceId(payload.canonicalPlaceId);
+              if (!canonical) return {ok: false as const, error: "canonical_place_id_invalid"};
+              patch.canonicalPlaceId = canonical;
+            }
           }
 
           // Nothing outside the editable allowlist may be written, whatever the
