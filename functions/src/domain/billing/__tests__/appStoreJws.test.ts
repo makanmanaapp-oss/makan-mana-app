@@ -4,8 +4,10 @@ import {test} from "node:test";
 
 import {
   APP_STORE_JWT_TTL_SECONDS,
+  APPLE_ENV_PRODUCTION,
   APPLE_JWS_ALG,
   AppleJwsError,
+  assertAppleClaims,
   buildAppStoreJwtClaims,
   certificateValidAt,
   parseJws,
@@ -230,4 +232,63 @@ test("tuntutan JWT menolak input kosong dan ttl di luar had Apple", () => {
   assert.throws(() => buildAppStoreJwtClaims({...base, bundleId: ""}), AppleJwsError);
   assert.throws(() => buildAppStoreJwtClaims({...base, ttlSeconds: 0}), AppleJwsError);
   assert.throws(() => buildAppStoreJwtClaims({...base, ttlSeconds: 3601}), AppleJwsError);
+});
+
+test("identiti aplikasi disemak, bukan hanya tandatangan", () => {
+  const ok = {bundleId: "com.makanmana.apps", environment: "Sandbox"};
+  assert.doesNotThrow(() =>
+    assertAppleClaims(ok, {
+      bundleId: "com.makanmana.apps",
+      environment: "Sandbox",
+    }),
+  );
+
+  // Aplikasi lain yang muatannya ditandatangani dengan SAH oleh Apple.
+  assert.throws(
+    () =>
+      assertAppleClaims(
+        {bundleId: "com.penyerang.apps", environment: "Sandbox"},
+        {bundleId: "com.makanmana.apps", environment: "Sandbox"},
+      ),
+    /bundleId tidak sepadan/,
+  );
+
+  // Muatan Sandbox tidak boleh melepasi sebagai Production.
+  assert.throws(
+    () =>
+      assertAppleClaims(ok, {
+        bundleId: "com.makanmana.apps",
+        environment: "Production",
+        appAppleId: 1,
+      }),
+    /environment tidak sepadan/,
+  );
+
+  // Medan hilang ialah gagal-tertutup.
+  assert.throws(
+    () => assertAppleClaims({}, {bundleId: "com.makanmana.apps", environment: "Sandbox"}),
+    AppleJwsError,
+  );
+});
+
+test("Production TANPA appAppleId dikonfigurasikan gagal TERTUTUP", () => {
+  assert.throws(
+    () =>
+      assertAppleClaims(
+        {bundleId: "com.makanmana.apps", environment: APPLE_ENV_PRODUCTION},
+        {bundleId: "com.makanmana.apps", environment: APPLE_ENV_PRODUCTION},
+      ),
+    /appAppleId diperlukan untuk Production/,
+  );
+});
+
+test("appAppleId yang salah ditolak", () => {
+  assert.throws(
+    () =>
+      assertAppleClaims(
+        {bundleId: "com.makanmana.apps", environment: "Production", appAppleId: 111},
+        {bundleId: "com.makanmana.apps", environment: "Production", appAppleId: 222},
+      ),
+    /appAppleId tidak sepadan/,
+  );
 });

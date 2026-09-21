@@ -270,3 +270,92 @@ export function buildAppStoreJwtClaims(params: {
   const iat = Math.floor(params.nowMillis / 1000);
   return {iss: issuerId, iat, exp: iat + ttl, aud: "appstoreconnect-v1", bid: bundleId};
 }
+
+/**
+ * PERBANDINGAN DENGAN `SignedDataVerifier` RASMI APPLE
+ * ---------------------------------------------------
+ * Konstruktor rasmi ialah
+ * `(appleRootCertificates, enableOnlineChecks, environment, bundleId, appAppleId?)`.
+ *
+ * Yang dipadankan di sini : akar dibekalkan (rasmi juga TIDAK membundelnya),
+ *                           pengesahan rantaian, tempoh sah sijil, tandatangan,
+ *                           allowlist algoritma, dan kini identiti aplikasi.
+ * Yang TIDAK dipadankan   : `enableOnlineChecks` (pembatalan OCSP dalam talian).
+ *
+ * OCSP memerlukan panggilan rangkaian keluar semasa pengesahan. Ia belum
+ * dilaksanakan dan ketiadaannya dinyatakan sebagai penghalang, bukan
+ * ditutup-tutup.
+ */
+
+/** Persekitaran App Store, mengikut `Environment` pustaka rasmi. */
+export const APPLE_ENV_PRODUCTION = "Production";
+export const APPLE_ENV_SANDBOX = "Sandbox";
+
+export interface AppleClaimExpectations {
+  bundleId: string;
+  /** "Production" atau "Sandbox". */
+  environment: string;
+  /**
+   * Diperlukan oleh Apple untuk Production. Jika dibekalkan, ia MESTI sepadan.
+   */
+  appAppleId?: number;
+}
+
+/**
+ * Sahkan bahawa muatan yang sudah disahkan tandatangannya benar-benar merujuk
+ * aplikasi KITA dalam persekitaran yang DIJANGKA.
+ *
+ * Tandatangan yang sah sahaja tidak mencukupi: Apple menandatangani muatan
+ * untuk setiap aplikasi, jadi tanpa semakan ini satu muatan Sandbox yang sah
+ * daripada aplikasi lain akan melepasi.
+ */
+export function assertAppleClaims(
+  payload: Record<string, unknown>,
+  expected: AppleClaimExpectations,
+): void {
+  const bundleId = payload.bundleId;
+  if (typeof bundleId !== "string" || bundleId !== expected.bundleId) {
+    throw new AppleJwsError(
+      `bundleId tidak sepadan: dijangka ${expected.bundleId}`,
+    );
+  }
+  const environment = payload.environment;
+  if (typeof environment !== "string" || environment !== expected.environment) {
+    throw new AppleJwsError(
+      `environment tidak sepadan: dijangka ${expected.environment}`,
+    );
+  }
+  if (expected.appAppleId !== undefined) {
+    const appAppleId = payload.appAppleId;
+    if (typeof appAppleId !== "number" || appAppleId !== expected.appAppleId) {
+      throw new AppleJwsError("appAppleId tidak sepadan");
+    }
+  } else if (expected.environment === APPLE_ENV_PRODUCTION) {
+    // Apple menghendaki appAppleId untuk Production. Tanpa ia dikonfigurasikan
+    // kita tidak boleh membuktikan muatan ini milik aplikasi kita.
+    throw new AppleJwsError(
+      "appAppleId diperlukan untuk Production tetapi tidak dikonfigurasikan",
+    );
+  }
+}
+
+/**
+ * Sahkan JWS DAN identiti aplikasinya dalam satu langkah.
+ *
+ * Ini yang patut digunakan oleh kod pengeluaran; `verifyAppleJws` sahaja
+ * membuktikan tandatangan, bukan bahawa muatan itu milik kita.
+ */
+export function verifyAppleJwsForApp(params: {
+  jws: string;
+  trustedRoots: string[];
+  nowMillis: number;
+  expected: AppleClaimExpectations;
+}): Record<string, unknown> {
+  const payload = verifyAppleJws({
+    jws: params.jws,
+    trustedRoots: params.trustedRoots,
+    nowMillis: params.nowMillis,
+  });
+  assertAppleClaims(payload, params.expected);
+  return payload;
+}
