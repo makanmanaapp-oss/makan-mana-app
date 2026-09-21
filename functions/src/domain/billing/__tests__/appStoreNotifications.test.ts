@@ -229,14 +229,24 @@ test("tiada muatan mentah, token atau kunci dilog", () => {
   }
 });
 
-test("endpoint memulangkan 5xx untuk sementara dan 4xx untuk tidak sah", () => {
+test("endpoint memilih kod melalui SATU fungsi yang diuji", () => {
+  // PEMBETULAN WAVE 2.1: ujian terdahulu menegaskan corak
+  // `kind === "transient" ... status(503)` DAN literal `status(200)` dalam
+  // endpoint. Kedua-duanya mengekod dakwaan yang SALAH bahawa 4xx menghentikan
+  // percubaan semula Apple, dan ia menggalakkan kod status bertaburan.
+  //
+  // Kod status kini dipilih SEKALI oleh `httpStatusForOutcome`, yang diuji
+  // secara langsung dalam notificationProcessing.test.ts.
   const src = readFileSync(
     resolve(process.cwd(), "src/callable/appStoreServerNotifications.ts"),
     "utf8",
   );
-  // Kegagalan sementara MESTI meminta cuba semula; 4xx akan membuang
-  // notifikasi pembatalan secara kekal.
-  assert.match(src, /kind === "transient"[\s\S]{0,200}status\(503\)/);
-  assert.match(src, /status\(400\)/, "muatan tidak sah mesti 4xx");
-  assert.match(src, /status\(200\)/, "diterima mesti 200");
+  assert.match(src, /httpStatusForOutcome\(outcome\)/);
+  assert.match(src, /response\.status\(status\)/);
+  // Endpoint tidak boleh mengekod semula kejayaan sendiri.
+  assert.equal(
+    /response\.status\(200\)/.test(src),
+    false,
+    "kejayaan mesti datang daripada httpStatusForOutcome, bukan literal",
+  );
 });
