@@ -9,6 +9,7 @@ import '../../app/localization/app_localizations.dart';
 import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/providers.dart';
+import '../../core/widgets/app_states.dart';
 import '../social/social_providers.dart';
 import '../social/social_ui.dart';
 import 'group_providers.dart';
@@ -42,13 +43,31 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final group = ref.watch(groupProvider(widget.groupId)).value;
+    final groupAsync = ref.watch(groupProvider(widget.groupId));
+    final group = groupAsync.valueOrNull;
+    // myGroupRoleProvider menelan ralatnya sendiri (handleError), jadi
+    // `.value` di sini tidak boleh melontar.
     final role = ref.watch(myGroupRoleProvider(widget.groupId)).value;
     final members =
-        ref.watch(groupMembersProvider(widget.groupId)).value ?? const [];
+        ref.watch(groupMembersProvider(widget.groupId)).valueOrNull ??
+            const [];
     final isOwner = role == 'owner';
     final isManager = role == 'owner' || role == 'admin';
     final service = ref.read(socialServiceProvider);
+
+    // Dokumen grup GAGAL dibaca: JANGAN paparkan borang. Medan akan kosong
+    // (tiada penyemaian), dan Simpan akan menulis ganti nama, keterangan dan
+    // pengumuman grup dengan rentetan kosong.
+    if (groupAsync.hasError && group == null) {
+      return Scaffold(
+        appBar: AppBar(),
+        body: AppErrorState(
+          message: l.t('sectionLoadFailed'),
+          retryLabel: l.t('retryAction'),
+          onRetry: () => ref.invalidate(groupProvider(widget.groupId)),
+        ),
+      );
+    }
 
     if (!_seeded && group != null) {
       _seeded = true;

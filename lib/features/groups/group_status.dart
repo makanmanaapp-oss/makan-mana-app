@@ -207,7 +207,9 @@ class GroupStatusStrip extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l = AppLocalizations.of(context);
-    final statuses = ref.watch(groupStatusProvider(groupId)).value ?? const [];
+    // Jalur status ialah hiasan: bacaan gagal hanya menyembunyikannya.
+    final statuses =
+        ref.watch(groupStatusProvider(groupId)).valueOrNull ?? const [];
     final active = statuses.where(_hasAny).toList();
     if (active.isEmpty) return const SizedBox.shrink();
     return Column(

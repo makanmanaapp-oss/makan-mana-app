@@ -269,8 +269,11 @@ class _GroupCreateBillScreenState
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final myUid = ref.watch(authRepositoryProvider).currentUser?.uid ?? '';
-    final members = ref.watch(groupMembersProvider(widget.groupId)).value ??
-        const [];
+    // Penyemaian di bawah hanya berlaku bila senarai TIDAK kosong, jadi
+    // bacaan gagal tidak menyemai apa-apa.
+    final members =
+        ref.watch(groupMembersProvider(widget.groupId)).valueOrNull ??
+            const [];
     if (!_seeded && members.isNotEmpty) {
       _seeded = true;
       _selected.addAll(members.map((m) => m['uid'] as String));

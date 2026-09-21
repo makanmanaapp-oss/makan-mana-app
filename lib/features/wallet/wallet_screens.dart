@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../app/localization/app_localizations.dart';
 import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/widgets/app_states.dart';
 import '../../core/widgets/place_image.dart';
 import '../fit/fit_charts.dart';
 import '../fit/fit_widgets.dart';
@@ -35,10 +36,17 @@ class MealWalletScreen extends ConsumerWidget {
     final l = AppLocalizations.of(context);
     final access = ref.watch(walletAccessProvider);
     final summary = ref.watch(spendSummaryProvider);
-    final budget =
-        ref.watch(budgetProfileProvider).value ?? const BudgetProfile();
-    final expenses = ref.watch(monthExpensesProvider).value ?? const [];
+    final budgetAsync = ref.watch(budgetProfileProvider);
+    final expensesAsync = ref.watch(monthExpensesProvider);
+    final budget = budgetAsync.valueOrNull ?? const BudgetProfile();
+    final expenses = expensesAsync.valueOrNull ?? const [];
     final insights = ref.watch(coachInsightsProvider);
+    // Skrin wang: bacaan yang GAGAL tidak boleh dipaparkan sebagai "RM0
+    // dibelanjakan" atau bajet lalai. spendSummaryProvider dan
+    // coachInsightsProvider mengira daripada strim yang sama, jadi seluruh
+    // ringkasan digantikan, bukan hanya senarai.
+    final loadFailed = (expensesAsync.hasError && !expensesAsync.hasValue) ||
+        (budgetAsync.hasError && !budgetAsync.hasValue);
 
     return Scaffold(
       appBar: AppBar(
@@ -59,7 +67,16 @@ class MealWalletScreen extends ConsumerWidget {
             style: const TextStyle(
                 color: Colors.white, fontWeight: FontWeight.w800)),
       ),
-      body: ListView(
+      body: loadFailed
+          ? AppErrorState(
+              message: l.t('sectionLoadFailed'),
+              retryLabel: l.t('retryAction'),
+              onRetry: () {
+                ref.invalidate(monthExpensesProvider);
+                ref.invalidate(budgetProfileProvider);
+              },
+            )
+          : ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
         children: [
           // Ringkasan hari/minggu/bulan.
@@ -444,8 +461,25 @@ class _BudgetSettingsScreenState
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final access = ref.watch(walletAccessProvider);
-    final budget =
-        ref.watch(budgetProfileProvider).value ?? const BudgetProfile();
+    final budgetAsync = ref.watch(budgetProfileProvider);
+    // PENYUNTING: medan hanya disemai daripada nilai SEBENAR. Dahulu bingkai
+    // pertama (strim belum tiba -> `.value` null) menyemai nilai LALAI dan
+    // mengunci _loaded, jadi bajet sebenar yang tiba kemudian tidak pernah
+    // dipaparkan dan Simpan menulis ganti ia dengan lalai. Bacaan yang GAGAL
+    // pula melontar (kotak kelabu). Kedua-duanya ditutup di sini.
+    if (!_loaded && !budgetAsync.hasValue) {
+      return Scaffold(
+        appBar: AppBar(title: Text(l.t('budgetCoachTitle'))),
+        body: budgetAsync.hasError
+            ? AppErrorState(
+                message: l.t('sectionLoadFailed'),
+                retryLabel: l.t('retryAction'),
+                onRetry: () => ref.invalidate(budgetProfileProvider),
+              )
+            : const Center(child: CircularProgressIndicator()),
+      );
+    }
+    final budget = budgetAsync.valueOrNull ?? const BudgetProfile();
     if (!_loaded) {
       _daily.text = budget.dailyBudget.round().toString();
       _weekly.text = budget.weeklyBudget.round().toString();

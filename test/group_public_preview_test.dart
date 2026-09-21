@@ -27,10 +27,17 @@ void main() {
     test('membership derived from SAFE myGroupIdsProvider, not a member-doc get',
         () {
       expect(preMembership.contains('ref.watch(myGroupIdsProvider)'), isTrue);
+      // valueOrNull, bukan .value: `AsyncError.value` MELONTAR (riverpod
+      // 2.6.1 common.dart:493), jadi bentuk lama yang disemat di sini
+      // meruntuhkan hub menjadi kotak kelabu bila keahlian gagal dibaca.
+      // Niat ujian ini - keahlian dari myGroupIdsProvider yang selamat -
+      // tidak berubah. Lihat test/riverpod_class_d_test.dart.
       expect(
           preMembership.contains(
-              '(myIdsAsync.value ?? const <String>{}).contains(groupId)'),
+              '(myIdsAsync.valueOrNull ?? const <String>{}).contains(groupId)'),
           isTrue);
+      expect(preMembership.contains('myIdsAsync.value ??'), isFalse,
+          reason: 'bentuk yang melontar tidak boleh kembali');
     });
 
     test('NO member-only provider watched before membership is known (Part 6)',

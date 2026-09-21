@@ -76,8 +76,9 @@ class FitCoachCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l = AppLocalizations.of(context);
     final access = ref.watch(fitAccessProvider);
-    final profile = ref.watch(fitProfileProvider).value;
-    final metrics = ref.watch(todayMetricsProvider).value;
+    // Kad ringkasan (hiasan): bacaan gagal jatuh ke teks persediaan/teaser.
+    final profile = ref.watch(fitProfileProvider).valueOrNull;
+    final metrics = ref.watch(todayMetricsProvider).valueOrNull;
     final score = ref.watch(dailyFitScoreProvider);
 
     String subtitle;

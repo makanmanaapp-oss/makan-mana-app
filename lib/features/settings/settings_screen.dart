@@ -143,7 +143,7 @@ class SettingsScreen extends ConsumerWidget {
           sectionLabel(l.t('planLabel')),
           Builder(builder: (context) {
             final trial =
-                couponTrialInfo(ref.watch(myUserDocProvider).value);
+                couponTrialInfo(ref.watch(myUserDocProvider).valueOrNull);
             final planTitle = trial.isActive
                 ? l.t('planProTrial')
                 : l.t(switch (plan) {

@@ -6,6 +6,7 @@ import '../../app/localization/app_localizations.dart';
 import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/providers.dart';
+import '../../core/widgets/app_states.dart';
 import 'taxonomy_data.dart';
 
 /// Field user_profiles untuk setiap jenis taksonomi.
@@ -89,13 +90,30 @@ class _TaxonomySheetState extends ConsumerState<_TaxonomySheet> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final current = ref.watch(userTaxonomyProvider(widget.type)).value ??
-        const <String>{};
+    final currentAsync = ref.watch(userTaxonomyProvider(widget.type));
+    // PENYUNTING: _save() menulis KESELURUHAN medan dengan _selected. Pilihan
+    // hanya dimulakan daripada nilai SEBENAR - dahulu bingkai memuatkan
+    // (`.value` null) memulakannya KOSONG dan mengunci _init, jadi Simpan
+    // memadam keutamaan pengguna; dan bacaan GAGAL melontar (kotak kelabu).
+    if (!_init && !currentAsync.hasValue) {
+      return SizedBox(
+        height: 280,
+        child: currentAsync.hasError
+            ? AppErrorState(
+                message: l.t('sectionLoadFailed'),
+                retryLabel: l.t('retryAction'),
+                onRetry: () =>
+                    ref.invalidate(userTaxonomyProvider(widget.type)),
+              )
+            : const Center(child: CircularProgressIndicator()),
+      );
+    }
     if (!_init) {
-      _selected = {...current};
+      _selected = {...?currentAsync.valueOrNull};
       _init = true;
     }
-    final plan = ref.watch(userPlanProvider).value ?? 'free';
+    // Gagal-tertutup: pelan yang gagal dibaca dilayan sebagai 'free'.
+    final plan = ref.watch(userPlanProvider).valueOrNull ?? 'free';
     final groups = taxonomyFor(widget.type);
     final note = taxonomySafetyNote(widget.type);
     final q = _query.toLowerCase();

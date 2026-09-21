@@ -58,13 +58,14 @@ final myDmThreadsProvider =
             return db.compareTo(da);
           });
         return list;
-      })
-      // Ralat (contoh: rules belum aktif) → emit kosong, bukan spinner
-      // selamanya; inbox papar empty state jujur.
-      .transform(StreamTransformer.fromHandlers(
-        handleError: (e, st, sink) =>
-            sink.add(const <(String, Map<String, dynamic>)>[]),
-      ));
+      });
+  // Ralat TIDAK lagi ditukar kepada senarai kosong. Transformasi lama
+  // (b06629d) memancarkan [] pada ralat dan menyifatkannya sebagai "empty
+  // state jujur" - tetapi itu memberitahu pengguna mereka tiada mesej
+  // sedangkan senarai sebenarnya GAGAL dimuat. Pembaikan fbb6046 membina
+  // keadaan ralat + Cuba Lagi dalam dm_inbox_screen, dan transformasi inilah
+  // yang menjadikannya kod mati. Pembaca: dm_inbox_screen (cabang loadFailed)
+  // dan dmTotalUnreadProvider (valueOrNull -> 0, tiada lencana).
 });
 
 /// Satu thread (live) — null jika belum wujud.

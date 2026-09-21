@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/localization/app_localizations.dart';
 import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/widgets/app_states.dart';
 import 'fit_charts.dart';
 import 'fit_models.dart';
 import 'sport_mood_display.dart';
@@ -81,20 +82,46 @@ class _MonitorBody extends ConsumerWidget {
     // .value strim profil secara dalaman dan melempar semula ralat strim -
     // laluan biasa mesti selamat dahulu (ISSUE 001.3).
     final targets = ref.watch(nutritionTargetsProvider);
+    // Laluan Pro (bukan pratonton) membaca strim sebenar. `.value` melontar
+    // pada AsyncError (kotak kelabu); valueOrNull sahaja pula akan melukis
+    // carta KOSONG yang kelihatan seperti minggu tanpa aktiviti. Phase 2.16A
+    // sudah menetapkan laluan Pro tidak boleh memalsukan data - jadi bacaan
+    // yang gagal dilaporkan sebagai kegagalan.
+    final live = preview
+        ? const <AsyncValue<Object?>>[]
+        : <AsyncValue<Object?>>[
+            ref.watch(weeklyMetricsProvider),
+            ref.watch(bodyEntriesProvider),
+            ref.watch(recentWorkoutsProvider),
+            ref.watch(fitWeeklyReportProvider),
+          ];
+    if (live.any((a) => a.hasError && !a.hasValue)) {
+      return AppErrorState(
+        message: l.t('sectionLoadFailed'),
+        retryLabel: l.t('retryAction'),
+        onRetry: () {
+          ref.invalidate(weeklyMetricsProvider);
+          ref.invalidate(bodyEntriesProvider);
+          ref.invalidate(recentWorkoutsProvider);
+          ref.invalidate(fitWeeklyReportProvider);
+        },
+      );
+    }
     final weekly = preview
         ? _sampleWeek()
-        : ref.watch(weeklyMetricsProvider).value ?? const [];
+        : ref.watch(weeklyMetricsProvider).valueOrNull ?? const [];
     final bodyEntries = preview
         ? _sampleBody()
-        : ref.watch(bodyEntriesProvider).value ?? const [];
+        : ref.watch(bodyEntriesProvider).valueOrNull ?? const [];
     final workouts = preview
         ? _sampleWorkouts()
-        : ref.watch(recentWorkoutsProvider).value ?? const [];
+        : ref.watch(recentWorkoutsProvider).valueOrNull ?? const [];
     // Phase 2.16A: the Pro production path must never fall back to sample data.
     // _sampleReport stays only behind the non-Pro locked preview (paywall).
     final report = preview
         ? _sampleReport(l)
-        : ref.watch(fitWeeklyReportProvider).value ?? const <String, dynamic>{};
+        : ref.watch(fitWeeklyReportProvider).valueOrNull ??
+            const <String, dynamic>{};
 
     final stepTarget = profile?.stepTarget.toDouble() ?? 8000;
     final labels = weekly.map((e) => _dayLabel(e.$1.weekday)).toList();

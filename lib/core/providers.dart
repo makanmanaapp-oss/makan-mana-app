@@ -112,7 +112,9 @@ final currentUidProvider = Provider<String>((ref) {
   if (!ref.watch(firebaseReadyProvider)) return '';
   final auth = ref.watch(authStateChangesProvider);
   if (auth.isLoading) return FirebaseAuth.instance.currentUser?.uid ?? '';
-  return auth.value?.uid ?? '';
+  // valueOrNull: Provider SEGERAK yang dibaca di merata tempat - lontaran di
+  // sini merambat ke SETIAP pembaca. Strim auth yang ralat = log keluar.
+  return auth.valueOrNull?.uid ?? '';
 });
 
 final authRepositoryProvider = Provider<AuthRepository>((ref) {

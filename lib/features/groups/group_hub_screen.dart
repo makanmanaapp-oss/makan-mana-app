@@ -7,6 +7,7 @@ import '../../app/localization/app_localizations.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/events/event_types.dart';
 import '../../core/providers.dart';
+import '../../core/widgets/app_states.dart';
 import '../social/compose_sheet.dart';
 import '../social/post_card.dart';
 import '../social/social_providers.dart';
@@ -96,7 +97,12 @@ class _GroupHubScreenState extends ConsumerState<GroupHubScreen>
     final l = AppLocalizations.of(context);
     final groupId = widget.groupId;
     final groupAsync = ref.watch(groupProvider(groupId));
-    final group = groupAsync.value;
+    // valueOrNull, BUKAN .value: `.value` MELONTAR pada AsyncError (riverpod
+    // 2.6.1 common.dart:493). Dokumen grup peribadi yang DITOLAK untuk
+    // bukan-ahli ialah kes sebenar (HOTFIX 4.2 di bawah dibina untuknya),
+    // tetapi `.value` melontar sebelum _GroupUnavailable sempat dicapai dan
+    // pengguna mendapat kotak kelabu.
+    final group = groupAsync.valueOrNull;
     // HOTFIX 4.3: tentukan keahlian dari SUMBER SELAMAT — collectionGroup
     // `members where uid == me` (myGroupIdsProvider). Ini TIDAK permission-deny
     // untuk bukan-ahli (rule: resource.data.uid == auth.uid). JANGAN guna
@@ -107,7 +113,7 @@ class _GroupHubScreenState extends ConsumerState<GroupHubScreen>
     // cabang MEMBER di bawah.
     final myIdsAsync = ref.watch(myGroupIdsProvider);
     final isMember =
-        (myIdsAsync.value ?? const <String>{}).contains(groupId);
+        (myIdsAsync.valueOrNull ?? const <String>{}).contains(groupId);
 
     Scaffold spinner() => Scaffold(
           backgroundColor: AppColors.threadsBg,
@@ -123,6 +129,10 @@ class _GroupHubScreenState extends ConsumerState<GroupHubScreen>
     // HOTFIX 4.2: grup TAK BOLEH dibaca (private non-member / tiada) ATAU
     // dipadam → keadaan mesra, BUKAN ralat Firebase mentah.
     if (group == null || group.isDeleted) return _GroupUnavailable();
+    // Keahlian GAGAL dibaca: hasValue kekal false, jadi tanpa semakan ini
+    // pengguna mendapat spinner selama-lamanya. Gagal-tertutup - jangan andai
+    // ahli, jangan mula baca terhad.
+    if (myIdsAsync.hasError) return _GroupUnavailable();
     // HOTFIX 4.3 Part 7: keahlian belum resolve → tunggu selamat (jangan andai
     // ahli, jangan mula baca terhad) untuk elak race permission-denied.
     if (!myIdsAsync.hasValue) return spinner();
@@ -591,10 +601,16 @@ class _GroupFeedTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l = AppLocalizations.of(context);
-    final group = ref.watch(groupProvider(groupId)).value;
+    // Kad pin + ringkasan undian ialah HIASAN: bacaan gagal hanya
+    // menyembunyikannya. Siaran pula kandungan UTAMA tab ini - bacaan gagal
+    // mesti dilaporkan, bukan dipaparkan sebagai "tiada siaran".
+    final group = ref.watch(groupProvider(groupId)).valueOrNull;
     final postsAsync = ref.watch(groupFeedProvider(groupId));
-    final posts = postsAsync.value ?? const [];
-    final polls = ref.watch(groupPollsProvider(groupId)).value ?? const [];
+    final posts = postsAsync.valueOrNull ?? const [];
+    final polls =
+        ref.watch(groupPollsProvider(groupId)).valueOrNull ?? const [];
+    // groupBillsProvider menelan ralatnya sendiri (handleError), jadi
+    // `.value` di sini tidak boleh melontar.
     final bills = ref.watch(groupBillsProvider(groupId)).value ?? const [];
     final activePoll = polls
         .where((p) => (p['status'] as String?) == 'open')
@@ -604,6 +620,13 @@ class _GroupFeedTab extends ConsumerWidget {
 
     if (postsAsync.isLoading && posts.isEmpty) {
       return const Center(child: CircularProgressIndicator());
+    }
+    if (postsAsync.hasError && posts.isEmpty) {
+      return AppErrorState(
+        message: l.t('feedUnavailable'),
+        retryLabel: l.t('retryAction'),
+        onRetry: () => ref.invalidate(groupFeedProvider(groupId)),
+      );
     }
 
     return ListView(
@@ -777,7 +800,7 @@ class _GroupPollsTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l = AppLocalizations.of(context);
     final pollsAsync = ref.watch(groupPollsProvider(groupId));
-    final polls = pollsAsync.value ?? const [];
+    final polls = pollsAsync.valueOrNull ?? const [];
     final active =
         polls.where((p) => (p['status'] as String?) == 'open').toList();
     final closed =
@@ -785,6 +808,14 @@ class _GroupPollsTab extends ConsumerWidget {
 
     if (pollsAsync.isLoading && polls.isEmpty) {
       return const Center(child: CircularProgressIndicator());
+    }
+    // Bacaan gagal bukan "tiada undian".
+    if (pollsAsync.hasError && polls.isEmpty) {
+      return AppErrorState(
+        message: l.t('sectionLoadFailed'),
+        retryLabel: l.t('retryAction'),
+        onRetry: () => ref.invalidate(groupPollsProvider(groupId)),
+      );
     }
 
     return Scaffold(
@@ -865,15 +896,20 @@ class _GroupMembersTab extends ConsumerWidget {
     final l = AppLocalizations.of(context);
     final myUid = ref.watch(authRepositoryProvider).currentUser?.uid ?? '';
     final membersAsync = ref.watch(groupMembersProvider(groupId));
-    final members = membersAsync.value ?? const [];
+    // Cabang ralat di bawah sudah ditulis, tetapi `.value` melontar sebelum
+    // ia dicapai - jadi ia tidak pernah berjalan.
+    final members = membersAsync.valueOrNull ?? const [];
 
     if (membersAsync.isLoading && members.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
     if (membersAsync.hasError && members.isEmpty) {
-      return Center(
-        child: Text(l.t('profileError'),
-            style: TextStyle(color: AppColors.threadsMuted)),
+      // Dahulu l.t('profileError') ("Profile tak dapat dibuka.") -
+      // menyalahkan profil untuk kegagalan senarai ahli, tanpa jalan keluar.
+      return AppErrorState(
+        message: l.t('sectionLoadFailed'),
+        retryLabel: l.t('retryAction'),
+        onRetry: () => ref.invalidate(groupMembersProvider(groupId)),
       );
     }
 

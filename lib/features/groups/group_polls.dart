@@ -227,7 +227,8 @@ class PollCard extends ConsumerWidget {
     final total = (poll['totalVotes'] as num?)?.toInt() ?? 0;
     final isOpen = (poll['status'] as String?) == 'open';
     final myVote =
-        ref.watch(myPollVoteProvider((groupId: groupId, pollId: pollId))).value;
+        ref.watch(myPollVoteProvider((groupId: groupId, pollId: pollId)))
+            .valueOrNull; // hiasan: tanpa undi saya, tiada sorotan
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),

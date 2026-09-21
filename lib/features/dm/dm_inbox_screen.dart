@@ -46,7 +46,9 @@ class _DmInboxScreenState extends ConsumerState<DmInboxScreen> {
     // Ralat BUKAN keadaan kosong: merapikannya kepada [] akan
     // memberitahu pengguna mereka tiada mesej sedangkan senarai
     // sebenarnya gagal dimuat.
-    final threads = threadsAsync.value ?? const [];
+    // valueOrNull: `.value` melontar pada AsyncError, jadi cabang loadFailed
+    // di bawah tidak pernah dicapai.
+    final threads = threadsAsync.valueOrNull ?? const [];
     final loadFailed = threadsAsync.hasError && threads.isEmpty;
 
     return Scaffold(
@@ -162,7 +164,7 @@ class _ThreadTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final l = AppLocalizations.of(context);
     // Nama/avatar dari profil awam; fallback selamat jika tiada.
-    final profile = ref.watch(publicProfileProvider(otherUid)).value;
+    final profile = ref.watch(publicProfileProvider(otherUid)).valueOrNull;
     final name = profile?.displayName ?? 'Foodie';
     final username = profile?.username;
 

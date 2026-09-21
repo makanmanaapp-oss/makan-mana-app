@@ -8,6 +8,7 @@ import '../../app/theme.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/events/event_types.dart';
 import '../../core/providers.dart';
+import '../../core/widgets/app_states.dart';
 import '../../core/widgets/makan_avatar.dart';
 import '../social/food_profile.dart';
 import '../social/social_providers.dart';
@@ -66,8 +67,11 @@ class _DmConversationScreenState
     if (text.isEmpty || _sending) return;
     // Blok (arah saya → dia) disemak client; arah dia → saya dan
     // penguatkuasaan muktamad ada di RULES Firestore (dua arah).
+    // valueOrNull: `.value` melontar pada AsyncError dan menggagalkan
+    // penghantaran secara senyap. Senarai blok yang gagal dibaca TIDAK membuka
+    // apa-apa - rules menolak mesej ke/dari akaun yang disekat.
     final blocked =
-        ref.read(myBlockedIdsProvider).value ?? const <String>{};
+        ref.read(myBlockedIdsProvider).valueOrNull ?? const <String>{};
     if (blocked.contains(widget.otherUid)) {
       ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(l.t('dmCannotMessage'))));
@@ -193,12 +197,14 @@ class _DmConversationScreenState
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final myUid = _myUid;
+    // Profil & senarai blok: hiasan / petunjuk UI (rules menguatkuasakan
+    // blok). Mesej: kandungan UTAMA - kegagalan dilaporkan di bawah.
     final profile =
-        ref.watch(publicProfileProvider(widget.otherUid)).value;
+        ref.watch(publicProfileProvider(widget.otherUid)).valueOrNull;
     final messagesAsync = ref.watch(dmMessagesProvider(_threadId));
-    final messages = messagesAsync.value ?? const [];
+    final messages = messagesAsync.valueOrNull ?? const [];
     final blocked =
-        (ref.watch(myBlockedIdsProvider).value ?? const <String>{})
+        (ref.watch(myBlockedIdsProvider).valueOrNull ?? const <String>{})
             .contains(widget.otherUid);
 
     // Tanda dibaca bila thread dibuka / mesej baharu tiba.
@@ -265,6 +271,14 @@ class _DmConversationScreenState
           Expanded(
             child: messagesAsync.isLoading && messages.isEmpty
                 ? const Center(child: CircularProgressIndicator())
+                // Bacaan gagal bukan "mulakan perbualan" (dmStartHint).
+                : messagesAsync.hasError && messages.isEmpty
+                    ? AppErrorState(
+                        message: l.t('dmLoadError'),
+                        retryLabel: l.t('retryAction'),
+                        onRetry: () =>
+                            ref.invalidate(dmMessagesProvider(_threadId)),
+                      )
                 : messages.isEmpty
                     ? Center(
                         child: Padding(

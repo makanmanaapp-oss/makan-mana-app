@@ -16,7 +16,8 @@ class ProHubScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final l = AppLocalizations.of(context);
-    final plan = ref.watch(userPlanProvider).value ?? 'free';
+    // Gagal-tertutup: pelan yang gagal dibaca dilayan sebagai 'free'.
+    final plan = ref.watch(userPlanProvider).valueOrNull ?? 'free';
     final proOk = plan == 'pro';
 
     void open(String route) {

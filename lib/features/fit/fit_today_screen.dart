@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/localization/app_localizations.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/providers.dart';
+import '../../core/widgets/app_states.dart';
 import 'fit_charts.dart';
 import 'fit_log_sheets.dart';
 import 'fit_models.dart';
@@ -71,11 +72,26 @@ class FitTodayScreen extends ConsumerWidget {
     }
 
     final targets = ref.watch(nutritionTargetsProvider);
-    final metrics =
-        ref.watch(todayMetricsProvider).value ?? const DailyMetrics();
+    final metricsAsync = ref.watch(todayMetricsProvider);
+    // Metrik hari ini yang GAGAL dibaca bukan "0 langkah, 0 kalori": itu
+    // akan mengelirukan pengguna yang sedang menjejak. `.value` pula melontar
+    // (kotak kelabu). Laporkan kegagalan.
+    if (metricsAsync.hasError && !metricsAsync.hasValue) {
+      return Scaffold(
+        appBar: AppBar(title: Text(l.t('fitCoachTitle'))),
+        body: AppErrorState(
+          message: l.t('sectionLoadFailed'),
+          retryLabel: l.t('retryAction'),
+          onRetry: () => ref.invalidate(todayMetricsProvider),
+        ),
+      );
+    }
+    final metrics = metricsAsync.valueOrNull ?? const DailyMetrics();
     final plan = ref.watch(todayPlanProvider);
     final score = ref.watch(dailyFitScoreProvider) ?? 0;
-    final nearby = ref.watch(nearbyPlacesProvider).value ?? const [];
+    // Cadangan tempat berdekatan: hiasan - bacaan gagal hanya
+    // menyembunyikannya.
+    final nearby = ref.watch(nearbyPlacesProvider).valueOrNull ?? const [];
     final menus = targets == null
         ? const <MenuSuggestion>[]
         : ref.watch(fitServiceProvider).suggestMenus(

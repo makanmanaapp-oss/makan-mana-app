@@ -42,7 +42,7 @@ class _GroupDecisionScreenState
   /// Buat sesi baru dari tempat sebenar berdekatan (Pro sahaja).
   Future<void> _createSession() async {
     final l = AppLocalizations.of(context);
-    final plan = ref.read(userPlanProvider).value ?? 'free';
+    final plan = ref.read(userPlanProvider).valueOrNull ?? 'free'; // gagal-tertutup
     if (plan != 'pro') {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(l.t('lockedPro'))),

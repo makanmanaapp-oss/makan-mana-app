@@ -310,7 +310,11 @@ void main() {
     // TAB GRUP: +1 kunci (groupsUnavailable) merentas 4 bahasa - senarai grup
     //   yang GAGAL dibaca kini mempunyai ayatnya sendiri dan tidak lagi
     //   berpura-pura "anda tiada grup".
-    expect(msKeys, hasLength(1835));
+    // KELAS D: +1 kunci (sectionLoadFailed) merentas 4 bahasa - tab Undian
+    //   dan Ahli grup, tetapan grup, Meal Wallet, sheet taxonomy dan Fit yang
+    //   GAGAL dibaca kini berkata begitu, bukannya menunjukkan senarai kosong,
+    //   RM0, sifar, atau (tab Ahli) "Profile tak dapat dibuka".
+    expect(msKeys, hasLength(1836));
     final placeholder = RegExp(r'\{[^}]+\}');
     final msValues = AppLocalizations.valuesForTesting(const Locale('ms'));
     for (final language in ['en', 'zh', 'ta']) {

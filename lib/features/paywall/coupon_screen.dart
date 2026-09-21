@@ -57,7 +57,9 @@ class _CouponScreenState extends ConsumerState<CouponScreen> {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final mm = context.mm;
-    final userDoc = ref.watch(myUserDocProvider).value;
+    // valueOrNull: couponTrialInfo(null) = tiada percubaan; penebusan tetap
+    // disahkan pelayan, jadi dokumen yang gagal dibaca tidak membuka apa-apa.
+    final userDoc = ref.watch(myUserDocProvider).valueOrNull;
     final info = couponTrialInfo(userDoc);
 
     return Scaffold(

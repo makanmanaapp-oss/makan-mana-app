@@ -235,7 +235,8 @@ class _CreateBillScreenState extends ConsumerState<CreateBillScreen> {
       }
     }
     // Peserta pertama = saya.
-    final myName = ref.read(myDisplayNameProvider).value ?? 'Saya';
+    // initState: lontaran di sini meruntuhkan skrin. Nama ialah lalai.
+    final myName = ref.read(myDisplayNameProvider).valueOrNull ?? 'Saya';
     final myUid = ref.read(authRepositoryProvider).currentUser?.uid;
     _participants.add(TtParticipant(name: myName, uid: myUid));
     _payer = myName;
@@ -764,7 +765,7 @@ class BillDetailScreen extends ConsumerWidget {
   }
 
   void _share(BuildContext context, WidgetRef ref) {
-    final data = ref.read(billProvider(billId)).value;
+    final data = ref.read(billProvider(billId)).valueOrNull;
     if (data == null) return;
     final parts = ((data['participants'] as List?) ?? const [])
         .map((e) => TtParticipant.fromMap(Map<String, dynamic>.from(e as Map)))

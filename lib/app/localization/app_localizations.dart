@@ -1087,6 +1087,7 @@ class AppLocalizations {
       'feedEmpty':
           'Belum ada siaran lagi. Jadi yang pertama — spin dan jom makan!',
       'feedUnavailable': 'Feed tidak dapat dimuatkan sekarang.',
+      'sectionLoadFailed': 'Bahagian ini tidak dapat dimuatkan sekarang.',
       'justNow': 'baru tadi',
       'timeUnavailable': 'Masa tidak diketahui',
       'minAgo': 'min lepas',
@@ -2474,6 +2475,7 @@ class AppLocalizations {
       'feedAteAt': 'ate at',
       'feedEmpty': 'No posts yet. Be the first — spin and jom makan!',
       'feedUnavailable': 'The feed could not be loaded right now.',
+      'sectionLoadFailed': "This section couldn't be loaded right now.",
       'justNow': 'just now',
       'timeUnavailable': 'Time unavailable',
       'minAgo': 'min ago',
@@ -3787,6 +3789,7 @@ class AppLocalizations {
       'feedAteAt': '吃了',
       'feedEmpty': '还没有动态。快来转一转，做第一个发帖的人！',
       'feedUnavailable': '目前无法加载动态。',
+      'sectionLoadFailed': '此部分暂时无法加载。',
       'justNow': '刚刚',
       'timeUnavailable': '时间不详',
       'minAgo': '分钟前',
@@ -5174,6 +5177,7 @@ class AppLocalizations {
       'feedEmpty':
           'இன்னும் பதிவுகள் இல்லை. முதலில் நீங்கள் — சுழற்றி சாப்பிடுங்கள்!',
       'feedUnavailable': 'ஊட்டத்தை இப்போது ஏற்ற முடியவில்லை.',
+      'sectionLoadFailed': 'இந்தப் பகுதியை இப்போது ஏற்ற முடியவில்லை.',
       'justNow': 'இப்போதுதான்',
       'timeUnavailable': 'நேரம் தெரியவில்லை',
       'minAgo': 'நிமிடம் முன்',
