@@ -43,8 +43,18 @@ Ini BUKAN ujian rules — ia menjalankan callable `onCall` sebenar dan memerluka
 **functions** yang menjalankan fungsi repo INI yang telah dikompil:
 
 ```bash
-firebase emulators:exec --only functions,firestore,auth "node rules_test/functions_test.mjs"
+cd functions && npm run build && cd ..
+FUNCTIONS_DISCOVERY_TIMEOUT=90 firebase emulators:exec --project demo-makanmana-qa   --only functions,firestore,auth "node rules_test/functions_test.mjs"
 ```
+
+- `--project demo-...` WAJIB. Lalai skrip ialah `makanmana-c59f3` (produksi)
+  jika `GCLOUD_PROJECT` tidak ditetapkan; projek berawalan `demo-` dijamin
+  emulator-sahaja oleh Firebase CLI.
+- `FUNCTIONS_DISCOVERY_TIMEOUT=90`: tanpanya emulator gagal dengan
+  "User code failed to load. Cannot determine backend specification. Timeout
+  after 10000" - pangkalan kod ini mengambil masa lebih 10 s untuk dimuat.
+- `functions/lib/` mesti dibina dahulu (`npm run build`) - emulator memuatkan
+  `lib/index.js`, bukan TypeScript.
 
 Dijalankan terhadap emulator yang dihoskan dari worktree lain ia gagal dengan
 `functions/not-found`. Ia juga memerlukan keadaan auth yang bersih — jika tidak, larian kedua
