@@ -42,6 +42,11 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: any
+  # Diperlukan oleh test/explore_fetch_failure_latch_test.dart untuk memajukan
+  # masa secara terkawal (had masa lokasi 20s) tanpa membuat suite menunggu
+  # 20 saat sebenar. Ia sudah pun tiba secara transitif melalui flutter_test;
+  # mengisytiharkannya menjadikan pergantungan itu jelas dan stabil.
+  fake_async: any
   flutter_launcher_icons: ^0.14.4
 
 flutter:
