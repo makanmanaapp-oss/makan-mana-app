@@ -1,6 +1,7 @@
 import * as admin from "firebase-admin";
 
 import {db} from "../config/firebase";
+import {decideEgress} from "../domain/security/egressGuard";
 
 /** Hantar push ke seorang pengguna (senyap gagal - UX tak terjejas). */
 export async function pushToUser(
@@ -12,6 +13,8 @@ export async function pushToUser(
     const snap = await db.collection("users").doc(uid).get();
     const token = snap.data()?.fcmToken as string | undefined;
     if (!token) return;
+    const egress = decideEgress({kind: "fcm_push"});
+    if (!egress.allowed) throw new Error(egress.reason);
     await admin.messaging().send({
       token,
       notification: {title, body},
@@ -29,6 +32,8 @@ export async function pushToTopic(
   body: string,
 ): Promise<void> {
   try {
+    const egress = decideEgress({kind: "fcm_push"});
+    if (!egress.allowed) throw new Error(egress.reason);
     await admin.messaging().send({
       topic,
       notification: {title, body},

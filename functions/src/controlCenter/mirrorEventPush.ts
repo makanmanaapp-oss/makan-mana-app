@@ -18,6 +18,8 @@ import type {CollectionMirrorRecord} from "../domain/cms/collectionDocument";
  * never stored in an event record.
  */
 
+import {decideEgress} from "../domain/security/egressGuard";
+
 export const CONTROL_CENTER_SYNC_SECRET = defineSecret("CONTROL_CENTER_SYNC_SECRET");
 const PRODUCTION_CONTROL_CENTER_MIRROR =
   "https://makanmana-control-center.vercel.app/api/internal/sync/mirror";
@@ -27,16 +29,24 @@ const PRODUCTION_CONTROL_CENTER_MIRROR =
  *
  * Deployed functions ALWAYS push to production. The override exists so that a
  * function running inside the Firebase emulator - during isolated device QA -
- * cannot reach the production console, and it is fenced twice over:
+ * is pointed at a local console instead, and it is fenced twice over:
  *
  *   - `FUNCTIONS_EMULATOR` is set by the emulator itself and is absent in every
  *     deployed environment, so production cannot be redirected by configuration;
  *   - the override must be loopback, so an isolated run cannot be pointed at
  *     some other host either.
  *
- * Anything that fails those checks falls back to production, which is the safe
- * direction for a deployed function and is unreachable for an isolated one,
- * because the emulator run has no route to production in the first place.
+ * PEMBETULAN (22 Sep 2026). Versi terdahulu komen ini mendakwa larian emulator
+ * "has no route to production in the first place". ITU TIDAK BENAR: emulator
+ * berjalan pada mesin jurutera dengan akses internet penuh dan dengan
+ * Application Default Credentials pemilik, jadi resolusi ini jatuh balik kepada
+ * URL produksi yang BOLEH DIHUBUNGI. Satu-satunya perkara yang menghalang
+ * penulisan dahulu ialah rahsia penyegerakan yang kebetulan tiada — satu fail
+ * `.secret.local` yang tersilap diletakkan sudah cukup untuk membuka laluan itu.
+ *
+ * Oleh itu resolusi ini TIDAK LAGI menjadi perlindungan. `pushMirrorBatch`
+ * menguatkuasakan `decideEgress` secara eksplisit, yang membaca identiti projek
+ * dan mod emulator SAHAJA dan tidak pernah membaca rahsia.
  */
 export function resolveControlCenterMirrorUrl(
   env: NodeJS.ProcessEnv = process.env,
@@ -72,6 +82,16 @@ export async function pushMirrorBatch(params: {
   eventId: string;
 }): Promise<void> {
   if (params.records.length === 0) return;
+
+  // PAGAR EGRESS — dinilai pada setiap penghantaran, bukan pada masa muat, dan
+  // bebas sepenuhnya daripada rahsia. Larian QA tidak boleh menghubungi
+  // Control Center produksi walaupun rahsia yang sah dibekalkan.
+  const egress = decideEgress({
+    kind: "control_center_mirror",
+    destination: CONTROL_CENTER_MIRROR_URL,
+  });
+  if (!egress.allowed) throw new Error(egress.reason);
+
   const response = await fetch(CONTROL_CENTER_MIRROR_URL, {
     method: "POST",
     headers: {

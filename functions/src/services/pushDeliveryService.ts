@@ -30,6 +30,7 @@ import {
   resolveDeliveryOutcomes,
 } from "../domain/notifications/pushDelivery";
 import {pushCopyFor} from "../domain/notifications/pushCopy";
+import {decideEgress} from "../domain/security/egressGuard";
 
 export interface DeliverableRecord {
   notificationId: string;
@@ -68,6 +69,11 @@ export interface MessagingSender {
 /** Default sender: Admin multicast-equivalent (sendEach). No raw token logs. */
 export const adminMessagingSender: MessagingSender = {
   async send(messages) {
+    // PAGAR EGRESS — FCM tiada emulator, jadi penghantaran dari larian QA akan
+    // keluar sebenar. Disekat mengikut identiti projek + mod emulator, bukan
+    // mengikut kehadiran rahsia.
+    const egress = decideEgress({kind: "fcm_push"});
+    if (!egress.allowed) throw new Error(egress.reason);
     const res = await admin.messaging().sendEach(
       messages.map((m) => ({
         token: m.token,
