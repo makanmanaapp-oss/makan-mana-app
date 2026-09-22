@@ -21,9 +21,15 @@ kepada yang lain.
 | Di mana ia berjalan | Emulator pada mesin pembangun | Firebase sebenar |
 | Digunakan untuk | Simulator, ujian unit, rules | **iPhone fizikal** |
 | Boleh dicapai dari peranti | Tidak (localhost sahaja) | Ya |
-| Egress Control Center | Gelung-balik sahaja | **DISEKAT** |
+| Egress Control Center (semua titik akhir) | Gelung-balik sahaja | **DISEKAT** |
 | Egress FCM | **DISEKAT** | Dibenarkan (projek sendiri) |
 | Egress App Store API | **DISEKAT** | **DISEKAT lalai** |
+| Egress Google Play Developer API | **DISEKAT** | **DISEKAT lalai** |
+| Egress API Google Cloud (Places, Vertex) | **DISEKAT** | Dibenarkan (kunci projek QA sendiri) |
+
+Setiap tapak egress dalam backend dilindungi — `egressSweep.test.ts` membaca
+setiap fail sumber dan menggagalkan suite jika satu tapak baharu ditambah tanpa
+pagar.
 
 Awalan `demo-` bukan konvensyen penamaan — Firebase memperlakukan projek
 sedemikian sebagai tidak wujud di hulu, jadi SDK **tidak boleh** mencapai
@@ -92,6 +98,9 @@ jadi mengubahnya ialah keputusan yang jelas dan bukan hanyutan.
 | Akaun perkhidmatan produksi | **TIDAK PERNAH** diberikan peranan dalam projek QA, dan sebaliknya. |
 | Rahsia | Simpanan berasingan. Rahsia QA tidak pernah dalam persekitaran produksi. |
 | Kunci App Store Server API | **JANGAN** salin ke QA. Lihat §6. |
+| Akaun perkhidmatan Google Play | **JANGAN** salin ke QA. Egress Play disekat dalam REAL_QA. |
+| Kunci Places API | Kunci **SENDIRI** projek QA. Pagar membenarkan Places dalam REAL_QA kerana identiti ialah projek QA — kunci produksi yang disalin akan membilkan produksi, dan pagar tidak membaca kunci. |
+| Rahsia Control Center (`CONTROL_CENTER_SYNC_SECRET`, `MERCHANT_BRIDGE_SECRET`, Supabase) | **JANGAN** peruntukkan dalam QA langsung. Egress CC disekat dalam REAL_QA; rahsia itu tiada kegunaan di sana. |
 
 Pagar egress tidak membaca kelayakan, jadi kelayakan yang tersilap diletakkan
 **tidak boleh** membuka laluan yang ditolak. Ia masih tidak sepatutnya wujud.
