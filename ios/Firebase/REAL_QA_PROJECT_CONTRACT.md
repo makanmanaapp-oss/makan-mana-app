@@ -65,11 +65,16 @@ jadi mengubahnya ialah keputusan yang jelas dan bukan hanyutan.
 
 1. Kemas kini `ios/Firebase/qa/GoogleService-Info.plist` (plist sebenar).
 2. `MM_GOOGLE_REVERSED_CLIENT_ID` dalam ketiga-tiga `*-qa.xcconfig`.
-3. `GROUP_IMAGE_BUCKET` ditetapkan kepada baldi LALAI projek QA
+3. `INVITE_BASE_URL` ditetapkan secara eksplisit kepada domain QA yang
+   dikawal pemilik (https). Tanpanya, atau jika ia menunjuk ke
+   `makanmana-c59f3.web.app` / `.firebaseapp.com`, penciptaan jemputan
+   DILUMPUHKAN dengan `invite_url_not_configured` — ia tidak akan menjana URL
+   laman web produksi. Tiada domain QA direka dalam kod.
+4. `GROUP_IMAGE_BUCKET` ditetapkan kepada baldi LALAI projek QA
    (`<id-qa>.firebasestorage.app`) dalam persekitaran Functions QA. Tanpanya,
    `STORAGE_BUCKET` jatuh balik kepada baldi PRODUKSI dan pagar menyekat SETIAP
    operasi Storage — imej kumpulan, imej jemputan, media CMS.
-4. Semakan semula `select_firebase_plist.sh` — ia kini menolak apa-apa yang
+5. Semakan semula `select_firebase_plist.sh` — ia kini menolak apa-apa yang
    bukan `makanmana-c59f3` untuk `prod`, dan menolak `makanmana-c59f3` untuk
    flavour lain. Projek QA sebenar lulus kedua-dua semakan itu secara semula
    jadi, jadi **tiada perubahan dijangka** — tetapi sahkan, jangan andaikan.
@@ -151,28 +156,29 @@ Apple langsung.
 
 ---
 
-## 6A. Places dalam QA iPhone fizikal — KEPUTUSAN PEMILIK DIPERLUKAN
+## 6A. Places dalam QA iPhone fizikal
 
-Places disekat dalam REAL_QA kerana sasaran kunci API tidak dapat disahkan.
-Projek QA bermula KOSONG, jadi aliran yang bergantung pada Places (Explore,
-cadangan berdekatan) tidak akan mempunyai data pada iPhone QA.
+Places DISEKAT dalam REAL_QA kerana sasaran kunci API tidak dapat disahkan.
 
-Pilihan, tiada yang dilaksanakan:
+**Wave 3E — mod data SINTETIK (sumber sahaja, tidak diaktifkan):** tetapkan
+`MM_QA_SYNTHETIC_PLACES=enabled` dalam persekitaran Functions QA. Explore
+kemudian dilayan dengan tempat sintetik yang ditanda `[SINTETIK QA]` dalam
+nama, alamat dan placeId, TANPA panggilan Places dan TANPA benih pangkalan
+data. Bendera itu DIABAIKAN dalam produksi walaupun ditetapkan. Lihat
+`FEED_MAKAN_QA/MAKANMANA_QA_SYNTHETIC_PLACES.md`.
 
-| Pilihan | Kesan |
-| --- | --- |
-| A. Benih data tempat yang DIJANA ke Firestore QA | Explore berfungsi daripada cache DB; tiada panggilan Places |
-| B. Tukar Places kepada OAuth dengan projek kuota eksplisit (`X-Goog-User-Project`) | Sasaran menjadi boleh disahkan; perubahan kod pada laluan produksi — perlu kelulusan dan ujian sendiri |
-| C. Terima Places tidak diuji pada peranti | Explore disahkan pada Simulator/emulator sahaja |
+**Integrasi Places sebenar kekal NOT TESTED.** Data sintetik menguji UI dan
+aliran Explore, bukan API Places.
 
-## 6B. Firestore dan Auth tidak melalui pagar egress
+## 6B. Firestore dan Auth — kini disahkan (Wave 3E)
 
-Pagar melindungi operasi KELUAR. Firestore dan Auth Admin menyasar projek yang
-sama yang FCM sasarkan (firebase-admin `getExplicitProjectId`): pertama
-`FIREBASE_CONFIG.projectId`. Dalam deploy Firebase CLI yang biasa ini sentiasa
-projek QA, dan kelayakan asing kemudian GAGAL dengan 403 dan bukan menulis ke
-produksi. Risiko baki hanya wujud jika `FIREBASE_CONFIG` tiada DAN kelayakan
-produksi dibekalkan — dihalang oleh §4, tidak oleh kod.
+Firestore dan Auth bukan egress, tetapi firebase-admin memilih projek mereka
+melalui peraturan yang sama seperti FCM. Wave 3E mengesahkan sasaran itu
+sebelum operasi Firestore PERTAMA (`config/firebase.ts`) dan sebelum
+`getAuth()` digunakan. Sasaran yang bercanggah, tidak dapat disahkan
+(tekaan ADC), atau tidak diluluskan menolak setiap operasi. Emulator Functions
+tanpa emulator Firestore/Auth juga ditolak. Disahkan terhadap emulator
+Firestore tempatan; **pengasingan awan sebenar kekal NOT TESTED.**
 
 ---
 
