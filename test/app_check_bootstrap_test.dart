@@ -47,9 +47,74 @@ void main() {
     expect(p, isNot(AppCheckProviderKind.debug));
   });
 
-  test('non-Android platform → none (no-op, no debug fallback)', () {
-    expect(FirebaseAppCheckBootstrap.providerFor(isDebug: false, isAndroid: false),
+  test('platform tanpa sokongan → none (no-op, tiada sandaran debug)', () {
+    expect(
+        FirebaseAppCheckBootstrap.providerFor(
+            isDebug: false, isAndroid: false, isIOS: false),
         AppCheckProviderKind.none);
+  });
+
+  // WAVE 4A — iOS dahulunya SENTIASA `none`, jadi kod penyedia Apple dalam
+  // _realActivate tidak boleh dicapai dan App Check tidak pernah aktif di iOS.
+  test('iOS debug (Simulator QA) → penyedia debug Apple', () {
+    expect(
+        FirebaseAppCheckBootstrap.providerFor(
+            isDebug: true, isAndroid: false, isIOS: true),
+        AppCheckProviderKind.appleDebug);
+  });
+
+  test('iOS release (peranti fizikal) → App Attest', () {
+    expect(
+        FirebaseAppCheckBootstrap.providerFor(
+            isDebug: false, isAndroid: false, isIOS: true),
+        AppCheckProviderKind.appleAttest);
+  });
+
+  test('binaan release TIDAK PERNAH memilih penyedia debug pada mana-mana platform',
+      () {
+    for (final (android, ios) in [(true, false), (false, true)]) {
+      final p = FirebaseAppCheckBootstrap.providerFor(
+          isDebug: false, isAndroid: android, isIOS: ios);
+      expect(isDebugAppCheckProvider(p), isFalse,
+          reason: 'android=$android ios=$ios memilih penyedia debug');
+    }
+  });
+
+  test('tingkah laku Android TIDAK berubah oleh laluan iOS', () {
+    expect(
+        FirebaseAppCheckBootstrap.providerFor(
+            isDebug: true, isAndroid: true, isIOS: true),
+        AppCheckProviderKind.debug);
+    expect(
+        FirebaseAppCheckBootstrap.providerFor(
+            isDebug: false, isAndroid: true, isIOS: true),
+        AppCheckProviderKind.playIntegrity);
+  });
+
+  test('iOS mengaktifkan melalui aktivator yang disuntik (tiada produksi disentuh)',
+      () async {
+    AppCheckProviderKind? seen;
+    final s = await FirebaseAppCheckBootstrap.activate(
+      activator: (p) async => seen = p,
+      isDebugOverride: false,
+      isAndroidOverride: false,
+      isIOSOverride: true,
+    );
+    expect(s.state, AppCheckInitializationState.ready);
+    expect(seen, AppCheckProviderKind.appleAttest);
+  });
+
+  test('sumber bootstrap memisahkan penyedia Apple dan Android', () {
+    final src =
+        File('lib/core/security/app_check_bootstrap.dart').readAsStringSync();
+    // Laluan release Android tidak boleh menghantar penyedia Apple debug.
+    final debugBlock = src.substring(src.indexOf('appleDebug) {'));
+    expect(debugBlock.contains('AppleDebugProvider'), isTrue);
+    expect(
+        RegExp(r'AndroidPlayIntegrityProvider\(\),\s*providerApple')
+            .hasMatch(src),
+        isFalse,
+        reason: 'release Android tidak sepatutnya mengaktifkan penyedia Apple');
   });
 
   // 4: tiada token debug tertanam dalam sumber.
@@ -184,18 +249,28 @@ void main() {
 /// Check tanpa penyedia Apple langsung dan setiap panggilan yang dilindungi
 /// ditolak dengan cara yang mengelirukan.
 void _appCheckAppleProviderTests() {
-  test('App Check mengkonfigurasikan penyedia Apple dalam KEDUA-DUA cabang', () {
+  // WAVE 4A — dahulu setiap cabang aktivasi menetapkan KEDUA-DUA penyedia,
+  // kerana iOS hanya dicapai melalui cabang Android. Kini setiap platform
+  // mempunyai cabangnya sendiri; invarian yang penting kekal sama: App Check
+  // tidak pernah aktif tanpa penyedia untuk platform yang berjalan, dan
+  // cabang release tidak pernah menggunakan penyedia debug.
+  test('setiap cabang aktivasi menetapkan penyedia untuk platformnya', () {
     final src = File('lib/core/security/app_check_bootstrap.dart').readAsStringSync();
 
-    final androidCount = RegExp(r'providerAndroid:').allMatches(src).length;
-    final appleCount = RegExp(r'providerApple:').allMatches(src).length;
-    expect(androidCount, 2, reason: 'bilangan cabang aktivasi berubah');
-    expect(
-      appleCount,
-      androidCount,
-      reason: 'setiap cabang yang menetapkan providerAndroid mesti '
-          'menetapkan providerApple juga',
-    );
+    final activateCalls =
+        RegExp(r'FirebaseAppCheck\.instance\.activate\(').allMatches(src).length;
+    final providerArgs = RegExp(r'provider(Android|Apple):').allMatches(src).length;
+    expect(activateCalls, 4, reason: 'bilangan cabang aktivasi berubah');
+    expect(providerArgs, greaterThanOrEqualTo(activateCalls),
+        reason: 'setiap panggilan activate mesti menetapkan sekurang-kurangnya satu penyedia');
+
+    // Setiap panggilan activate mesti membawa sekurang-kurangnya satu penyedia.
+    for (final m
+        in RegExp(r'FirebaseAppCheck\.instance\.activate\(([^;]*?)\);', dotAll: true)
+            .allMatches(src)) {
+      expect(RegExp(r'provider(Android|Apple):').hasMatch(m.group(1)!), isTrue,
+          reason: 'panggilan activate tanpa penyedia: ${m.group(1)}');
+    }
 
     // Debug guna penyedia debug; release MESTI pengesahan platform sebenar.
     expect(src.contains('AppleDebugProvider'), isTrue);
@@ -204,12 +279,18 @@ void _appCheckAppleProviderTests() {
       isTrue,
       reason: 'release mesti App Attest dengan fallback DeviceCheck',
     );
-    // Release tidak boleh jatuh balik kepada penyedia debug.
-    final releaseSegment = src.substring(src.indexOf('AndroidPlayIntegrityProvider'));
-    expect(
-      releaseSegment.contains('AppleDebugProvider'),
-      isFalse,
-      reason: 'cabang release tidak boleh menggunakan penyedia debug',
-    );
+    // Cabang release (Android mahupun Apple) tidak boleh menggunakan debug.
+    // Diskop kepada argumen SATU panggilan activate, bukan tetingkap aksara —
+    // tetingkap merentasi sempadan cabang dan menjadikan ujian ini palsu.
+    for (final m
+        in RegExp(r'FirebaseAppCheck\.instance\.activate\(([^;]*?)\);', dotAll: true)
+            .allMatches(src)) {
+      final args = m.group(1)!;
+      final isRelease = args.contains('AndroidPlayIntegrityProvider') ||
+          args.contains('AppleAppAttestWithDeviceCheckFallbackProvider');
+      if (!isRelease) continue;
+      expect(args.contains('DebugProvider'), isFalse,
+          reason: 'cabang release menggunakan penyedia debug: $args');
+    }
   });
 }

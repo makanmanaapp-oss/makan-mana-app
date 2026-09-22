@@ -1,9 +1,17 @@
 /// PART 1 Phase 1.14B.2 — bootstrap Firebase App Check (klien).
 ///
 /// Mengaktifkan App Check SELEPAS Firebase.initializeApp dan SEBELUM mana-mana
-/// callable dipercayai boleh digunakan. Pemilihan provider ikut mod binaan:
-///   - DEBUG   → AndroidProvider.debug (TIADA token tertanam; token didaftar di konsol)
-///   - RELEASE/PROFILE → AndroidProvider.playIntegrity (TIDAK PERNAH debug)
+/// callable dipercayai boleh digunakan. Pemilihan provider ikut platform DAN
+/// mod binaan:
+///   - Android DEBUG   → AndroidDebugProvider (TIADA token tertanam)
+///   - Android RELEASE → Play Integrity (TIDAK PERNAH debug)
+///   - iOS DEBUG       → AppleDebugProvider (Simulator QA; App Attest tidak
+///                       wujud pada Simulator)
+///   - iOS RELEASE     → App Attest dengan sandaran DeviceCheck
+///
+/// WAVE 4A — sebelum ini `providerFor` memulangkan `none` untuk SETIAP platform
+/// bukan-Android, jadi iOS tidak pernah mengaktifkan App Check walaupun kod
+/// penyedia Apple sudah wujud dalam `_realActivate`: ia tidak boleh dicapai.
 ///
 /// Pelancaran adalah MONITORING: jika pengaktifan gagal, permulaan app legasi
 /// TIDAK ranap — laluan legasi kekal selamat dan callable dipercayai kekal
@@ -21,7 +29,26 @@ enum AppCheckInitializationState {
   failed,
 }
 
-enum AppCheckProviderKind { debug, playIntegrity, none }
+enum AppCheckProviderKind {
+  /// Android: AndroidDebugProvider.
+  debug,
+
+  /// Android: Play Integrity (release/profile).
+  playIntegrity,
+
+  /// iOS: AppleDebugProvider — Simulator dan binaan debug SAHAJA.
+  appleDebug,
+
+  /// iOS: App Attest, jatuh ke DeviceCheck pada peranti lama.
+  appleAttest,
+
+  /// Platform tanpa pengesahan App Check (desktop, web dalam binaan ini).
+  none,
+}
+
+/// true untuk penyedia yang TIDAK membuktikan integriti peranti.
+bool isDebugAppCheckProvider(AppCheckProviderKind kind) =>
+    kind == AppCheckProviderKind.debug || kind == AppCheckProviderKind.appleDebug;
 
 @immutable
 class AppCheckStatus {
@@ -48,10 +75,25 @@ class FirebaseAppCheckBootstrap {
   static AppCheckStatus _status = AppCheckStatus.notStarted;
   static AppCheckStatus get status => _status;
 
-  /// Pilih provider (TULEN, boleh diuji). Release/profile Android → Play Integrity.
-  static AppCheckProviderKind providerFor({required bool isDebug, required bool isAndroid}) {
-    if (!isAndroid) return AppCheckProviderKind.none; // platform lain: no-op fasa ini
-    return isDebug ? AppCheckProviderKind.debug : AppCheckProviderKind.playIntegrity;
+  /// Pilih provider (TULEN, boleh diuji).
+  ///
+  /// Penyedia debug TIDAK PERNAH dipilih untuk binaan release pada mana-mana
+  /// platform: ia akan menjadikan pengesahan peranti teater.
+  static AppCheckProviderKind providerFor({
+    required bool isDebug,
+    required bool isAndroid,
+    bool isIOS = false,
+  }) {
+    if (isAndroid) {
+      return isDebug ? AppCheckProviderKind.debug : AppCheckProviderKind.playIntegrity;
+    }
+    if (isIOS) {
+      // Simulator tidak boleh melakukan App Attest; binaan QA Simulator ialah
+      // binaan debug, jadi ia mendapat penyedia debug. Binaan release pada
+      // peranti fizikal mendapat App Attest.
+      return isDebug ? AppCheckProviderKind.appleDebug : AppCheckProviderKind.appleAttest;
+    }
+    return AppCheckProviderKind.none;
   }
 
   /// Aktifkan App Check. IDEMPOTEN. Menggunakan [activator] disuntik dalam ujian.
@@ -60,12 +102,15 @@ class FirebaseAppCheckBootstrap {
     AppCheckActivator? activator,
     bool? isDebugOverride,
     bool? isAndroidOverride,
+    bool? isIOSOverride,
   }) async {
     if (_status.isReady) return _status; // idempoten — tidak aktif semula
 
     final isDebug = isDebugOverride ?? kDebugMode;
     final isAndroid = isAndroidOverride ?? (defaultTargetPlatform == TargetPlatform.android);
-    final provider = providerFor(isDebug: isDebug, isAndroid: isAndroid);
+    final isIOS = isIOSOverride ?? (defaultTargetPlatform == TargetPlatform.iOS);
+    final provider =
+        providerFor(isDebug: isDebug, isAndroid: isAndroid, isIOS: isIOS);
 
     if (provider == AppCheckProviderKind.none) {
       _status = const AppCheckStatus(
@@ -99,6 +144,25 @@ class FirebaseAppCheckBootstrap {
       String.fromEnvironment('APP_CHECK_DEBUG_TOKEN');
 
   static Future<void> _realActivate(AppCheckProviderKind provider) async {
+    if (provider == AppCheckProviderKind.appleDebug) {
+      // iOS debug / Simulator SAHAJA. Token daripada env selamat; null →
+      // SDK menjana token peranti untuk didaftar dalam konsol.
+      final String? token =
+          _debugTokenFromEnv.isNotEmpty ? _debugTokenFromEnv : null;
+      await FirebaseAppCheck.instance.activate(
+        providerApple: AppleDebugProvider(debugToken: token),
+      );
+      return;
+    }
+    if (provider == AppCheckProviderKind.appleAttest) {
+      // Peranti fizikal, binaan release. App Attest memerlukan iOS 14+;
+      // varian sandaran turun ke DeviceCheck pada peranti lama dan bukan
+      // gagal tanpa perlindungan.
+      await FirebaseAppCheck.instance.activate(
+        providerApple: const AppleAppAttestWithDeviceCheckFallbackProvider(),
+      );
+      return;
+    }
     if (provider == AppCheckProviderKind.debug) {
       // Debug sahaja. Token dari secure env (--dart-define); null → auto-jana.
       final String? token =
@@ -112,13 +176,10 @@ class FirebaseAppCheckBootstrap {
       );
       return;
     }
-    // Release/profile: pengesahan platform SAHAJA — tiada token debug, tiada
-    // fallback debug. App Attest ialah cadangan Firebase; ia memerlukan iOS
-    // 14+, jadi varian fallback turun ke DeviceCheck pada peranti lama dan
-    // bukan gagal tanpa perlindungan.
+    // Android release/profile: pengesahan platform SAHAJA — tiada token debug,
+    // tiada sandaran debug.
     await FirebaseAppCheck.instance.activate(
       providerAndroid: const AndroidPlayIntegrityProvider(),
-      providerApple: const AppleAppAttestWithDeviceCheckFallbackProvider(),
     );
   }
 
