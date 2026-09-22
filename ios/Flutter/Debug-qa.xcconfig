@@ -37,3 +37,10 @@ MM_FIREBASE_PLIST_DIR = $(SRCROOT)/Firebase/qa
 // sepadan plist yang sedang dibundel, jadi nilai yang salah tidak boleh
 // dihantar secara senyap.
 MM_GOOGLE_REVERSED_CLIENT_ID =
+
+// Nama yang dilihat pengguna untuk flavour ini (DILULUSKAN PEMILIK).
+//
+// Binaan QA mesti dapat dibezakan pada skrin utama iPhone semasa QA
+// peranti fizikal yang WAJIB. Tanpa ini, QA dan produksi kelihatan
+// serupa dan penguji tidak boleh tahu binaan mana yang diuji.
+MM_DISPLAY_NAME = MakanMana QA

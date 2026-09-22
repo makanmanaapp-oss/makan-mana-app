@@ -333,6 +333,143 @@ void main() {
     });
   });
 
+
+  // ---------------------------------------------------------------------
+  // WAVE 3C — nama paparan
+  // ---------------------------------------------------------------------
+
+  /// Blok penuh bagi satu objek pbxproj, mengira kurungan.
+  String objectBody(String pbxproj, String id) {
+    final start = pbxproj.indexOf(RegExp(id + r' /\* [\w-]+ \*/ = \{'));
+    if (start < 0) return '';
+    var depth = 0;
+    var i = pbxproj.indexOf('{', start);
+    for (; i < pbxproj.length; i++) {
+      if (pbxproj[i] == '{') depth++;
+      if (pbxproj[i] == '}') {
+        depth--;
+        if (depth == 0) break;
+      }
+    }
+    return pbxproj.substring(start, i + 1);
+  }
+
+  /// Id konfigurasi bagi satu senarai, dikunci mengikut nama konfigurasi.
+  Map<String, String> configsOf(String pbxproj, String isa) {
+    final list = RegExp(
+      'Build configuration list for $isa "Runner" '
+      r'\*/ = \{.*?buildConfigurations = \((.*?)\);',
+      dotAll: true,
+    ).firstMatch(pbxproj);
+    final out = <String, String>{};
+    for (final m
+        in RegExp(r'(\w{24}) /\* ([\w-]+) \*/,').allMatches(list!.group(1)!)) {
+      out[m.group(2)!] = m.group(1)!;
+    }
+    return out;
+  }
+
+  String? settingIn(String body, String key) {
+    final m = RegExp('\n\t+$key = ([^;]+);').firstMatch(body);
+    return m?.group(1)!.trim().replaceAll('"', '');
+  }
+
+  /// Keutamaan Xcode: tetapan sasaran > xcconfig sasaran > tetapan projek.
+  String resolveSetting(String configName, String key) {
+    final pbxproj = read('ios/Runner.xcodeproj/project.pbxproj');
+    final targetBody =
+        objectBody(pbxproj, configsOf(pbxproj, 'PBXNativeTarget')[configName]!);
+
+    final fromTarget = settingIn(targetBody, key);
+    if (fromTarget != null) return fromTarget;
+
+    final base = RegExp(r'baseConfigurationReference = \w{24} /\* ([\w.-]+) \*/')
+        .firstMatch(targetBody);
+    if (base != null) {
+      final file = 'ios/Flutter/${base.group(1)!.trim()}';
+      if (File(file).existsSync()) {
+        final body = read(file)
+            .split('\n')
+            .where((l) => !l.trimLeft().startsWith('//'))
+            .join('\n');
+        final m = RegExp('^$key = (.*)\$', multiLine: true).firstMatch(body);
+        if (m != null) return m.group(1)!.trim();
+      }
+    }
+
+    final projectBody =
+        objectBody(pbxproj, configsOf(pbxproj, 'PBXProject')[configName]!);
+    return settingIn(projectBody, key) ?? '';
+  }
+
+  group('WAVE 3C: nama paparan diselesaikan', () {
+    test('produksi diselesaikan kepada MakanMana', () {
+      for (final config in ['Debug-prod', 'Profile-prod', 'Release-prod']) {
+        expect(resolveSetting(config, 'MM_DISPLAY_NAME'), 'MakanMana',
+            reason: config);
+      }
+    });
+
+    test('QA diselesaikan kepada MakanMana QA', () {
+      for (final config in ['Debug-qa', 'Profile-qa', 'Release-qa']) {
+        expect(resolveSetting(config, 'MM_DISPLAY_NAME'), 'MakanMana QA',
+            reason: config);
+      }
+    });
+
+    test('tiada konfigurasi QA mewarisi nama produksi secara senyap', () {
+      // Kegagalan yang ditakuti: xcconfig QA kehilangan tetapan itu dan
+      // lalai peringkat-projek mengambil alih, memberi QA nama produksi.
+      for (final config in ['Debug-qa', 'Profile-qa', 'Release-qa']) {
+        expect(resolveSetting(config, 'MM_DISPLAY_NAME'),
+            isNot('MakanMana'), reason: config);
+      }
+    });
+
+    test('konfigurasi asal mengekalkan nama produksi TEPAT', () {
+      for (final config in ['Debug', 'Profile', 'Release']) {
+        expect(resolveSetting(config, 'MM_DISPLAY_NAME'), 'MakanMana',
+            reason: '$config ialah laluan produksi lama');
+      }
+    });
+
+    test('Info.plist merujuk tetapan binaan, bukan nama literal', () {
+      final info = read('ios/Runner/Info.plist');
+      expect(info, contains(r'<string>$(MM_DISPLAY_NAME)</string>'));
+      expect(
+        RegExp(r'<key>CFBundleDisplayName</key>\s*<string>MakanMana</string>')
+            .hasMatch(info),
+        isFalse,
+        reason: 'nama berkod-keras akan mengatasi flavour',
+      );
+    });
+
+    test('tiada nilai kosong boleh diselesaikan', () {
+      for (final config in [
+        'Debug', 'Profile', 'Release',
+        'Debug-prod', 'Profile-prod', 'Release-prod',
+        'Debug-qa', 'Profile-qa', 'Release-qa',
+      ]) {
+        expect(resolveSetting(config, 'MM_DISPLAY_NAME'), isNotEmpty,
+            reason: '$config diselesaikan menjadi kosong');
+      }
+    });
+
+    test('InfoPlist.strings setempat tidak mengatasi identiti QA', () {
+      // CFBundleDisplayName dalam mana-mana .lproj akan MENANG ke atas tetapan
+      // binaan, jadi peranti bukan-Inggeris akan kehilangan penanda QA.
+      final offenders = Directory('ios/Runner')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((f) => f.path.endsWith('InfoPlist.strings'))
+          .where((f) => f.readAsStringSync().contains('CFBundleDisplayName'))
+          .map((f) => f.path)
+          .toList();
+      expect(offenders, isEmpty,
+          reason: 'penyetempatan akan mengatasi nama flavour: $offenders');
+    });
+  });
+
   group('tiada konfigurasi Firebase palsu dalam repo', () {
     test('tiada GoogleService-Info.plist dicommit di mana-mana', () {
       final offenders = Directory('ios')

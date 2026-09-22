@@ -6,8 +6,12 @@
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<!-- Nama yang dilihat pengguna. Datang dari tetapan binaan supaya QA dan
+	     produksi boleh dibezakan pada skrin utama semasa QA peranti.
+	     Lalai MakanMana ditakrifkan pada SETIAP konfigurasi peringkat-projek,
+	     jadi ia tidak pernah diselesaikan menjadi kosong. -->
 	<key>CFBundleDisplayName</key>
-	<string>MakanMana</string>
+	<string>$(MM_DISPLAY_NAME)</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>

@@ -37,3 +37,9 @@ MM_FIREBASE_PLIST_DIR = $(SRCROOT)/Firebase/prod
 // sepadan plist yang sedang dibundel, jadi nilai yang salah tidak boleh
 // dihantar secara senyap.
 MM_GOOGLE_REVERSED_CLIENT_ID =
+
+// Nama yang dilihat pengguna untuk flavour ini (DILULUSKAN PEMILIK).
+//
+// Sama-bait dengan nama produksi sebelum ini. Dinyatakan di sini dan
+// bukan diwarisi, supaya ia kelihatan pada titik konfigurasi.
+MM_DISPLAY_NAME = MakanMana
