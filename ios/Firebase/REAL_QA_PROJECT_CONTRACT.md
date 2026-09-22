@@ -21,11 +21,17 @@ kepada yang lain.
 | Di mana ia berjalan | Emulator pada mesin pembangun | Firebase sebenar |
 | Digunakan untuk | Simulator, ujian unit, rules | **iPhone fizikal** |
 | Boleh dicapai dari peranti | Tidak (localhost sahaja) | Ya |
-| Egress Control Center (semua titik akhir) | Gelung-balik sahaja | **DISEKAT** |
-| Egress FCM | **DISEKAT** | Dibenarkan (projek sendiri) |
+| Egress Control Center (semua titik akhir) | Gelung-balik sahaja | **DISEKAT** walaupun rahsia tersedia |
+| Egress FCM | **DISEKAT** | Hanya jika projek sasaran klien FCM **disahkan** = projek QA |
+| Egress Vertex AI | **DISEKAT** | Hanya jika `projectId` yang membina URL **disahkan** = projek QA |
+| Egress Places API | **DISEKAT** | **DISEKAT** — kunci API tidak mendedahkan projek pemiliknya |
+| Cloud Storage | Hanya ke emulator Storage gelung-balik | Hanya jika projek baldi **disahkan** = projek QA |
 | Egress App Store API | **DISEKAT** | **DISEKAT lalai** |
 | Egress Google Play Developer API | **DISEKAT** | **DISEKAT lalai** |
-| Egress API Google Cloud (Places, Vertex) | **DISEKAT** | Dibenarkan (kunci projek QA sendiri) |
+
+**Wave 3D:** identiti runtime QA TIDAK membuktikan operasi sampai ke projek QA.
+Setiap operasi yang sasarannya boleh ditentukan kini disahkan terhadap projek
+yang SDK sebenarnya gunakan. Sasaran yang tidak dapat disahkan disekat.
 
 Setiap tapak egress dalam backend dilindungi — `egressSweep.test.ts` membaca
 setiap fail sumber dan menggagalkan suite jika satu tapak baharu ditambah tanpa
@@ -59,7 +65,11 @@ jadi mengubahnya ialah keputusan yang jelas dan bukan hanyutan.
 
 1. Kemas kini `ios/Firebase/qa/GoogleService-Info.plist` (plist sebenar).
 2. `MM_GOOGLE_REVERSED_CLIENT_ID` dalam ketiga-tiga `*-qa.xcconfig`.
-3. Semakan semula `select_firebase_plist.sh` — ia kini menolak apa-apa yang
+3. `GROUP_IMAGE_BUCKET` ditetapkan kepada baldi LALAI projek QA
+   (`<id-qa>.firebasestorage.app`) dalam persekitaran Functions QA. Tanpanya,
+   `STORAGE_BUCKET` jatuh balik kepada baldi PRODUKSI dan pagar menyekat SETIAP
+   operasi Storage — imej kumpulan, imej jemputan, media CMS.
+4. Semakan semula `select_firebase_plist.sh` — ia kini menolak apa-apa yang
    bukan `makanmana-c59f3` untuk `prod`, dan menolak `makanmana-c59f3` untuk
    flavour lain. Projek QA sebenar lulus kedua-dua semakan itu secara semula
    jadi, jadi **tiada perubahan dijangka** — tetapi sahkan, jangan andaikan.
@@ -99,7 +109,10 @@ jadi mengubahnya ialah keputusan yang jelas dan bukan hanyutan.
 | Rahsia | Simpanan berasingan. Rahsia QA tidak pernah dalam persekitaran produksi. |
 | Kunci App Store Server API | **JANGAN** salin ke QA. Lihat §6. |
 | Akaun perkhidmatan Google Play | **JANGAN** salin ke QA. Egress Play disekat dalam REAL_QA. |
-| Kunci Places API | Kunci **SENDIRI** projek QA. Pagar membenarkan Places dalam REAL_QA kerana identiti ialah projek QA — kunci produksi yang disalin akan membilkan produksi, dan pagar tidak membaca kunci. |
+| Kunci Places API | **Places DISEKAT dalam REAL_QA.** Kunci API tidak mendedahkan projek pemiliknya, jadi kunci produksi yang disalin ke QA akan membilkan produksi tanpa sebarang cara untuk pagar mengesannya. Lihat §6A. |
+| `GOOGLE_APPLICATION_CREDENTIALS` | **JANGAN** tetapkan dalam QA. Fail kunci akaun perkhidmatan menentukan projek sasaran SDK; kunci produksi akan menyasar produksi. Pagar menyekat ini untuk FCM/Vertex/Storage, tetapi Firestore tidak melalui pagar egress — lihat §6B. |
+| `FIREBASE_CONFIG` | Mesti JSON dengan `projectId` projek QA (Firebase CLI menetapkannya). Laluan fail disekat oleh pagar. |
+| `GOOGLE_CLOUD_PROJECT`, `GCLOUD_PROJECT`, `GCP_PROJECT`, `gcloud_project` | Jika ditetapkan, SEMUA mesti bersetuju dengan projek QA. Mana-mana yang tidak bersetuju menyekat setiap egress. |
 | Rahsia Control Center (`CONTROL_CENTER_SYNC_SECRET`, `MERCHANT_BRIDGE_SECRET`, Supabase) | **JANGAN** peruntukkan dalam QA langsung. Egress CC disekat dalam REAL_QA; rahsia itu tiada kegunaan di sana. |
 
 Pagar egress tidak membaca kelayakan, jadi kelayakan yang tersilap diletakkan
@@ -135,6 +148,31 @@ Apa-apa pengecualian Sandbox memerlukan:
 Sehingga itu, QA langganan pada peranti fizikal mengesahkan laluan **klien**
 dan **pengesahan sisi-pelayan terhadap data yang disimpan**, bukan panggilan
 Apple langsung.
+
+---
+
+## 6A. Places dalam QA iPhone fizikal — KEPUTUSAN PEMILIK DIPERLUKAN
+
+Places disekat dalam REAL_QA kerana sasaran kunci API tidak dapat disahkan.
+Projek QA bermula KOSONG, jadi aliran yang bergantung pada Places (Explore,
+cadangan berdekatan) tidak akan mempunyai data pada iPhone QA.
+
+Pilihan, tiada yang dilaksanakan:
+
+| Pilihan | Kesan |
+| --- | --- |
+| A. Benih data tempat yang DIJANA ke Firestore QA | Explore berfungsi daripada cache DB; tiada panggilan Places |
+| B. Tukar Places kepada OAuth dengan projek kuota eksplisit (`X-Goog-User-Project`) | Sasaran menjadi boleh disahkan; perubahan kod pada laluan produksi — perlu kelulusan dan ujian sendiri |
+| C. Terima Places tidak diuji pada peranti | Explore disahkan pada Simulator/emulator sahaja |
+
+## 6B. Firestore dan Auth tidak melalui pagar egress
+
+Pagar melindungi operasi KELUAR. Firestore dan Auth Admin menyasar projek yang
+sama yang FCM sasarkan (firebase-admin `getExplicitProjectId`): pertama
+`FIREBASE_CONFIG.projectId`. Dalam deploy Firebase CLI yang biasa ini sentiasa
+projek QA, dan kelayakan asing kemudian GAGAL dengan 403 dan bukan menulis ke
+produksi. Risiko baki hanya wujud jika `FIREBASE_CONFIG` tiada DAN kelayakan
+produksi dibekalkan — dihalang oleh §4, tidak oleh kod.
 
 ---
 
