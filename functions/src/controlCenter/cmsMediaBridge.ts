@@ -1,14 +1,13 @@
 import {timingSafeEqual} from "node:crypto";
 
 import {defineSecret} from "firebase-functions/params";
-import {getStorage} from "firebase-admin/storage";
 import {onRequest} from "firebase-functions/v2/https";
 
-import {STORAGE_BUCKET} from "../config/constants";
 import {
   UPLOAD_URL_TTL_MS,
   approveUpload,
 } from "../domain/cms/mediaUpload";
+import {approvedStorageBucket} from "../services/egressTargets";
 
 /**
  * WAVE 5 — CMS media upload handoff.
@@ -71,7 +70,7 @@ export const controlCenterCmsMediaUpload = onRequest(
     }
 
     try {
-      const bucket = getStorage().bucket(STORAGE_BUCKET);
+      const bucket = approvedStorageBucket();
       const expiresAtMs = Date.now() + UPLOAD_URL_TTL_MS;
       const [uploadUrl] = await bucket.file(approved.value.storagePath).getSignedUrl({
         version: "v4",

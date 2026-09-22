@@ -1,8 +1,6 @@
 import {HttpsError, onCall} from "firebase-functions/v2/https";
-import {getStorage} from "firebase-admin/storage";
 
 import {db} from "../config/firebase";
-import {STORAGE_BUCKET} from "../config/constants";
 import {attachCmsMediaReadUrls} from "../domain/cms/mediaReadUrl";
 import {
   isCmsPlacement,
@@ -21,6 +19,7 @@ import {
   shopDestinationFor,
 } from "../domain/cms/featuredShop";
 import type {FeaturedShop} from "../domain/cms/featuredShop";
+import {approvedStorageBucket} from "../services/egressTargets";
 
 /**
  * WAVE 5 — the single runtime CMS projection for mobile.
@@ -103,8 +102,7 @@ export const getCmsContent = onCall(
       const content = await attachCmsMediaReadUrls(
         stored,
         async (storagePath, expiresAtMs) => {
-          const [url] = await getStorage()
-            .bucket(STORAGE_BUCKET)
+          const [url] = await approvedStorageBucket()
             .file(storagePath)
             .getSignedUrl({version: "v4", action: "read", expires: expiresAtMs});
           return url;

@@ -36,6 +36,7 @@ const KINDS: EgressKind[] = [
   "app_store_api",
   "google_play_api",
   "google_cloud_api",
+  "firebase_storage",
 ];
 
 /** Jangkaan untuk SETIAP jenis — diberi nama supaya matriks boleh dibaca. */
@@ -180,6 +181,8 @@ interface Row {
   destination?: string;
   /** Baris yang sengaja menguji hanya beberapa jenis. */
   focused?: boolean;
+  /** Projek yang operasi SEBENARNYA sasarkan (Wave 3D). */
+  target?: string | null;
 }
 
 const MATRIX: Row[] = [
@@ -208,6 +211,7 @@ const MATRIX: Row[] = [
       ...all(false),
       control_center_mirror: true,
       control_center_api: true,
+      firebase_storage: true,
     },
   },
   {
@@ -225,9 +229,19 @@ const MATRIX: Row[] = [
     expect: all(false),
   },
   {
-    label: "QA SEBENAR, di luar emulator",
+    label: "QA SEBENAR, di luar emulator, sasaran TIDAK DISAHKAN",
     env: env(DUMMY_REAL_QA, false),
     realQa: DUMMY_REAL_QA,
+    expectClass: "REAL_QA",
+    destination: PROD_MIRROR,
+    // Wave 3D: identiti runtime QA sahaja tidak membuktikan sasaran QA.
+    expect: all(false),
+  },
+  {
+    label: "QA SEBENAR, di luar emulator, sasaran DISAHKAN sebagai projek QA",
+    env: env(DUMMY_REAL_QA, false),
+    realQa: DUMMY_REAL_QA,
+    target: DUMMY_REAL_QA,
     expectClass: "REAL_QA",
     destination: PROD_MIRROR,
     expect: {
@@ -237,7 +251,34 @@ const MATRIX: Row[] = [
       app_store_api: false,
       google_play_api: false,
       google_cloud_api: true,
+      firebase_storage: true,
     },
+  },
+  {
+    label: "QA SEBENAR, di luar emulator, sasaran ialah PRODUKSI",
+    env: env(DUMMY_REAL_QA, false),
+    realQa: DUMMY_REAL_QA,
+    target: PRODUCTION_PROJECT_ID,
+    expectClass: "REAL_QA",
+    destination: PROD_MIRROR,
+    expect: all(false),
+  },
+  {
+    label: "PRODUKSI, sasaran DISAHKAN sebagai produksi",
+    env: env(PRODUCTION_PROJECT_ID, false),
+    target: PRODUCTION_PROJECT_ID,
+    expectClass: "PRODUCTION",
+    destination: PROD_MIRROR,
+    expect: all(true),
+  },
+  {
+    label: "PRODUKSI, sasaran ialah projek QA yang tidak dijangka",
+    env: env(PRODUCTION_PROJECT_ID, false),
+    realQa: DUMMY_REAL_QA,
+    target: DUMMY_REAL_QA,
+    expectClass: "PRODUCTION",
+    destination: PROD_MIRROR,
+    expect: all(false),
   },
   {
     label: "QA SEBENAR, di luar emulator, cuba Control Center gelung-balik",
@@ -287,6 +328,7 @@ for (const row of MATRIX) {
         destination: row.destination,
         env: row.env,
         approvedRealQaProjectId: row.realQa,
+        targetProjectId: row.target,
       });
       assert.equal(
         decision.allowed,
@@ -322,7 +364,11 @@ test("API kedai (Apple, Google Play) hanya dibenarkan dalam produksi tulen", () 
   for (const kind of ["app_store_api", "google_play_api"] as EgressKind[]) {
     for (const row of MATRIX) {
       if (!(kind in row.expect)) continue;
-      const expected = row.expectClass === "PRODUCTION" && !row.env.inEmulator;
+      // Produksi TULEN: identiti produksi, bukan emulator, dan tiada sasaran
+      // asing (Wave 3D: runtime produksi yang menyasar projek lain disekat).
+      const foreignTarget = row.target != null && row.target !== row.env.projectId;
+      const expected =
+        row.expectClass === "PRODUCTION" && !row.env.inEmulator && !foreignTarget;
       assert.equal(row.expect[kind], expected, `${row.label} / ${kind}`);
     }
   }

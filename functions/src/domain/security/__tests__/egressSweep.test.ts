@@ -30,6 +30,8 @@ const TRANSPORTS: RegExp[] = [
   // Admin SDK FCM.
   /admin\.messaging\(\)\s*\.\s*(?:send|sendEach|sendEachForMulticast|sendMulticast|sendToDevice|sendToTopic)\(/g,
   /getMessaging\(\)/g,
+  // Wave 3D: Cloud Storage. Nama baldi EKSPLISIT boleh menamakan projek lain.
+  /getStorage\(\)/g,
 ];
 
 /**
@@ -143,7 +145,7 @@ test("sapuan tidak hampa: ia benar-benar menemui tapak egress", () => {
   // Regex yang rosak akan menemui sifar tapak dan membuat kedua-dua ujian di
   // atas lulus secara senyap. Ini tapak yang wujud apabila sapuan ditulis.
   const {sites} = scan();
-  assert.ok(sites.length >= 19, `hanya ${sites.length} tapak ditemui:\n${sites.map(fmt).join("\n")}`);
+  assert.ok(sites.length >= 20, `hanya ${sites.length} tapak ditemui:\n${sites.map(fmt).join("\n")}`);
 
   const files = new Set(sites.map((s) => s.file));
   for (const expected of [
@@ -163,6 +165,7 @@ test("sapuan tidak hampa: ia benar-benar menemui tapak egress", () => {
     "src/services/pushService.ts",
     "src/services/pushDeliveryService.ts",
     "src/callable/scanCalories.ts",
+    "src/services/egressTargets.ts",
   ]) {
     assert.ok(files.has(expected), `${expected} tidak ditemui oleh sapuan`);
   }
@@ -230,4 +233,62 @@ test("tandatangan antara muka bukan egress", () => {
   assert.equal(isDeclaration("  fetch(subscriptionKey: string): Promise<X>;"), true);
   assert.equal(isDeclaration("  const r = await fetch(url, {"), false);
   assert.equal(isDeclaration("  return fetch(url, {"), false);
+});
+
+// ---------------------------------------------------------------------------
+// WAVE 3D — pagar mesti mengesahkan SASARAN, bukan hanya runtime
+// ---------------------------------------------------------------------------
+
+function sourcesMatching(pattern: RegExp): Array<{file: string; text: string}> {
+  return walk(SRC)
+    .map((full) => ({
+      file: relative(process.cwd(), full).replace(/\\/g, "/"),
+      text: readFileSync(full, "utf8").replace(/\r\n/g, "\n"),
+    }))
+    .filter((f) => !f.file.endsWith("domain/security/egressGuard.ts"))
+    .filter((f) => pattern.test(f.text));
+}
+
+test("setiap pagar FCM membawa projek sasaran klien FCM", () => {
+  // Identiti runtime QA tidak mengekang klien FCM: firebase-admin memilih
+  // projek sasarannya sendiri (options -> akaun perkhidmatan ->
+  // GOOGLE_CLOUD_PROJECT -> ADC).
+  const offenders: string[] = [];
+  let checked = 0;
+  for (const f of sourcesMatching(/kind: "fcm_push"/)) {
+    for (const m of f.text.matchAll(/decideEgress\(\{[^}]*kind: "fcm_push"[^}]*\}\)/g)) {
+      checked++;
+      if (!/targetProjectId: firebaseAdminTargetProject\(\)/.test(m[0])) {
+        offenders.push(`${f.file}: ${m[0]}`);
+      }
+    }
+  }
+  assert.ok(checked >= 3, `hanya ${checked} pagar FCM ditemui`);
+  assert.deepEqual(offenders, []);
+});
+
+test("Storage hanya dicapai melalui baldi yang diluluskan", () => {
+  // Nama baldi ialah rujukan silang-projek. STORAGE_BUCKET jatuh balik kepada
+  // baldi PRODUKSI apabila GROUP_IMAGE_BUCKET tiada.
+  const direct = sourcesMatching(/getStorage\(\)/)
+    .map((f) => f.file)
+    .filter((file) => file !== "src/services/egressTargets.ts");
+  assert.deepEqual(direct, [], "getStorage() dipanggil terus, memintas pagar baldi");
+
+  const helper = readFileSync(resolve(SRC, "services/egressTargets.ts"), "utf8");
+  assert.match(helper, /kind: "firebase_storage"/);
+  assert.match(helper, /targetProjectId: projectOfStorageBucket\(STORAGE_BUCKET\)/);
+  assert.match(helper, /destination: storageEmulatorDestination\(process\.env\)/);
+});
+
+test("Vertex disahkan terhadap projek yang membina URL-nya, sebelum token", () => {
+  const text = readFileSync(resolve(SRC, "callable/scanCalories.ts"), "utf8").replace(/\r\n/g, "\n");
+  const getProject = text.indexOf("await auth.getProjectId()");
+  const guard = text.indexOf('decideEgress({kind: "google_cloud_api", targetProjectId: projectId})');
+  const token = text.indexOf("await client.getAccessToken()");
+  const url = text.indexOf("${projectId}/locations/");
+  assert.ok(getProject > -1 && guard > -1 && token > -1 && url > -1, "tapak Vertex berubah");
+  assert.ok(getProject < guard, "sasaran mesti diselesaikan sebelum pagar");
+  assert.ok(guard < token, "pagar mesti mendahului pemerolehan token");
+  assert.ok(guard < url, "URL mesti dibina daripada projectId yang sama yang disahkan");
 });

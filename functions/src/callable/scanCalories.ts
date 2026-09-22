@@ -51,15 +51,16 @@ export const scanCalories = onCall(
       throw new HttpsError("invalid-argument", "Gambar terlalu besar.");
     }
 
-    // Pagar egress — dinilai pada setiap panggilan, bebas daripada rahsia.
-    const egress = decideEgress({kind: "google_cloud_api"});
-    if (!egress.allowed) throw new HttpsError("unavailable", "calorie_scan_egress_blocked");
     const auth = new GoogleAuth({
       scopes: ["https://www.googleapis.com/auth/cloud-platform"],
     });
+    // Wave 3D: URL Vertex di bawah dibina daripada projectId INI, jadi ia
+    // ialah projek sasaran sebenar. Pagar dinilai sebelum token diperoleh.
+    const projectId = await auth.getProjectId();
+    const egress = decideEgress({kind: "google_cloud_api", targetProjectId: projectId});
+    if (!egress.allowed) throw new HttpsError("unavailable", "calorie_scan_egress_blocked");
     const client = await auth.getClient();
     const token = await client.getAccessToken();
-    const projectId = await auth.getProjectId();
 
     const url =
       `https://${VERTEX_LOCATION}-aiplatform.googleapis.com/v1/projects/` +

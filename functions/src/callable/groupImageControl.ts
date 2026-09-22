@@ -7,15 +7,14 @@
 
 import {randomUUID} from "crypto";
 
-import {getStorage} from "firebase-admin/storage";
 import {FunctionsErrorCode, HttpsError, onCall} from "firebase-functions/v2/https";
 
-import {STORAGE_BUCKET} from "../config/constants";
 import {db, FieldValue} from "../config/firebase";
 import * as core from "../domain/groupImage/groupImageV2";
+import {approvedStorageBucket} from "../services/egressTargets";
 
 function makeDeps(): core.GroupImageDeps {
-  const b = getStorage().bucket(STORAGE_BUCKET);
+  const b = approvedStorageBucket();
   return {
     db,
     bucket: b as unknown as core.StorageBucketLike,

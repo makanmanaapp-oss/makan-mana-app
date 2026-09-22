@@ -4,12 +4,11 @@
 
 import {createHash, randomBytes} from "crypto";
 
-import {getStorage} from "firebase-admin/storage";
 import {FunctionsErrorCode, HttpsError, onCall} from "firebase-functions/v2/https";
 
-import {STORAGE_BUCKET} from "../config/constants";
 import {db, FieldValue} from "../config/firebase";
 import * as core from "../domain/groupInviteLink/inviteLinkV2";
+import {approvedStorageBucket} from "../services/egressTargets";
 
 // Firebase Hosting default domain the project controls. Android App Links must
 // still be configured (assetlinks.json) to open the app — see REPORT.
@@ -17,7 +16,7 @@ const INVITE_BASE_URL =
   process.env.INVITE_BASE_URL ?? "https://makanmana-c59f3.web.app";
 
 function deps(): core.InviteLinkDeps {
-  const b = getStorage().bucket(STORAGE_BUCKET);
+  const b = approvedStorageBucket();
   return {
     db,
     serverTimestamp: () => FieldValue.serverTimestamp(),

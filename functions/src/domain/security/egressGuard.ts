@@ -16,14 +16,31 @@
  *
  * WAVE 3C — IDENTITI EKSPLISIT
  * ----------------------------
- * Sebelum ini "produksi" bermaksud *apa-apa yang bukan `demo-`*. Itu
- * menjadikan projek yang tidak dikenali — salah taip, projek peribadi
- * jurutera, persekitaran yang separuh disediakan — DIBENARKAN secara senyap
- * dengan keistimewaan penuh produksi.
+ * Sebelum ini "produksi" bermaksud *apa-apa yang bukan `demo-`*. Kini setiap
+ * identiti diklasifikasikan secara eksplisit, dan apa-apa yang tidak dikenali
+ * GAGAL-TERTUTUP. Satu projek tidak menjadi QA kerana namanya mengandungi
+ * "qa" atau "test", atau kerana ia berbeza daripada produksi.
  *
- * Kini setiap identiti diklasifikasikan secara eksplisit, dan apa-apa yang
- * tidak dikenali GAGAL-TERTUTUP. Satu projek tidak menjadi QA kerana namanya
- * mengandungi "qa" atau "test", atau kerana ia berbeza daripada produksi.
+ * WAVE 3D — IDENTITI SASARAN, BUKAN HANYA IDENTITI RUNTIME
+ * --------------------------------------------------------
+ * Mengetahui runtime ialah QA TIDAK membuktikan operasi itu sampai ke projek
+ * QA. Klien SDK memilih projek sasaran mereka sendiri, dan tidak selalu
+ * daripada sumber yang sama dengan pagar ini:
+ *
+ *   firebase-admin 13.10.0 utils.getExplicitProjectId():
+ *     options.projectId (dari FIREBASE_CONFIG — JSON ATAU laluan fail)
+ *     -> projek kelayakan akaun perkhidmatan
+ *     -> GOOGLE_CLOUD_PROJECT || GCLOUD_PROJECT
+ *     -> ADC (pelayan metadata)
+ *   google-auth-library getProjectId():
+ *     GCLOUD_PROJECT || GOOGLE_CLOUD_PROJECT || gcloud_project -> fail kunci
+ *     -> konfigurasi gcloud -> pelayan metadata
+ *   Storage: nama baldi EKSPLISIT, yang boleh menamakan projek lain.
+ *
+ * Jadi runtime yang pagar ini lihat sebagai QA boleh, dengan konfigurasi yang
+ * salah, menghantar FCM ke projek produksi atau menulis ke baldi produksi.
+ * Operasi yang sasarannya boleh ditentukan kini membawa `targetProjectId`, dan
+ * dalam REAL_QA sasaran itu MESTI disahkan dan MESTI sepadan runtime.
  */
 
 /** Projek Firebase produksi. Disahkan dalam firebase_options.dart dan google-services.json. */
@@ -75,6 +92,7 @@ export type ProjectClass =
  *   app_store_api          App Store Server API
  *   google_play_api        Google Play Developer API (pengesahan langganan)
  *   google_cloud_api       API Google berskop projek: Places, Vertex AI
+ *   firebase_storage       baldi Cloud Storage yang DINAMAKAN secara eksplisit
  */
 export type EgressKind =
   | "control_center_mirror"
@@ -82,11 +100,33 @@ export type EgressKind =
   | "fcm_push"
   | "app_store_api"
   | "google_play_api"
-  | "google_cloud_api";
+  | "google_cloud_api"
+  | "firebase_storage";
 
 /** Control Center ialah satu penempatan produksi; tiada setara QA. */
 function isControlCenterKind(kind: EgressKind): boolean {
   return kind === "control_center_mirror" || kind === "control_center_api";
+}
+
+/**
+ * Jenis yang mempunyai setara GELUNG-BALIK dalam QA emulator tempatan: konsol
+ * Control Center tempatan, dan emulator Storage. Setiap perkhidmatan lain tiada
+ * emulator, jadi panggilan dari QA akan keluar sebenar.
+ */
+function hasLoopbackEquivalent(kind: EgressKind): boolean {
+  return isControlCenterKind(kind) || kind === "firebase_storage";
+}
+
+/**
+ * Jenis yang, dalam REAL_QA, dibenarkan HANYA apabila projek sasaran telah
+ * DISAHKAN dan sepadan runtime. Identiti runtime sahaja tidak mencukupi.
+ */
+function requiresVerifiedTargetInRealQa(kind: EgressKind): boolean {
+  return (
+    kind === "fcm_push" ||
+    kind === "google_cloud_api" ||
+    kind === "firebase_storage"
+  );
 }
 
 export interface EgressEnvironment {
@@ -95,9 +135,9 @@ export interface EgressEnvironment {
   /** Benar apabila proses berjalan di dalam emulator Functions. */
   inEmulator: boolean;
   /**
-   * Diisi apabila sumber identiti TIDAK BERSETUJU. Persekitaran yang
-   * bercanggah tidak boleh dipercayai, jadi ia disekat dan bukan diselesaikan
-   * mengikut keutamaan.
+   * Diisi apabila sumber identiti TIDAK BERSETUJU atau tidak dapat disahkan.
+   * Persekitaran sedemikian tidak boleh dipercayai, jadi ia disekat dan bukan
+   * diselesaikan mengikut keutamaan.
    */
   conflict?: string | null;
 }
@@ -115,6 +155,11 @@ export interface EgressDecision {
 
 /** Hos yang dianggap gelung-balik — mesin yang sama dengan emulator. */
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "[::1]"]);
+
+function nonEmpty(value: string | null | undefined): string | null {
+  const trimmed = (value ?? "").trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
 
 /**
  * Klasifikasikan satu identiti projek.
@@ -164,11 +209,15 @@ export function isLoopbackDestination(destination: string): boolean {
 /**
  * Selesaikan identiti projek daripada persekitaran.
  *
- * Cloud Functions yang digunakan menetapkan `GCLOUD_PROJECT`, dan Firebase
- * menetapkan `FIREBASE_CONFIG`. Apabila LEBIH DARIPADA SATU sumber hadir dan
- * ia TIDAK BERSETUJU, persekitaran itu tidak koheren — mengambil yang pertama
- * bermakna memilih satu identiti dan mengabaikan bukti bertentangan. Itu
- * direkodkan sebagai percanggahan dan disekat.
+ * Setiap pemboleh ubah yang firebase-admin ATAU google-auth-library gunakan
+ * untuk memilih projek dibaca di sini. Jika pagar mengabaikan satu yang SDK
+ * patuhi, runtime boleh kelihatan QA kepada pagar sementara SDK menyasar
+ * produksi.
+ *
+ * Apabila LEBIH DARIPADA SATU sumber hadir dan ia TIDAK BERSETUJU, persekitaran
+ * itu tidak koheren dan disekat. `FIREBASE_CONFIG` yang merupakan LALUAN FAIL
+ * (firebase-admin membacanya dari cakera) tidak dapat disahkan oleh fungsi
+ * tulen tanpa I/O, jadi ia juga disekat.
  */
 export function readEgressEnvironment(
   env: NodeJS.ProcessEnv = process.env,
@@ -176,25 +225,41 @@ export function readEgressEnvironment(
   const sources: Array<{name: string; value: string}> = [];
 
   const add = (name: string, raw: string | undefined): void => {
-    const value = (raw ?? "").trim();
-    if (value.length > 0) sources.push({name, value});
+    const value = nonEmpty(raw);
+    if (value !== null) sources.push({name, value});
   };
 
   add("GCLOUD_PROJECT", env.GCLOUD_PROJECT);
   add("GCP_PROJECT", env.GCP_PROJECT);
-  if (env.FIREBASE_CONFIG) {
-    try {
-      const parsed = JSON.parse(env.FIREBASE_CONFIG) as {projectId?: unknown};
-      if (typeof parsed.projectId === "string") {
-        add("FIREBASE_CONFIG.projectId", parsed.projectId);
-      }
-    } catch {
-      // FIREBASE_CONFIG cacat. Ia menyumbang TIADA identiti; jika tiada sumber
-      // lain, identiti kekal tidak diketahui dan pagar gagal-tertutup.
-    }
-  }
+  // Dibaca oleh firebase-admin (DAHULU daripada GCLOUD_PROJECT) dan oleh
+  // google-auth-library. Sebelum Wave 3D pagar ini tidak membacanya.
+  add("GOOGLE_CLOUD_PROJECT", env.GOOGLE_CLOUD_PROJECT);
+  add("gcloud_project", env.gcloud_project);
 
   const inEmulator = env.FUNCTIONS_EMULATOR === "true";
+
+  const firebaseConfig = nonEmpty(env.FIREBASE_CONFIG);
+  if (firebaseConfig !== null) {
+    if (firebaseConfig.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(firebaseConfig) as {projectId?: unknown};
+        if (typeof parsed.projectId === "string") {
+          add("FIREBASE_CONFIG.projectId", parsed.projectId);
+        }
+      } catch {
+        // JSON cacat: menyumbang TIADA identiti. firebase-admin sendiri gagal
+        // memulakan dengan konfigurasi sedemikian.
+      }
+    } else {
+      return {
+        projectId: null,
+        inEmulator,
+        conflict:
+          "FIREBASE_CONFIG ialah laluan fail; firebase-admin membaca identiti " +
+          "daripadanya tetapi pagar tulen tidak dapat mengesahkannya",
+      };
+    }
+  }
 
   if (sources.length === 0) {
     return {projectId: null, inEmulator, conflict: null};
@@ -214,6 +279,61 @@ export function readEgressEnvironment(
 }
 
 /**
+ * Projek yang SEBENARNYA disasar oleh klien Firebase Admin lalai (FCM,
+ * Firestore) — mengikut keutamaan firebase-admin 13.10.0
+ * `utils.getExplicitProjectId`, disahkan dalam sumber yang dipasang.
+ *
+ * Pulangkan null apabila SDK akan jatuh balik kepada pelayan metadata ADC,
+ * yang tidak dapat disahkan tanpa I/O. Null bermakna "tidak disahkan", dan
+ * dalam REAL_QA itu disekat.
+ */
+export function resolveFirebaseAdminTargetProject(params: {
+  /** `app.options.projectId` — dimuatkan daripada FIREBASE_CONFIG. */
+  optionsProjectId?: string | null;
+  /** Hanya apabila kelayakan ialah ServiceAccountCredential. */
+  serviceAccountProjectId?: string | null;
+  env: NodeJS.ProcessEnv;
+}): string | null {
+  return (
+    nonEmpty(params.optionsProjectId) ??
+    nonEmpty(params.serviceAccountProjectId) ??
+    nonEmpty(params.env.GOOGLE_CLOUD_PROJECT) ??
+    nonEmpty(params.env.GCLOUD_PROJECT) ??
+    null
+  );
+}
+
+/**
+ * Projek pemilik baldi Firebase LALAI, diterbitkan daripada namanya.
+ *
+ * Baldi lalai Firebase dinamakan `<projectId>.firebasestorage.app` atau
+ * `<projectId>.appspot.com`. Baldi tersuai tidak mendedahkan pemiliknya dalam
+ * nama — null, iaitu "tidak disahkan".
+ */
+export function projectOfStorageBucket(bucket: string | null | undefined): string | null {
+  const name = nonEmpty(bucket);
+  if (name === null) return null;
+  for (const suffix of [".firebasestorage.app", ".appspot.com"]) {
+    if (name.endsWith(suffix)) return nonEmpty(name.slice(0, -suffix.length));
+  }
+  return null;
+}
+
+/**
+ * Destinasi SEBENAR operasi Storage firebase-admin apabila emulator aktif.
+ *
+ * firebase-admin menukar FIREBASE_STORAGE_EMULATOR_HOST kepada
+ * STORAGE_EMULATOR_HOST (dengan `http://`), dan klien Storage menghala ke situ.
+ * Tanpa kedua-duanya, operasi pergi ke Cloud Storage SEBENAR.
+ */
+export function storageEmulatorDestination(env: NodeJS.ProcessEnv): string {
+  const direct = nonEmpty(env.STORAGE_EMULATOR_HOST);
+  if (direct !== null) return direct;
+  const firebase = nonEmpty(env.FIREBASE_STORAGE_EMULATOR_HOST);
+  return firebase !== null ? `http://${firebase}` : "";
+}
+
+/**
  * Tentukan sama ada satu operasi luaran dibenarkan.
  *
  * Setiap gabungan klasifikasi dan mod emulator mempunyai keputusan yang
@@ -222,8 +342,15 @@ export function readEgressEnvironment(
  */
 export function decideEgress(params: {
   kind: EgressKind;
-  /** Hanya untuk `control_center_mirror`. */
+  /** URL destinasi, untuk semakan gelung-balik QA emulator. */
   destination?: string;
+  /**
+   * Projek yang operasi ini SEBENARNYA sasarkan, jika boleh ditentukan.
+   * Apabila diberi, ia mesti sepadan identiti runtime — dalam produksi dan
+   * REAL_QA. Dalam REAL_QA, ketiadaannya bermakna sasaran tidak disahkan dan
+   * disekat.
+   */
+  targetProjectId?: string | null;
   env?: EgressEnvironment;
   /** Lihat nota suntikan pada `classifyProject`. Ujian sahaja. */
   approvedRealQaProjectId?: string | null;
@@ -234,11 +361,12 @@ export function decideEgress(params: {
     projectId,
     params.approvedRealQaProjectId ?? APPROVED_REAL_QA_PROJECT_ID,
   );
-  const where = `project=${projectId ?? "<tidak diketahui>"} emulator=${inEmulator}`;
+  const target = nonEmpty(params.targetProjectId);
+  const where =
+    `project=${projectId ?? "<tidak diketahui>"} emulator=${inEmulator}` +
+    (target !== null ? ` sasaran=${target}` : "");
 
-  // 0. Persekitaran bercanggah. Ini didahulukan: apabila sumber tidak
-  //    bersetuju, kita tidak tahu persekitaran mana yang sedang kita jalankan,
-  //    jadi tiada keputusan seterusnya bermakna.
+  // 0. Persekitaran bercanggah atau tidak dapat disahkan.
   if (env.conflict) {
     return {
       allowed: false,
@@ -248,6 +376,15 @@ export function decideEgress(params: {
         "bercanggah tidak diselesaikan mengikut keutamaan — ia disekat.",
     };
   }
+
+  const targetMismatch = (): EgressDecision => ({
+    allowed: false,
+    projectClass,
+    reason:
+      `Egress ${params.kind} DISEKAT: operasi menyasar projek ${target}, ` +
+      `bukan identiti runtime (${where}). Kelayakan atau konfigurasi SDK ` +
+      "menunjuk ke projek lain.",
+  });
 
   switch (projectClass) {
     // 1. Identiti tidak diketahui atau tidak dikenali.
@@ -266,8 +403,6 @@ export function decideEgress(params: {
     // 2. Produksi.
     case "PRODUCTION":
       if (inEmulator) {
-        // Inilah keadaan yang diamarankan oleh mesej Application Default
-        // Credentials: emulator tempatan membawa identiti produksi.
         return {
           allowed: false,
           projectClass,
@@ -278,6 +413,9 @@ export function decideEgress(params: {
             `${APPROVED_QA_PROJECT_ID}.`,
         };
       }
+      // Runtime produksi yang menyasar projek LAIN (cth. QA) ialah salah
+      // konfigurasi, bukan produksi yang sah.
+      if (target !== null && target !== projectId) return targetMismatch();
       // Produksi tulen. Tingkah laku KEKAL.
       return {
         allowed: true,
@@ -297,11 +435,10 @@ export function decideEgress(params: {
             "jadi tiada destinasi boleh dipercayai.",
         };
       }
-      // HANYA Control Center mempunyai setara gelung-balik (konsol tempatan).
-      // Setiap perkhidmatan luaran yang lain — FCM, App Store, Google Play,
-      // Places, Vertex — tiada emulator, jadi panggilan dari QA akan keluar
-      // SEBENAR menggunakan kunci sebenar atau kredensial pemilik.
-      if (!isControlCenterKind(params.kind)) {
+      // Hanya Control Center (konsol tempatan) dan Storage (emulator) ada
+      // setara gelung-balik. Setiap perkhidmatan lain — FCM, App Store, Google
+      // Play, Places, Vertex — tiada emulator dan akan keluar SEBENAR.
+      if (!hasLoopbackEquivalent(params.kind)) {
         return {
           allowed: false,
           projectClass,
@@ -310,6 +447,8 @@ export function decideEgress(params: {
             `jadi panggilan dari larian QA akan keluar sebenar (${where}).`,
         };
       }
+      // Projek sasaran yang DINAMAKAN tidak relevan di sini: apabila destinasi
+      // ialah gelung-balik, panggilan tidak pernah meninggalkan mesin.
       if (isLoopbackDestination(params.destination ?? "")) {
         return {
           allowed: true,
@@ -322,7 +461,8 @@ export function decideEgress(params: {
         projectClass,
         reason:
           `Egress ${params.kind} DISEKAT: larian QA tidak boleh menghubungi ` +
-          `destinasi bukan-gelung-balik (${where}).`,
+          `destinasi bukan-gelung-balik (${where}). Untuk Storage ini ` +
+          "bermakna emulator Storage tidak aktif.",
       };
     }
 
@@ -339,52 +479,60 @@ export function decideEgress(params: {
             "dengan sengaja dan tidak boleh bercampur.",
         };
       }
-      switch (params.kind) {
-        case "control_center_mirror":
-        case "control_center_api":
-          // Control Center ialah satu penempatan produksi. Tiada versi QA
-          // baginya, jadi larian QA tidak boleh menulis kepadanya langsung.
-          return {
-            allowed: false,
-            projectClass,
-            reason:
-              `Egress ${params.kind} DISEKAT: Control Center ialah ` +
-              `perkhidmatan produksi dan tiada setara QA (${where}).`,
-          };
-        case "app_store_api":
-        case "google_play_api":
-          // Diluluskan secara eksplisit diperlukan. API KEDAI (Apple dan Google
-          // Play) membaca data pembelian SEBENAR. Sandbox Apple ialah
-          // destinasi BERBEZA dengan kelayakan berbeza; membenarkannya di sini
-          // secara lalai akan bermakna larian QA boleh memanggil Apple sebenar.
-          return {
-            allowed: false,
-            projectClass,
-            reason:
-              `Egress ${params.kind} DISEKAT: API kedai sebenar tidak ` +
-              `dibenarkan secara lalai daripada QA (${where}). Pengecualian ` +
-              "Sandbox atau ujian memerlukan dasar destinasi dan identiti " +
-              "yang diluluskan secara berasingan.",
-          };
-        case "fcm_push":
-        case "google_cloud_api":
-          // Dibenarkan HANYA kerana identiti sekeliling ialah projek QA itu
-          // sendiri: Admin SDK dan ADC bertindak melalui projek itu, jadi ia
-          // tidak boleh mencapai peranti atau sumber produksi. Ini mekanisme
-          // yang sama yang menjadikannya selamat dalam produksi.
-          //
-          // SYARAT: projek QA memegang kunci API SENDIRI. Kunci produksi yang
-          // disalin ke QA akan membilkan produksi — pagar ini tidak membaca
-          // kunci, jadi itu dikuatkuasakan oleh kontrak projek QA, bukan di sini.
-          return {
-            allowed: true,
-            projectClass,
-            reason:
-              `Egress ${params.kind} dibenarkan: identiti sekeliling ialah ` +
-              `projek QA yang diluluskan, jadi penghantaran tidak boleh ` +
-              `mencapai sumber produksi (${where}).`,
-          };
+      if (isControlCenterKind(params.kind)) {
+        // Control Center ialah satu penempatan produksi. Tiada versi QA
+        // baginya, jadi larian QA tidak boleh menulis kepadanya langsung —
+        // walaupun rahsianya tersedia.
+        return {
+          allowed: false,
+          projectClass,
+          reason:
+            `Egress ${params.kind} DISEKAT: Control Center ialah ` +
+            `perkhidmatan produksi dan tiada setara QA (${where}).`,
+        };
       }
+      if (params.kind === "app_store_api" || params.kind === "google_play_api") {
+        // API KEDAI membaca data pembelian SEBENAR. Pengecualian Sandbox
+        // memerlukan dasar yang diluluskan secara berasingan — belum ada.
+        return {
+          allowed: false,
+          projectClass,
+          reason:
+            `Egress ${params.kind} DISEKAT: API kedai sebenar tidak ` +
+            `dibenarkan secara lalai daripada QA (${where}). Pengecualian ` +
+            "Sandbox atau ujian memerlukan dasar destinasi dan identiti " +
+            "yang diluluskan secara berasingan.",
+        };
+      }
+      if (requiresVerifiedTargetInRealQa(params.kind)) {
+        if (target === null) {
+          // Identiti runtime QA TIDAK membuktikan sasaran QA. Kunci API
+          // (Places) tidak mendedahkan projek pemiliknya; ADC boleh
+          // diselesaikan kepada projek lain. Tidak disahkan = disekat.
+          return {
+            allowed: false,
+            projectClass,
+            reason:
+              `Egress ${params.kind} DISEKAT: projek sasaran tidak dapat ` +
+              `disahkan (${where}). Dalam QA sebenar, identiti runtime ` +
+              "sahaja tidak membuktikan operasi sampai ke projek QA.",
+          };
+        }
+        if (target !== projectId) return targetMismatch();
+        return {
+          allowed: true,
+          projectClass,
+          reason:
+            `Egress ${params.kind} dibenarkan: sasaran disahkan sebagai ` +
+            `projek QA yang diluluskan (${where}).`,
+        };
+      }
+      // Tidak sepatutnya dicapai: setiap jenis ditangani di atas.
+      return {
+        allowed: false,
+        projectClass,
+        reason: `Egress ${params.kind} DISEKAT: jenis tidak dikendalikan (${where}).`,
+      };
     }
   }
 }

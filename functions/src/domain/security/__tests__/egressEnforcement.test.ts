@@ -101,12 +101,12 @@ test("tapak SEBENAR berpagar: pagar mendahului pengangkutan", () => {
     },
     {
       file: "src/services/pushDeliveryService.ts",
-      guard: /decideEgress\(\{kind: "fcm_push"\}\)/,
+      guard: /decideEgress\(\{kind: "fcm_push", targetProjectId: firebaseAdminTargetProject\(\)\}\)/,
       transport: /admin\.messaging\(\)\.sendEach\(/,
     },
     {
       file: "src/services/pushService.ts",
-      guard: /decideEgress\(\{kind: "fcm_push"\}\)/,
+      guard: /decideEgress\(\{kind: "fcm_push", targetProjectId: firebaseAdminTargetProject\(\)\}\)/,
       transport: /admin\.messaging\(\)\.send\(\{/,
     },
     {
@@ -136,7 +136,7 @@ test("setiap penghantaran FCM sebenar dilindungi", () => {
   // pagar sendiri. Kira supaya satu tapak baharu tanpa pagar akan gagal.
   const text = source("src/services/pushService.ts");
   const sends = text.match(/admin\.messaging\(\)\.send\(/g) ?? [];
-  const guards = text.match(/decideEgress\(\{kind: "fcm_push"\}\)/g) ?? [];
+  const guards = text.match(/decideEgress\(\{kind: "fcm_push", targetProjectId: firebaseAdminTargetProject\(\)\}\)/g) ?? [];
   assert.equal(sends.length, 2, "bilangan tapak penghantaran berubah");
   assert.equal(guards.length, sends.length, "setiap penghantaran perlukan pagar");
 });

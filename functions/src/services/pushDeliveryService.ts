@@ -31,6 +31,7 @@ import {
 } from "../domain/notifications/pushDelivery";
 import {pushCopyFor} from "../domain/notifications/pushCopy";
 import {decideEgress} from "../domain/security/egressGuard";
+import {firebaseAdminTargetProject} from "./egressTargets";
 
 export interface DeliverableRecord {
   notificationId: string;
@@ -72,7 +73,8 @@ export const adminMessagingSender: MessagingSender = {
     // PAGAR EGRESS — FCM tiada emulator, jadi penghantaran dari larian QA akan
     // keluar sebenar. Disekat mengikut identiti projek + mod emulator, bukan
     // mengikut kehadiran rahsia.
-    const egress = decideEgress({kind: "fcm_push"});
+    // Wave 3D: projek yang klien FCM SEBENARNYA sasarkan, bukan hanya runtime.
+    const egress = decideEgress({kind: "fcm_push", targetProjectId: firebaseAdminTargetProject()});
     if (!egress.allowed) throw new Error(egress.reason);
     const res = await admin.messaging().sendEach(
       messages.map((m) => ({
