@@ -1,6 +1,8 @@
 import {timingSafeEqual} from "node:crypto";
 
 import {getAuth, type UserRecord} from "firebase-admin/auth";
+
+import {assertFirebaseAdminIsolation} from "../config/adminIdentity";
 import type {DocumentSnapshot} from "firebase-admin/firestore";
 import {defineSecret} from "firebase-functions/params";
 import {onRequest} from "firebase-functions/v2/https";
@@ -185,6 +187,9 @@ async function reconcileUsers(params: {
   pageSize: number;
   maxPages: number;
 }): Promise<ReconcileResult> {
+  // WAVE 3E — listUsers membaca SETIAP akaun. Dalam emulator tanpa emulator
+  // Auth, itu Auth SEBENAR projek sasaran dengan kelayakan pemilik.
+  assertFirebaseAdminIsolation("auth");
   const auth = getAuth();
   let pageToken: string | undefined;
   let sourceRead = 0;

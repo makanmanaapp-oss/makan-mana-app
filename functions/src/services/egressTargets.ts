@@ -5,16 +5,51 @@
 // boleh membandingkannya dengan identiti runtime. Logik keputusan hidup dalam
 // domain/security/egressGuard.ts (tulen, diuji); ini hanya pembaca runtime.
 
-import {getApp} from "firebase-admin/app";
+import {generateKeyPairSync} from "node:crypto";
+
+import {cert, getApps, initializeApp, type App} from "firebase-admin/app";
 import {getStorage} from "firebase-admin/storage";
 
+import {adminAppIdentity} from "../config/adminIdentity";
 import {STORAGE_BUCKET} from "../config/constants";
 import {
-  decideEgress,
-  projectOfStorageBucket,
+  decideStorageAccess,
+  readEgressEnvironment,
   resolveFirebaseAdminTargetProject,
-  storageEmulatorDestination,
 } from "../domain/security/egressGuard";
+
+/** Aplikasi Admin bernama yang HANYA wujud dalam QA emulator tempatan. */
+const EMULATOR_SIGNER_APP = "makanmana-qa-emulator-signer";
+
+/**
+ * Aplikasi Admin dengan kunci RSA PAKAI-BUANG yang dijana dalam proses.
+ *
+ * firebase-admin storage.js membina klien Storage dengan
+ * `credentials: {private_key, client_email}` untuk ServiceAccountCredential,
+ * dan google-auth-library kemudian menandatangani secara TEMPATAN (JWT dengan
+ * kunci) — tiada IAM signBlob, tiada rangkaian, tiada kelayakan pemilik. Kunci
+ * tidak pernah ditulis ke cakera dan tidak sah di mana-mana selain emulator.
+ */
+function emulatorSigningApp(projectId: string): App {
+  const existing = getApps().find((app) => app.name === EMULATOR_SIGNER_APP);
+  if (existing) return existing;
+  const {privateKey} = generateKeyPairSync("rsa", {
+    modulusLength: 2048,
+    privateKeyEncoding: {type: "pkcs8", format: "pem"},
+    publicKeyEncoding: {type: "spki", format: "pem"},
+  });
+  return initializeApp(
+    {
+      projectId,
+      credential: cert({
+        projectId,
+        clientEmail: `qa-emulator-signer@${projectId}.invalid`,
+        privateKey,
+      }),
+    },
+    EMULATOR_SIGNER_APP,
+  );
+}
 
 /**
  * Projek yang klien Firebase Admin lalai (FCM, Firestore) SEBENARNYA sasarkan.
@@ -24,24 +59,7 @@ import {
  * apabila tiada aplikasi lalai — null bermakna "tidak disahkan", bukan "OK".
  */
 export function firebaseAdminTargetProject(): string | null {
-  try {
-    const app = getApp();
-    const credential = app.options.credential as
-      | {constructor?: {name?: string}; projectId?: unknown}
-      | undefined;
-    const serviceAccountProjectId =
-      credential?.constructor?.name === "ServiceAccountCredential" &&
-      typeof credential.projectId === "string"
-        ? credential.projectId
-        : null;
-    return resolveFirebaseAdminTargetProject({
-      optionsProjectId: app.options.projectId ?? null,
-      serviceAccountProjectId,
-      env: process.env,
-    });
-  } catch {
-    return null;
-  }
+  return resolveFirebaseAdminTargetProject({...adminAppIdentity(), env: process.env});
 }
 
 /**
@@ -55,11 +73,14 @@ export function firebaseAdminTargetProject(): string | null {
  */
 export function approvedStorageBucket() {
   // Pagar egress — dinilai pada setiap panggilan, bebas daripada rahsia.
-  const egress = decideEgress({
-    kind: "firebase_storage",
-    destination: storageEmulatorDestination(process.env),
-    targetProjectId: projectOfStorageBucket(STORAGE_BUCKET),
-  });
-  if (!egress.allowed) throw new Error(egress.reason);
-  return getStorage().bucket(STORAGE_BUCKET);
+  // Keputusan firebase_storage dengan projek yang diterbitkan daripada nama baldi.
+  const egress = decideStorageAccess({bucket: STORAGE_BUCKET, env: process.env});
+  if (!egress.allowed || egress.bucket === null) throw new Error(egress.reason);
+  // Wave 3E: dalam QA emulator, jangan biarkan penandatangan SDK menyentuh
+  // kelayakan pemilik atau IAM sebenar.
+  const signerApp =
+    egress.signingMode === "emulator_disposable_key"
+      ? emulatorSigningApp(readEgressEnvironment().projectId ?? "demo-unknown")
+      : undefined;
+  return getStorage(signerApp).bucket(egress.bucket);
 }

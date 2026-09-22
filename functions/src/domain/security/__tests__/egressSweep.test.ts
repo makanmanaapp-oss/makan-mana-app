@@ -31,7 +31,8 @@ const TRANSPORTS: RegExp[] = [
   /admin\.messaging\(\)\s*\.\s*(?:send|sendEach|sendEachForMulticast|sendMulticast|sendToDevice|sendToTopic)\(/g,
   /getMessaging\(\)/g,
   // Wave 3D: Cloud Storage. Nama baldi EKSPLISIT boleh menamakan projek lain.
-  /getStorage\(\)/g,
+  // `getStorage()` DAN `getStorage(app)` — kedua-duanya membina klien Storage.
+  /\bgetStorage\(/g,
 ];
 
 /**
@@ -44,7 +45,19 @@ function isDeclaration(line: string): boolean {
   return /^\s*fetch\(\w+:\s/.test(line);
 }
 
-const GUARD = /decideEgress\(/g;
+// Pagar sebenar: decideEgress, atau decideStorageAccess (yang membungkusnya).
+const GUARD = /\bdecide(?:Egress|StorageAccess)\(/g;
+
+/**
+ * Buang komen sebelum mengimbas, dengan panjang dikekalkan supaya nombor baris
+ * dan indeks kekal betul. Tanpa ini, komen yang MENYEBUT `decideEgress(`
+ * dikira sebagai pagar — komen boleh "memuaskan" sapuan tanpa semakan sebenar.
+ */
+function stripComments(text: string): string {
+  return text
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "))
+    .replace(/(^|[^:"'`])\/\/[^\n]*/g, (m, lead: string) => lead + " ".repeat(m.length - lead.length));
+}
 
 interface Site {
   file: string;
@@ -78,8 +91,9 @@ function scan(): {sites: Site[]; unguarded: Site[]; unenforced: Site[]} {
   for (const full of walk(SRC)) {
     const file = relative(process.cwd(), full).replace(/\\/g, "/");
     if (file.endsWith("domain/security/egressGuard.ts")) continue;
-    const text = readFileSync(full, "utf8").replace(/\r\n/g, "\n");
-    const lines = text.split("\n");
+    const raw = readFileSync(full, "utf8").replace(/\r\n/g, "\n");
+    const lines = raw.split("\n");
+    const text = stripComments(raw);
 
     type Event = {index: number; kind: "guard" | "transport"};
     const events: Event[] = [];
@@ -270,15 +284,18 @@ test("setiap pagar FCM membawa projek sasaran klien FCM", () => {
 test("Storage hanya dicapai melalui baldi yang diluluskan", () => {
   // Nama baldi ialah rujukan silang-projek. STORAGE_BUCKET jatuh balik kepada
   // baldi PRODUKSI apabila GROUP_IMAGE_BUCKET tiada.
-  const direct = sourcesMatching(/getStorage\(\)/)
+  const direct = sourcesMatching(/\bgetStorage\(/)
     .map((f) => f.file)
     .filter((file) => file !== "src/services/egressTargets.ts");
   assert.deepEqual(direct, [], "getStorage() dipanggil terus, memintas pagar baldi");
 
   const helper = readFileSync(resolve(SRC, "services/egressTargets.ts"), "utf8");
-  assert.match(helper, /kind: "firebase_storage"/);
-  assert.match(helper, /targetProjectId: projectOfStorageBucket\(STORAGE_BUCKET\)/);
-  assert.match(helper, /destination: storageEmulatorDestination\(process\.env\)/);
+  assert.match(helper, /decideStorageAccess\(\{bucket: STORAGE_BUCKET, env: process\.env\}\)/);
+  const guard = readFileSync(resolve(SRC, "domain/security/egressGuard.ts"), "utf8");
+  const access = guard.slice(guard.indexOf("export function decideStorageAccess"));
+  assert.match(access, /kind: "firebase_storage"/);
+  assert.match(access, /targetProjectId: projectOfStorageBucket\(bucket\)/);
+  assert.match(access, /destination: storageEmulatorDestination\(params\.env\)/);
 });
 
 test("Vertex disahkan terhadap projek yang membina URL-nya, sebelum token", () => {
@@ -291,4 +308,23 @@ test("Vertex disahkan terhadap projek yang membina URL-nya, sebelum token", () =
   assert.ok(getProject < guard, "sasaran mesti diselesaikan sebelum pagar");
   assert.ok(guard < token, "pagar mesti mendahului pemerolehan token");
   assert.ok(guard < url, "URL mesti dibina daripada projectId yang sama yang disahkan");
+});
+
+test("komen yang MENYEBUT pagar tidak dikira sebagai pagar", () => {
+  // Wave 3E: satu komen dalam egressTargets.ts pernah menyebut
+  // `decideEgress({kind: "firebase_storage", ...})`. Regex pagar yang mentah
+  // mengiranya — komen boleh "memuaskan" sapuan tanpa semakan sebenar.
+  const faked = [
+    "// decideEgress({kind: \"fcm_push\"}); if (!egress.allowed) throw",
+    "/* decideEgress({kind: \"fcm_push\"}) egress.allowed */",
+    "const r = await fetch(URL, {});",
+  ].join("\n");
+  const stripped = stripComments(faked);
+  assert.equal(stripped.length, faked.length, "panjang mesti dikekalkan untuk nombor baris");
+  assert.equal(stripped.split("\n").length, faked.split("\n").length);
+  assert.equal(/decideEgress\(/.test(stripped), false, "pagar dalam komen masih kelihatan");
+  assert.equal(/\.allowed\b/.test(stripped), false);
+  assert.match(stripped, /await fetch\(URL/, "kod sebenar mesti kekal");
+  // URL dengan `//` dalam rentetan tidak boleh dikoyak.
+  assert.equal(stripComments('const u = "https://x.test/a";'), 'const u = "https://x.test/a";');
 });

@@ -334,6 +334,194 @@ export function storageEmulatorDestination(env: NodeJS.ProcessEnv): string {
 }
 
 /**
+ * WAVE 3E — siapa yang menandatangani URL Storage.
+ *
+ * `@google-cloud/storage` 7.21.0 SENTIASA memanggil `auth.sign()` (signer.js
+ * :149, :229), termasuk dalam mod emulator. google-auth-library `sign()`
+ * memanggil IAM `signBlob` SEBENAR untuk ADC impersonated, akaun luaran dan
+ * GCE — jadi emulator boleh memanggil IAM sebenar dengan kelayakan pemilik.
+ *
+ * Dalam QA emulator tempatan yang dihala ke emulator Storage, URL
+ * ditandatangani dengan kunci pakai-buang yang dijana dalam proses: tiada
+ * panggilan IAM, tiada kelayakan pemilik. Setiap kelas lain menggunakan
+ * penandatangan SDK biasa — produksi tidak berubah.
+ */
+export type StorageSigningMode = "sdk_credentials" | "emulator_disposable_key";
+
+export function storageSigningMode(decision: EgressDecision): StorageSigningMode {
+  return decision.allowed && decision.projectClass === "LOCAL_EMULATOR_QA"
+    ? "emulator_disposable_key"
+    : "sdk_credentials";
+}
+
+/**
+ * Keputusan akses Storage penuh untuk satu nama baldi — tulen, boleh diuji.
+ *
+ * Nama kosong disekat (GROUP_IMAGE_BUCKET="" menjadikan STORAGE_BUCKET kosong,
+ * kerana `??` hanya menggantikan undefined). Selebihnya ialah keputusan egress
+ * `firebase_storage` dengan projek yang diterbitkan daripada nama baldi, dan
+ * mod penandatangan yang terhasil.
+ */
+export function decideStorageAccess(params: {
+  bucket: string | null | undefined;
+  env: NodeJS.ProcessEnv;
+  approvedRealQaProjectId?: string | null;
+}): EgressDecision & {bucket: string | null; signingMode: StorageSigningMode} {
+  const bucket = nonEmpty(params.bucket);
+  const runtime = readEgressEnvironment(params.env);
+  if (bucket === null) {
+    return {
+      allowed: false,
+      projectClass: classifyProject(
+        runtime.projectId,
+        params.approvedRealQaProjectId ?? APPROVED_REAL_QA_PROJECT_ID,
+      ),
+      reason: "Egress firebase_storage DISEKAT: nama baldi kosong.",
+      bucket: null,
+      signingMode: "sdk_credentials",
+    };
+  }
+  const decision = decideEgress({
+    kind: "firebase_storage",
+    destination: storageEmulatorDestination(params.env),
+    targetProjectId: projectOfStorageBucket(bucket),
+    env: runtime,
+    approvedRealQaProjectId: params.approvedRealQaProjectId,
+  });
+  return {...decision, bucket, signingMode: storageSigningMode(decision)};
+}
+
+/**
+ * Hos emulator `host:port` (FIRESTORE_EMULATOR_HOST, FIREBASE_AUTH_EMULATOR_HOST)
+ * sebagai URL, supaya semakan gelung-balik yang sama boleh digunakan.
+ *
+ * firebase-tools 15.22.4 menulis hos ini melalui `formatHost` ->
+ * `connectableHostname`, yang menukar 0.0.0.0 kepada 127.0.0.1 dan :: kepada
+ * ::1 — jadi emulator yang terikat pada semua antara muka masih gelung-balik.
+ */
+export function emulatorHostDestination(host: string | null | undefined): string {
+  const value = nonEmpty(host);
+  if (value === null) return "";
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(value) ? value : `http://${value}`;
+}
+
+/** Perkhidmatan Firebase Admin yang BUKAN operasi keluar tetapi tetap sasaran. */
+export type AdminService = "firestore" | "auth";
+
+export interface AdminIsolationDecision {
+  allowed: boolean;
+  reason: string;
+  /** Projek yang klien Admin akan sasarkan, jika boleh ditentukan. */
+  target: string | null;
+  targetClass: ProjectClass;
+}
+
+/**
+ * WAVE 3E — pengasingan Firestore dan Auth Admin.
+ *
+ * Firestore dan Auth bukan egress, jadi pagar egress tidak melindunginya.
+ * Tetapi mereka menyasar projek melalui peraturan yang SAMA seperti FCM,
+ * disahkan dalam firebase-admin 13.10.0 yang dipasang:
+ *
+ *   firestore/firestore-internal.js:85  projectId = getExplicitProjectId(app);
+ *     jika null, klien Firestore MENEMUI projek sendiri melalui ADC
+ *     (fail kunci / konfigurasi gcloud / pelayan metadata)
+ *   auth/auth-api-request.js:129        findProjectId(app)
+ *   @google-cloud/firestore             FIRESTORE_EMULATOR_HOST
+ *   auth/auth-api-request.js:1940       FIREBASE_AUTH_EMULATOR_HOST
+ *
+ * Kes berbahaya yang disahkan: FIREBASE_CONFIG tiada,
+ * GOOGLE_CLOUD_PROJECT=produksi, GCLOUD_PROJECT=QA. Egress disekat
+ * (percanggahan), tetapi firebase-admin membaca GOOGLE_CLOUD_PROJECT DAHULU,
+ * jadi Firestore menulis ke PRODUKSI.
+ *
+ * Peraturan:
+ *   1. Dihala ke emulator gelung-balik -> dibenarkan; data tidak meninggalkan
+ *      mesin. Hos emulator bukan-gelung-balik -> disekat.
+ *   2. Emulator Functions TANPA emulator perkhidmatan ini -> disekat; ia akan
+ *      mencapai perkhidmatan SEBENAR dengan ADC pemilik.
+ *   3. Sumber identiti bercanggah, sasaran tidak dapat disahkan (jatuh balik
+ *      ADC), identiti runtime tiada, atau sasaran != runtime -> disekat.
+ *   4. Sasaran mesti produksi atau QA sebenar yang diluluskan. Projek `demo-`
+ *      tanpa emulator, atau projek tidak dikenali -> disekat.
+ */
+export function decideFirebaseAdminIsolation(params: {
+  service: AdminService;
+  env: NodeJS.ProcessEnv;
+  optionsProjectId?: string | null;
+  serviceAccountProjectId?: string | null;
+  approvedRealQaProjectId?: string | null;
+}): AdminIsolationDecision {
+  const {service, env} = params;
+  const target = resolveFirebaseAdminTargetProject({
+    optionsProjectId: params.optionsProjectId,
+    serviceAccountProjectId: params.serviceAccountProjectId,
+    env,
+  });
+  const approvedRealQa = params.approvedRealQaProjectId ?? APPROVED_REAL_QA_PROJECT_ID;
+  const targetClass = classifyProject(target, approvedRealQa);
+  const runtime = readEgressEnvironment(env);
+  const emulatorVar =
+    service === "firestore" ? "FIRESTORE_EMULATOR_HOST" : "FIREBASE_AUTH_EMULATOR_HOST";
+  const emulator = emulatorHostDestination(env[emulatorVar]);
+  const where =
+    `${service}: sasaran=${target ?? "<tidak disahkan>"} ` +
+    `runtime=${runtime.projectId ?? "<tidak diketahui>"} emulator=${runtime.inEmulator}`;
+  const deny = (why: string): AdminIsolationDecision => ({
+    allowed: false,
+    target,
+    targetClass,
+    reason: `Firebase Admin ${service} DISEKAT: ${why} (${where}).`,
+  });
+
+  // 1. Penghalaan emulator.
+  if (emulator !== "") {
+    if (isLoopbackDestination(emulator)) {
+      return {
+        allowed: true,
+        target,
+        targetClass,
+        reason: `Firebase Admin ${service} dihala ke emulator gelung-balik (${where}).`,
+      };
+    }
+    return deny(`${emulatorVar} menunjuk ke hos bukan-gelung-balik`);
+  }
+
+  // 2. Proses emulator tanpa emulator perkhidmatan ini.
+  if (runtime.inEmulator) {
+    return deny(
+      `emulator Functions berjalan tanpa ${emulatorVar}; ${service} akan ` +
+      "dicapai SEBENAR dengan kelayakan pemilik",
+    );
+  }
+
+  // 3. Identiti.
+  if (runtime.conflict) return deny(runtime.conflict);
+  if (target === null) {
+    return deny(
+      "projek sasaran tidak dapat disahkan; SDK akan menemuinya melalui ADC " +
+      "(fail kunci, konfigurasi gcloud atau pelayan metadata)",
+    );
+  }
+  if (runtime.projectId === null) return deny("identiti runtime tiada");
+  if (runtime.projectId !== target) return deny("sasaran bukan identiti runtime");
+
+  // 4. Sasaran yang diluluskan.
+  if (targetClass === "PRODUCTION" || targetClass === "REAL_QA") {
+    return {
+      allowed: true,
+      target,
+      targetClass,
+      reason: `Firebase Admin ${service} dibenarkan (${where}).`,
+    };
+  }
+  if (targetClass === "LOCAL_EMULATOR_QA") {
+    return deny(`projek \`${QA_PROJECT_PREFIX}\` tanpa emulator ${service}`);
+  }
+  return deny("projek sasaran tidak dikenali");
+}
+
+/**
  * Tentukan sama ada satu operasi luaran dibenarkan.
  *
  * Setiap gabungan klasifikasi dan mod emulator mempunyai keputusan yang
