@@ -42,7 +42,7 @@ void main() {
           .map((m) => m.group(1)!)
           .toSet();
 
-      final declared = RegExp(r'name = (Debug|Profile|Release)(-[A-Za-z0-9]+)?;')
+      final declared = RegExp(r'name = "?(Debug|Profile|Release)(-[A-Za-z0-9]+)?"?;')
           .allMatches(pbxproj)
           .map((m) => '${m.group(1)}${m.group(2) ?? ''}')
           .toSet();
@@ -192,6 +192,143 @@ void main() {
       expect(
         script,
         contains(r'"${MM_GOOGLE_REVERSED_CLIENT_ID}" != "${PLIST_REVERSED}"'),
+      );
+    });
+  });
+
+  group('WAVE 3B: konfigurasi flavour Xcode', () {
+    test('kesembilan-sembilan konfigurasi diisytiharkan dalam ketiga-tiga senarai',
+        () {
+      final pbxproj = read('ios/Runner.xcodeproj/project.pbxproj');
+      final lists = RegExp(
+        r'isa = XCConfigurationList;\s*buildConfigurations = \(([^)]*)\)',
+      ).allMatches(pbxproj).toList();
+      expect(lists.length, 3, reason: 'projek + Runner + RunnerTests');
+      for (final list in lists) {
+        final names = RegExp(r'/\* ([\w-]+) \*/,')
+            .allMatches(list.group(1)!)
+            .map((m) => m.group(1)!)
+            .toSet();
+        // Xcode jatuh balik secara SENYAP kepada konfigurasi lalai apabila satu
+        // sasaran kehilangan satu — binaan flavour kemudian menjadi bukan-flavour.
+        expect(names.length, 9, reason: 'jumpa $names');
+        for (final flavor in ['prod', 'qa']) {
+          for (final base in ['Debug', 'Profile', 'Release']) {
+            expect(names, contains('$base-$flavor'));
+          }
+        }
+      }
+    });
+
+    test('konfigurasi flavour TIDAK menetapkan bundle id dalam pbxproj', () {
+      // Nilai peringkat-sasaran mengatasi xcconfig. Jika satu muncul semula di
+      // sini, keenam-enam fail xcconfig menjadi mati secara senyap.
+      final pbxproj = read('ios/Runner.xcodeproj/project.pbxproj');
+      var checked = 0;
+      for (final m in RegExp(
+        r'isa = XCBuildConfiguration;\s*baseConfigurationReference = '
+        r'\w{24} /\* ([\w-]+)\.xcconfig \*/;(.*?)name = "([\w-]+)";',
+        dotAll: true,
+      ).allMatches(pbxproj)) {
+        final base = m.group(1)!;
+        if (!base.contains('-')) continue; // Debug.xcconfig/Release.xcconfig legasi
+        checked++;
+        expect(
+          m.group(2)!.contains('PRODUCT_BUNDLE_IDENTIFIER'),
+          isFalse,
+          reason: '${m.group(3)} menetapkannya dalam pbxproj, mengatasi $base',
+        );
+        expect(m.group(3), base, reason: 'konfigurasi mesti guna xcconfig senamanya');
+      }
+      // Bukan hampa: gelung yang memadankan sifar konfigurasi akan lulus senyap.
+      expect(checked, 6, reason: 'jangka 6 konfigurasi flavour, semak $checked');
+    });
+
+    test('xcconfig flavour tidak menetapkan PRODUCT_NAME', () {
+      // Menetapkannya menamakan semula Runner.app dan memecahkan TEST_HOST.
+      for (final flavor in ['prod', 'qa']) {
+        for (final config in ['Debug', 'Profile', 'Release']) {
+          final body = read('ios/Flutter/$config-$flavor.xcconfig')
+              .split('\n')
+              .where((l) => !l.trimLeft().startsWith('//'))
+              .join('\n');
+          expect(body.contains('PRODUCT_NAME'), isFalse, reason: '$config-$flavor');
+        }
+      }
+      expect(
+        read('ios/Runner.xcodeproj/project.pbxproj'),
+        contains(r'TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Runner.app/'),
+        reason: 'TEST_HOST masih menjangka Runner.app',
+      );
+    });
+
+    test('skema flavour wujud dan menunjuk konfigurasinya sendiri', () {
+      for (final flavor in ['prod', 'qa']) {
+        final scheme =
+            read('ios/Runner.xcodeproj/xcshareddata/xcschemes/$flavor.xcscheme');
+        for (final entry in {
+          'Test': 'Debug',
+          'Launch': 'Debug',
+          'Profile': 'Profile',
+          'Analyze': 'Debug',
+          'Archive': 'Release',
+        }.entries) {
+          expect(
+            RegExp('<${entry.key}Action[^>]*?buildConfiguration = '
+                    '"${entry.value}-$flavor"', dotAll: true)
+                .hasMatch(scheme),
+            isTrue,
+            reason: '$flavor: ${entry.key}Action bukan ${entry.value}-$flavor',
+          );
+        }
+      }
+    });
+  });
+
+  group('WAVE 3B: fasa binaan plist', () {
+    test('fasa Run Script wujud dan memanggil skrip pemilihan', () {
+      final pbxproj = read('ios/Runner.xcodeproj/project.pbxproj');
+      expect(pbxproj, contains('isa = PBXShellScriptBuildPhase'));
+      expect(pbxproj, contains(r'scripts/select_firebase_plist.sh'));
+      expect(pbxproj, contains('alwaysOutOfDate = 1'),
+          reason: 'pemilihan plist mesti berjalan pada SETIAP binaan');
+    });
+
+    test('ia berjalan SELEPAS Copy Bundle Resources', () {
+      // Sebelum fasa itu, bundle .app belum dipasang dan fasa Resources boleh
+      // menulis ganti apa sahaja yang diletakkan di sana.
+      final pbxproj = read('ios/Runner.xcodeproj/project.pbxproj');
+      final phases = RegExp(r'buildPhases = \(([^)]*)\)', dotAll: true)
+          .allMatches(pbxproj)
+          .map((m) => m.group(1)!)
+          .firstWhere((b) => b.contains('select_firebase_plist') || b.contains('MakanMana:'));
+      final resources = phases.indexOf('/* Resources */');
+      final select = phases.indexOf('MakanMana:');
+      expect(resources, greaterThan(-1));
+      expect(select, greaterThan(resources),
+          reason: 'fasa pemilihan plist mesti selepas Resources');
+    });
+
+    test('skrip mengikat identiti PROJEK, bukan hanya bundle id', () {
+      // Dua projek Firebase boleh mendaftarkan bundle id yang SAMA, jadi
+      // semakan bundle sahaja tidak memisahkan QA daripada produksi.
+      final script = read('ios/scripts/select_firebase_plist.sh');
+      expect(script, contains('PLIST_PROJECT_ID'));
+      expect(script, contains('MM_PRODUCTION_PROJECT_ID'));
+      expect(script, contains(r'plist_value PROJECT_ID'));
+    });
+  });
+
+  group('WAVE 3B: sasaran penempatan konsisten', () {
+    test('pbxproj dan Podfile kedua-duanya iOS 15.0', () {
+      final pbxproj = read('ios/Runner.xcodeproj/project.pbxproj');
+      expect(pbxproj.contains('IPHONEOS_DEPLOYMENT_TARGET = 13.0'), isFalse);
+      expect(pbxproj, contains('IPHONEOS_DEPLOYMENT_TARGET = 15.0'));
+      final podfile = read('ios/Podfile');
+      expect(
+        RegExp(r"^platform :ios, '15\.0'", multiLine: true).hasMatch(podfile),
+        isTrue,
+        reason: 'platform dikomen atau tidak sepadan projek → pod install gagal',
       );
     });
   });
