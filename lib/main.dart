@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app/app.dart';
 import 'core/providers.dart';
 import 'core/qa/qa_blocked_app.dart';
+import 'core/qa/platform_configuration.dart';
 import 'core/qa/qa_isolation_bootstrap.dart';
 import 'core/security/app_check_bootstrap.dart';
 import 'core/widgets/build_error_fallback.dart';
@@ -59,12 +60,53 @@ Future<void> main() async {
     return;
   }
 
+  // iOS WAVE 3A — GERBANG KONFIGURASI PLATFORM.
+  //
+  // `DefaultFirebaseOptions.currentPlatform` MELONTAR untuk iOS sehingga
+  // `flutterfire configure` dijalankan. Tanpa gerbang ini, lontaran itu
+  // ditangkap di bawah dan app BERJALAN dengan data tiruan — binaan iOS yang
+  // tidak pernah dikonfigurasikan akan kelihatan seperti aplikasi sebenar.
+  // Android tidak berubah: mod pembangunan tempatannya kekal.
+  FirebaseOptions? platformOptions;
+  try {
+    platformOptions = DefaultFirebaseOptions.currentPlatform;
+  } on UnsupportedError {
+    platformOptions = null;
+  }
+  final isApplePlatform = defaultTargetPlatform == TargetPlatform.iOS ||
+      defaultTargetPlatform == TargetPlatform.macOS;
+  final platformConfig = decideProductionConfiguration(
+    isApplePlatform: isApplePlatform,
+    firebaseOptionsAvailable: platformOptions != null,
+    flavor: appFlavor,
+  );
+  if (!platformConfig.isAllowed) {
+    debugPrint('MM PLATFORM CONFIG BLOCKED: ${platformConfig.blockedReason}');
+    runApp(
+      QaIsolationBlockedApp(
+        title: 'iOS build not configured',
+        summary: 'This build was stopped because its platform configuration is '
+            'incomplete. It was NOT started with placeholder data.',
+        hint: 'Run `flutterfire configure`, add GoogleService-Info.plist for '
+            'the correct bundle, and wire the Xcode flavour configurations.',
+        reason: platformConfig.blockedReason!,
+      ),
+    );
+    return;
+  }
+
   // Cuba init Firebase. Jika `flutterfire configure` belum dijalankan,
   // app tetap boleh berjalan dalam mod dev (data tempatan + dummy).
   var firebaseReady = false;
   try {
+    // Pada iOS ini tidak boleh null — gerbang di atas sudah menyekatnya.
+    // Pada Android ia bermakna `flutterfire configure` belum dijalankan,
+    // dan mod dev tempatan ialah tingkah laku lama yang sengaja dikekalkan.
+    if (platformOptions == null) {
+      throw StateError('DefaultFirebaseOptions tiada untuk platform ini');
+    }
     await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
+      options: platformOptions,
     );
     firebaseReady = true;
 

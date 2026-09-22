@@ -8,7 +8,24 @@ library;
 import 'package:flutter/material.dart';
 
 class QaIsolationBlockedApp extends StatelessWidget {
-  const QaIsolationBlockedApp({required this.reason, super.key});
+  const QaIsolationBlockedApp({
+    required this.reason,
+    this.title = 'QA build blocked',
+    this.summary =
+        'This build has not been verified as isolated, so it was not started. '
+        'No connection to the production project was attempted.',
+    this.hint =
+        'Start the isolated services, map them with adb reverse, then build '
+        'with --dart-define=MM_QA_BACKEND_HOST=127.0.0.1.',
+    super.key,
+  });
+
+  /// iOS WAVE 3A — skrin ini kini juga digunakan untuk sekatan konfigurasi
+  /// iOS, di mana "QA build" dan "adb reverse" akan mengelirukan. Lalai
+  /// mengekalkan teks QA asal dengan TEPAT.
+  final String title;
+  final String summary;
+  final String hint;
 
   final String reason;
 
@@ -25,20 +42,18 @@ class QaIsolationBlockedApp extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'QA build blocked',
-                  style: TextStyle(
+                Text(
+                  title,
+                  style: const TextStyle(
                     color: Color(0xFFE83A32),
                     fontSize: 24,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
                 const SizedBox(height: 12),
-                const Text(
-                  'This build has not been verified as isolated, so it was not '
-                  'started. No connection to the production project was '
-                  'attempted.',
-                  style: TextStyle(color: Colors.white70, fontSize: 14),
+                Text(
+                  summary,
+                  style: const TextStyle(color: Colors.white70, fontSize: 14),
                 ),
                 const SizedBox(height: 20),
                 Container(
@@ -59,10 +74,9 @@ class QaIsolationBlockedApp extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 20),
-                const Text(
-                  'Start the isolated services, map them with adb reverse, then '
-                  'build with --dart-define=MM_QA_BACKEND_HOST=127.0.0.1.',
-                  style: TextStyle(color: Colors.white54, fontSize: 12.5),
+                Text(
+                  hint,
+                  style: const TextStyle(color: Colors.white54, fontSize: 12.5),
                 ),
               ],
             ),
