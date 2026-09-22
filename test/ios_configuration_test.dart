@@ -470,6 +470,48 @@ void main() {
     });
   });
 
+
+  group('WAVE 3C: penjajaran flavour natif lwn Dart', () {
+    test('skrip menyahkod DART_DEFINES dan membandingkan flavour', () {
+      final script = read('ios/scripts/select_firebase_plist.sh');
+      expect(script, contains('DART_DEFINES'));
+      expect(script, contains('FLUTTER_APP_FLAVOR='));
+      expect(script, contains('b64_decode'));
+      expect(
+        script,
+        contains(r'"${DART_FLAVOR}" != "${MM_FLAVOR}"'),
+        reason: 'flavour yang menyimpang mesti menyekat binaan',
+      );
+    });
+
+    test('flavour Dart yang tiada menyekat, bukan diandaikan', () {
+      final script = read('ios/scripts/select_firebase_plist.sh');
+      expect(script, contains(r'if [ -z "${DART_FLAVOR}" ]'));
+      // Mengandaikan MM_FLAVOR apabila Dart senyap ialah tepat sandaran senyap
+      // yang gerbang ini wujud untuk menghalang.
+      expect(script.contains(r'DART_FLAVOR="${MM_FLAVOR}"'), isFalse);
+    });
+
+    test('pengekodan didokumenkan dengan asal-usul SDK, bukan diteka', () {
+      final script = read('ios/scripts/select_firebase_plist.sh');
+      expect(script, contains('build_info.dart'));
+      expect(script, contains('xcode_build_settings.dart'));
+      expect(script, contains('utf8.encoder.fuse(base64.encoder)'));
+    });
+
+    test('pengesahan hanya didakwa SELEPAS setiap gerbang berjalan', () {
+      // Defek yang ditemui semasa menulis ini: skrip mencetak "disahkan"
+      // sebelum semakan flavour, jadi setiap kegagalan mendahuluinya dengan
+      // dakwaan palsu bahawa flavour Dart telah disahkan.
+      final script = read('ios/scripts/select_firebase_plist.sh');
+      final claim = script.indexOf('disahkan untuk flavour');
+      final guard = script.indexOf(r'"${DART_FLAVOR}" != "${MM_FLAVOR}"');
+      expect(guard, greaterThan(-1));
+      expect(claim, greaterThan(guard),
+          reason: 'dakwaan pengesahan mendahului gerbang yang ia dakwa');
+    });
+  });
+
   group('tiada konfigurasi Firebase palsu dalam repo', () {
     test('tiada GoogleService-Info.plist dicommit di mana-mana', () {
       final offenders = Directory('ios')

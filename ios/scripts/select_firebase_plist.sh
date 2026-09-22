@@ -114,7 +114,65 @@ if [ "${MM_GOOGLE_REVERSED_CLIENT_ID}" != "${PLIST_REVERSED}" ]; then
   exit 1
 fi
 
-echo "note: PROJECT_ID, BUNDLE_ID dan REVERSED_CLIENT_ID disahkan untuk flavour '${MM_FLAVOR}'."
+
+# ---------------------------------------------------------------------------
+# PENJAJARAN FLAVOUR NATIF LWN DART
+# ---------------------------------------------------------------------------
+# Flavour NATIF (bundle id, plist ini, MM_FLAVOR) datang dari konfigurasi binaan
+# Xcode. Flavour DART (`appFlavor`, yang memacu gerbang pengasingan QA) datang
+# dari String.fromEnvironment('FLUTTER_APP_FLAVOR'), yang ditetapkan oleh alat
+# Flutter.
+#
+# Itu dua mekanisme. Membina dari butang Run Xcode menjalankan xcode_backend.sh
+# terhadap Generated.xcconfig yang ditulis oleh perintah `flutter` TERAKHIR.
+# Jika perintah itu bukan --flavor qa, binaan mendapat bundle QA dan plist QA
+# sementara lapisan Dart menyangka ia produksi — lalu memuatkan pilihan
+# Firebase PRODUKSI ke dalam aplikasi bertanda QA.
+#
+# PENGEKODAN, disahkan dalam sumber SDK Flutter yang dipasang dan bukan diteka:
+#   flutter_tools/lib/src/build_info.dart
+#     kAppFlavor = 'FLUTTER_APP_FLAVOR'
+#     _defineEncoder = utf8.encoder.fuse(base64.encoder)
+#     encodeDartDefines() -> defines.map(encode).join(',')
+#     toEnvironmentConfig() -> { 'DART_DEFINES': encodeDartDefines(...) }
+#   flutter_tools/lib/src/ios/xcode_build_settings.dart
+#     setiap entri toEnvironmentConfig ditulis sebagai tetapan binaan Xcode
+#
+# Jadi DART_DEFINES ialah senarai dipisah-koma, setiap entri base64 bagi
+# "KUNCI=NILAI" UTF-8, dan ia sampai ke sini sebagai pemboleh ubah persekitaran.
+
+b64_decode() {
+  # GNU coreutils guna -d; base64 BSD/macOS yang lebih lama guna -D.
+  printf '%s' "$1" | base64 -d 2>/dev/null || printf '%s' "$1" | base64 -D 2>/dev/null || true
+}
+
+DART_FLAVOR=""
+if [ -n "${DART_DEFINES:-}" ]; then
+  OLD_IFS="${IFS}"
+  IFS=','
+  for entry in ${DART_DEFINES}; do
+    decoded="$(b64_decode "${entry}")"
+    case "${decoded}" in
+      FLUTTER_APP_FLAVOR=*) DART_FLAVOR="${decoded#FLUTTER_APP_FLAVOR=}" ;;
+    esac
+  done
+  IFS="${OLD_IFS}"
+fi
+
+if [ -z "${DART_FLAVOR}" ]; then
+  echo "error: binaan natif ialah flavour '${MM_FLAVOR}', tetapi lapisan Dart tiada flavour." >&2
+  echo "note: Generated.xcconfig basi atau dibina tanpa --flavor. Aplikasi akan memuatkan konfigurasi Firebase yang SALAH." >&2
+  echo "note: bina melalui \`flutter build ios --flavor ${MM_FLAVOR}\` atau \`flutter run --flavor ${MM_FLAVOR}\`, bukan butang Run Xcode." >&2
+  exit 1
+fi
+
+if [ "${DART_FLAVOR}" != "${MM_FLAVOR}" ]; then
+  echo "error: flavour natif '${MM_FLAVOR}' tidak sepadan flavour Dart '${DART_FLAVOR}'." >&2
+  echo "note: bundle dan plist akan menjadi ${MM_FLAVOR} sementara kod Dart berkelakuan sebagai ${DART_FLAVOR}. Binaan DISEKAT." >&2
+  exit 1
+fi
+
+echo "note: flavour Dart, PROJECT_ID, BUNDLE_ID dan REVERSED_CLIENT_ID disahkan untuk flavour '${MM_FLAVOR}'."
 
 # Sahkan DAHULU, salin kemudian: plist yang salah tidak sepatutnya pernah masuk
 # ke dalam bundle, walaupun binaan kemudiannya gagal.
