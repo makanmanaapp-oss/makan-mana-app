@@ -1,0 +1,33 @@
+// MAKANMANA iOS WAVE 3A — konfigurasi Release untuk flavour 'qa'.
+//
+// STATUS: SOURCE READY, belum disahkan oleh Xcode.
+//
+// Fail ini TIDAK berkuat kuasa sehingga konfigurasi binaan bernama
+// 'Release-qa' wujud dalam Runner.xcodeproj DAN merujuk fail ini.
+// Itu kerja Xcode (MACOS REQUIRED).
+//
+// AMARAN: project.pbxproj pada masa ini menetapkan
+// PRODUCT_BUNDLE_IDENTIFIER secara terus, dan tetapan dalam pbxproj
+// MENGATASI xcconfig. Ia mesti dibuang daripada pbxproj untuk konfigurasi
+// flavour, atau nilai di bawah akan diabaikan secara senyap.
+
+#include "Generated.xcconfig"
+
+PRODUCT_BUNDLE_IDENTIFIER = com.makanmana.apps.qa
+PRODUCT_NAME = MakanMana QA
+
+// Dibaca oleh flavour Flutter dan oleh skrip pemilihan plist.
+MM_FLAVOR = qa
+MM_FIREBASE_PLIST_DIR = $(SRCROOT)/Firebase/qa
+
+// Skim URL panggil-balik Google Sign-In untuk flavour ini.
+//
+// KOSONG DENGAN SENGAJA. Nilainya ialah REVERSED_CLIENT_ID di dalam
+// GoogleService-Info.plist flavour 'qa', dan ia BERBEZA antara QA dan
+// produksi. Ia tidak boleh direka — salin nilai sebenar selepas plist
+// dimuat turun dari konsol Firebase.
+//
+// select_firebase_plist.sh MENOLAK binaan jika ia kosong atau jika ia tidak
+// sepadan plist yang sedang dibundel, jadi nilai yang salah tidak boleh
+// dihantar secara senyap.
+MM_GOOGLE_REVERSED_CLIENT_ID =
