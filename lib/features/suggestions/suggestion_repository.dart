@@ -15,6 +15,8 @@ class HomeSuggestion {
     this.sessionId,
     this.isSample = false,
     this.isEmpty = false,
+    this.isUnavailable = false,
+    this.retryable = true,
   });
 
   final PlaceSummary? primary;
@@ -27,6 +29,13 @@ class HomeSuggestion {
 
   /// true = tiada calon ngam dalam radius/tapisan.
   final bool isEmpty;
+
+  /// WAVE 4A: true = perkhidmatan cadangan tidak dapat dilayan. Berbeza
+  /// daripada [isEmpty] — tiada restoran rekaan dipaparkan untuk menutupnya.
+  final bool isUnavailable;
+
+  /// WAVE 4A: berbaloi mencuba semula (gangguan lwn salah konfigurasi).
+  final bool retryable;
 }
 
 /// Home AI Pick berkuasa getSuggestions (mode preview: TIADA had spin,
@@ -57,7 +66,6 @@ final homeSuggestionProvider =
   final loc = await ref.watch(locationContextProvider.future);
 
   final full = ref.read(makanManaUserContextProvider);
-  final dummy = ref.read(dummySuggestionServiceProvider);
 
   // AUTHORITY LOKASI (QA-DEV6): tiada lokasi sah (GPS gagal + tiada last-valid
   // disimpan) → JANGAN minta cadangan. Kalau lat/lng null dihantar, pelayan
@@ -67,11 +75,12 @@ final homeSuggestionProvider =
     return const HomeSuggestion(isEmpty: true, source: 'location_unavailable');
   }
 
-  // Tiada Firebase (mod dev): tunjuk SAMPEL berlabel, bukan "live".
+  // Tiada Firebase (mod demo eksplisit): tunjuk CONTOH berlabel, bukan "live".
   if (!ref.read(firebaseReadyProvider)) {
+    final demo = ref.read(dummySuggestionServiceProvider);
     return HomeSuggestion(
-      primary: dummy.heroPick(),
-      alternatives: dummy.nearby(limit: 6),
+      primary: demo.heroPick(),
+      alternatives: demo.nearby(limit: 6),
       source: 'demo_preview',
       isSample: true,
     );
@@ -82,16 +91,20 @@ final homeSuggestionProvider =
       .read(cloudSuggestionServiceProvider)
       .getSuggestions(payload: payload, mode: 'preview');
 
-  // Cloud Function tidak tersedia -> sampel jujur (dilabel), bukan palsu.
+  // WAVE 4A — Cloud Function tidak dapat dihubungi. Dahulu Home memaparkan
+  // sepuluh restoran REKAAN di sini (dilabel sampel, tetapi masih rekaan pada
+  // skrin produksi). Kini keadaan "tidak tersedia + cuba lagi" yang jujur.
   if (res == null) {
+    return const HomeSuggestion(isUnavailable: true, source: 'unavailable');
+  }
+  if (res.isUnavailable) {
     return HomeSuggestion(
-      primary: dummy.heroPick(),
-      alternatives: dummy.nearby(limit: 6),
-      source: 'demo_preview',
-      isSample: true,
+      isUnavailable: true,
+      retryable: res.retryable,
+      source: 'unavailable',
     );
   }
-  if (res.place == null) {
+  if (res.isEmptyArea || res.place == null) {
     return const HomeSuggestion(isEmpty: true);
   }
   return HomeSuggestion(

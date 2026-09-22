@@ -12,6 +12,7 @@ import 'package:makan_mana/core/services/cloud_suggestion_service.dart';
 import 'package:makan_mana/core/services/location_service.dart';
 import 'package:makan_mana/features/explore/explore_pagination_controller.dart';
 import 'package:makan_mana/models/place_summary.dart';
+import 'package:makan_mana/models/places_outcome.dart';
 import 'package:makan_mana/repositories/auth_repository.dart';
 
 /// LOCATION CONSISTENCY HOTFIX — Home, Explore & Spin mesti guna lat/lng/radius
@@ -62,7 +63,7 @@ class _RecordingService extends CloudSuggestionService {
   int? homeRadius, exploreRadius;
 
   @override
-  Future<List<PlaceSummary>?> getNearbyPlaces({
+  Future<PlacesOutcome> getNearbyPlaces({
     double? lat,
     double? lng,
     int? radius,
@@ -71,7 +72,7 @@ class _RecordingService extends CloudSuggestionService {
     homeLat = lat;
     homeLng = lng;
     homeRadius = radius;
-    return [_p('h1')];
+    return PlacesOutcome.ok([_p('h1')]);
   }
 
   @override

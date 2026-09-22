@@ -1,10 +1,11 @@
 import {HttpsError, onCall} from "firebase-functions/v2/https";
+import {logger} from "firebase-functions/v2";
 
 import {algorithm2FlagActive} from "../config/algorithm2Flags";
 import {ADMIN_UIDS} from "../config/constants";
 import {db, FieldValue} from "../config/firebase";
-import {DUMMY_PLACES} from "../data/dummyPlaces";
 import {resolveCohortAuthorization} from "../domain/places/canonical/canonicalReadResolver";
+import {isRealPlaceId} from "../domain/places/realPlaceIdentity";
 import {writeRejectMemory} from "../services/algorithm2SessionService";
 import {logEvent} from "../services/eventService";
 import {currentTimeSlot} from "../utils/timeSlot";
@@ -50,19 +51,28 @@ export const submitFeedback = onCall(async (request) => {
   const placeId = input.placeId ?? null;
   // Prompt 8: mod tindakan (spin/preview/nearby) dari metadata client.
   const originMode = (input.metadata?.origin as string | undefined) ?? null;
-  // Snapshot client diutamakan (tempat Google Places sebenar);
-  // fallback ke senarai dummy pelayan.
-  const dummy = DUMMY_PLACES.find((p) => p.placeId === placeId) ?? null;
+
+  // WAVE 4A — tindakan pada tempat BUKAN-SEBENAR (rekaan legasi atau sintetik
+  // QA) tidak pernah menjadi isyarat citarasa sebenar: tiada rekod makan, tiada
+  // status cadangan, tiada reject-memory, tiada event pembelajaran. Ia diterima
+  // dengan jujur supaya klien lama tidak melihat ralat, dan tidak melakukan apa-apa.
+  if (!isRealPlaceId(placeId)) {
+    logger.info("submitFeedback.nonRealPlaceIgnored", {action, hasSnapshot: Boolean(input.place)});
+    return {status: "IGNORED_NON_REAL_PLACE", action};
+  }
+
+  // Snapshot client (tempat Google Places sebenar). WAVE 4A: tiada lagi
+  // carian nama daripada senarai rekaan pelayan.
   const snapshot = input.place ?? null;
-  const place = snapshot || dummy ?
+  const place = snapshot ?
     {
       placeId: placeId ?? "",
-      name: snapshot?.name ?? dummy?.name ?? "Tempat Makan",
-      cuisine: snapshot?.cuisine ?? dummy?.cuisine ?? "Restoran",
-      emoji: snapshot?.emoji ?? dummy?.emoji ?? "🍽️",
-      priceLevel: snapshot?.priceLevel ?? dummy?.priceLevel ?? 1,
-      priceEstimate: snapshot?.priceEstimate ?? dummy?.priceEstimate ?? "",
-      matchScore: snapshot?.matchScore ?? dummy?.matchScore ?? null,
+      name: snapshot.name ?? "Tempat Makan",
+      cuisine: snapshot.cuisine ?? "Restoran",
+      emoji: snapshot.emoji ?? "🍽️",
+      priceLevel: snapshot.priceLevel ?? 1,
+      priceEstimate: snapshot.priceEstimate ?? "",
+      matchScore: snapshot.matchScore ?? null,
     } :
     null;
 

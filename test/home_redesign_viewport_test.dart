@@ -22,6 +22,7 @@ import 'package:makan_mana/features/suggestions/suggestion_repository.dart';
 import 'package:makan_mana/models/daily_usage.dart';
 import 'package:makan_mana/models/place_summary.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:makan_mana/models/places_outcome.dart';
 
 PlaceSummary _place(String id, String name,
         {double rating = 4.5,
@@ -85,7 +86,8 @@ Widget _harness({
     overrides: [
       sharedPreferencesProvider.overrideWithValue(prefs),
       homeSuggestionProvider.overrideWith((ref) async => _hero),
-      nearbyPlacesProvider.overrideWith((ref) async => _nearby),
+      nearbyPlacesProvider
+          .overrideWith((ref) async => PlacesOutcome.ok(_nearby)),
       dailyUsageProvider.overrideWith((ref) async => const DailyUsage(
           userId: 'test',
           date: '20260807',

@@ -237,13 +237,13 @@ class _SuggestionScreenState extends ConsumerState<SuggestionScreen> {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final s = ref.watch(suggestionActionControllerProvider);
-    final place = s.place ??
-        ref.watch(currentSuggestionProvider) ??
-        ref.watch(dummySuggestionServiceProvider).heroPick();
+    // WAVE 4A — tiada sandaran rekaan. Bila tiada cadangan sebenar, skrin
+    // memaparkan keadaan "tiada lagi" yang sedia ada (radius/mood/spin semula).
+    final place = s.place ?? ref.watch(currentSuggestionProvider);
 
     return Scaffold(
       appBar: AppBar(title: Text(l.t('aiPickTitle'))),
-      body: s.noMore
+      body: (s.noMore || place == null)
           ? _NoMoreState(
               onIncreaseRadius: () {
                 context.pop();

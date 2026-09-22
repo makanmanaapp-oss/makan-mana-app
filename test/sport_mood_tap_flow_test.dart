@@ -15,6 +15,7 @@ import 'package:makan_mana/features/fit/sport_moods_data.dart';
 import 'package:makan_mana/features/fit/sport_moods_screen.dart';
 import 'package:makan_mana/features/fit/fit_widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:makan_mana/models/places_outcome.dart';
 
 /// REGRESI PEPIJAT AUTO-EXIT SPORT MODE.
 ///
@@ -37,7 +38,8 @@ class _Harness {
           fitAccessProvider.overrideWithValue(access),
           fitProfileProvider.overrideWith(
               (ref) => profileStream ?? Stream.value(null)),
-          nearbyPlacesProvider.overrideWith((ref) async => const []),
+          nearbyPlacesProvider
+              .overrideWith((ref) async => const PlacesOutcome.emptyArea()),
         ]) {
     router = GoRouter(routes: [
       GoRoute(

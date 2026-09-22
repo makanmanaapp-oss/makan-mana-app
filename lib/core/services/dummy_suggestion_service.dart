@@ -4,6 +4,13 @@ import '../../models/place_summary.dart';
 
 /// Sumber cadangan dummy untuk Milestone 1-3.
 /// Akan digantikan dengan Cloud Function getSuggestions + Google Places di Milestone 4.
+/// WAVE 4A — CONTOH MOD DEMO SAHAJA.
+///
+/// Sehingga Wave 3F, sepuluh restoran ini juga merupakan sandaran PRODUKSI:
+/// apabila Places gagal atau kunci API hilang, pengguna sebenar melihatnya
+/// sebagai kedai sebenar. Sandaran itu telah DIBUANG (kelulusan pemilik).
+/// Perkhidmatan ini kini hanya melayan mod demo eksplisit (`!firebaseReady`),
+/// dan setiap tempat yang dikeluarkannya dicop `demo_preview`.
 class DummySuggestionService {
   final _random = Random();
 
@@ -160,24 +167,33 @@ class DummySuggestionService {
     ),
   ];
 
-  /// Pilihan utama AI (dummy): skor tertinggi yang buka.
-  PlaceSummary heroPick() =>
-      places.where((p) => p.isOpen).reduce((a, b) => a.matchScore >= b.matchScore ? a : b);
+  /// WAVE 4A — setiap contoh yang KELUAR daripada perkhidmatan ini dicop
+  /// `demo_preview`, jadi `isSample` benar di mana-mana ia dipaparkan.
+  /// Sebelum ini contoh keluar TANPA `source` dan dipaparkan sebagai kad
+  /// restoran sebenar. Senarai mentah [places] kekal tidak dicop supaya
+  /// perbandingan ID sedia ada tidak berubah.
+  static PlaceSummary _labelled(PlaceSummary p) =>
+      p.source == null ? p.copyWithSource('demo_preview') : p;
 
-  /// Satu cadangan rawak (untuk butang Spin).
+  /// Pilihan utama demo: skor tertinggi yang buka.
+  PlaceSummary heroPick() => _labelled(places
+      .where((p) => p.isOpen)
+      .reduce((a, b) => a.matchScore >= b.matchScore ? a : b));
+
+  /// Satu contoh rawak.
   PlaceSummary randomPick() {
     final open = places.where((p) => p.isOpen).toList();
-    return open[_random.nextInt(open.length)];
+    return _labelled(open[_random.nextInt(open.length)]);
   }
 
   List<PlaceSummary> nearby({int limit = 6}) {
     final sorted = [...places]..sort((a, b) => a.distanceKm.compareTo(b.distanceKm));
-    return sorted.take(limit).toList();
+    return sorted.take(limit).map(_labelled).toList();
   }
 
   PlaceSummary? byId(String placeId) {
     for (final p in places) {
-      if (p.placeId == placeId) return p;
+      if (p.placeId == placeId) return _labelled(p);
     }
     return null;
   }

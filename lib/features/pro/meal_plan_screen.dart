@@ -97,9 +97,9 @@ class _MealPlanScreenState extends ConsumerState<MealPlanScreen> {
           onRetry: () => ref.invalidate(nearbyPlacesProvider),
           retryLabel: l.t('retry'),
         ),
-        data: (places) {
+        data: (outcome) {
           final ctx = ref.watch(makanManaUserContextProvider);
-          final result = buildMealPlan(ctx, places, seed: _seed);
+          final result = buildMealPlan(ctx, outcome.places, seed: _seed);
           if (result.isEmpty || result.slotsCount == 0) {
             return _EmptyState(l: l, onSpin: () => context.go(RoutePaths.home));
           }

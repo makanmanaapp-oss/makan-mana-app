@@ -17,12 +17,36 @@ import '../../models/suggestion_record.dart';
 class SpinOutcome {
   const SpinOutcome.blocked()
       : blocked = true,
-        place = null;
+        place = null,
+        emptyArea = false,
+        unavailable = false;
 
-  const SpinOutcome.success(this.place) : blocked = false;
+  const SpinOutcome.success(this.place)
+      : blocked = false,
+        emptyArea = false,
+        unavailable = false;
+
+  /// WAVE 4A — kawasan ini benar-benar tiada restoran yang ngam.
+  const SpinOutcome.emptyArea()
+      : blocked = false,
+        place = null,
+        emptyArea = true,
+        unavailable = false;
+
+  /// WAVE 4A — perkhidmatan cadangan tidak dapat dilayan. Dahulu laluan ini
+  /// memutar sepuluh restoran REKAAN dan merekodkannya sebagai cadangan.
+  const SpinOutcome.unavailable()
+      : blocked = false,
+        place = null,
+        emptyArea = false,
+        unavailable = true;
 
   final bool blocked;
   final PlaceSummary? place;
+  final bool emptyArea;
+  final bool unavailable;
+
+  bool get hasNoSuggestion => emptyArea || unavailable;
 }
 
 /// Orkestrasi spin Milestone 2 (client-side, data dummy):
@@ -113,6 +137,15 @@ class SpinController {
         .getSuggestions(payload: payload, mode: 'spin');
     if (remote != null) {
       if (remote.paywallRequired) return const SpinOutcome.blocked();
+      // WAVE 4A — pelayan menjawab dengan JUJUR: tiada hasil, atau pembekal
+      // tidak tersedia. Klien TIDAK menggantikannya dengan restoran rekaan.
+      if (remote.hasNoSuggestion) {
+        _remoteSession = false;
+        _remoteCandidates = const [];
+        return remote.isEmptyArea
+            ? const SpinOutcome.emptyArea()
+            : const SpinOutcome.unavailable();
+      }
       _remoteSession = true;
       _sessionId = remote.sessionId;
       _currentSuggestionId = remote.suggestionId;
@@ -130,30 +163,15 @@ class SpinController {
       return SpinOutcome.success(remote.place);
     }
 
-    // ---- Fallback tempatan (Functions tidak tersedia) ----
+    // ---- WAVE 4A: Functions tidak tersedia ----
+    // Dahulu: spin tempatan atas sepuluh restoran REKAAN, direkod sebagai
+    // cadangan sebenar dan boleh dibuka dalam Google Maps. Kini kegagalan
+    // dilaporkan dengan jujur: tiada kuota digunakan, tiada rekod dicipta.
     _remoteSession = false;
+    _remoteCandidates = const [];
     final events = _ref.read(eventRepositoryProvider);
-    final usage = _ref.read(usageRepositoryProvider);
-
     await events.log(_event('spin_started', mood: mood));
-
-    final today = await usage.getToday(_uid, _plan);
-    if (!today.canSpin) {
-      await events.log(_event('paywall_viewed', mood: mood));
-      await usage.incrementPaywallShown(_uid);
-      return const SpinOutcome.blocked();
-    }
-
-    // Setiap spin memulakan sesi baru; reject-chain kekal dalam sesi sama.
-    _sessionId = 'sess_${DateTime.now().millisecondsSinceEpoch}';
-    _shownPlaceIds.clear();
-    _rejectedPlaceIds.clear();
-
-    final place = _pickCandidate();
-    await usage.incrementSpin(_uid, _plan);
-    await _recordShown(place, mood: mood);
-    _ref.read(currentSuggestionProvider.notifier).state = place;
-    return SpinOutcome.success(place);
+    return const SpinOutcome.unavailable();
   }
 
   /// Terima cadangan: rekod meal + kemas kini status + event.
@@ -209,7 +227,9 @@ class SpinController {
 
   /// Tolak dengan sebab. Calon baru dipaparkan SERTA-MERTA (optimistic);
   /// log AI Brain berjalan di belakang tabir supaya UI tidak menunggu.
-  Future<PlaceSummary> reject(PlaceSummary place, String reasonKey) async {
+  /// WAVE 4A: memulangkan null bila tiada calon SEBENAR yang tinggal. Dahulu
+  /// laluan ini beralih kepada restoran rekaan dan merekodkannya.
+  Future<PlaceSummary?> reject(PlaceSummary place, String reasonKey) async {
     _rejectedPlaceIds.add(place.placeId);
     final rejectedSuggestionId = _currentSuggestionId;
     final wasRemote = _remoteSession;
@@ -231,7 +251,7 @@ class SpinController {
                 );
         if (ok) {
           // Calon seterusnya direkod secara tempatan (dibenarkan rules).
-          await _recordShown(next);
+          if (next != null) await _recordShown(next);
           return;
         }
       }
@@ -245,21 +265,20 @@ class SpinController {
             _event('suggestion_reject',
                 place: place, metadata: {'reason': reasonKey}),
           );
-      await _recordShown(next);
+      if (next != null) await _recordShown(next);
     }());
 
     return next;
   }
 
-  PlaceSummary _pickCandidate({String? excludePlaceId}) {
-    // Sesi remote: guna calon Google sebenar dari pelayan dahulu.
-    final fromRemote = _remoteSession && _remoteCandidates.length > 1;
-    final source = fromRemote
-        ? _remoteCandidates
-        : _ref.read(dummySuggestionServiceProvider).nearby(limit: 100);
-    final all = source
+  /// Calon seterusnya daripada sesi pelayan. WAVE 4A: null bila tiada calon
+  /// sebenar — tiada lagi kolam rekaan tempatan.
+  PlaceSummary? _pickCandidate({String? excludePlaceId}) {
+    if (!_remoteSession || _remoteCandidates.length <= 1) return null;
+    final all = _remoteCandidates
         .where((p) => p.isOpen && p.placeId != excludePlaceId)
         .toList();
+    if (all.isEmpty) return null;
     final fresh = all
         .where((p) =>
             !_rejectedPlaceIds.contains(p.placeId) &&
@@ -269,10 +288,7 @@ class SpinController {
         ? fresh
         : all.where((p) => !_rejectedPlaceIds.contains(p.placeId)).toList();
     final safePool = pool.isNotEmpty ? pool : all;
-    final picked = safePool[_random.nextInt(safePool.length)];
-    // NET-01: calon dari pool tempatan WAJIB dicop sebagai fallback offline
-    // supaya UI label jujur & AI Brain tidak belajar ia sebagai live.
-    return fromRemote ? picked : picked.copyWithSource('offline_fallback');
+    return safePool[_random.nextInt(safePool.length)];
   }
 
   Future<void> _recordShown(PlaceSummary place, {String? mood}) async {

@@ -11,6 +11,7 @@
  */
 import { db, FieldValue } from "../config/firebase";
 import { PlaceCandidate } from "../types/place";
+import { isFictionalPlaceId } from "../domain/places/realPlaceIdentity";
 import { ScoringContext, scoreAndRank } from "./scoringService";
 import {
   RejectMemoryRecord,
@@ -320,6 +321,9 @@ export async function consumeStoredAlternative(
     const stillRemaining: string[] = [];
     for (const id of remaining) {
       const cand = byId.get(id);
+      // WAVE 4A — sesi LAMA mungkin menyimpan restoran rekaan. Ia tidak pernah
+      // disajikan semula dan tidak disimpan dalam baki; dokumen tidak dipadam.
+      if (isFictionalPlaceId(id)) continue;
       const valid = cand && cand.isOpen !== false && !exclude.has(id);
       if (!chosen && valid) { chosen = cand!; continue; } // pop first valid
       if (cand && !exclude.has(id)) stillRemaining.push(id); // keep other valid-ish

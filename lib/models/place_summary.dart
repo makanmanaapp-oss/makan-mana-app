@@ -57,10 +57,15 @@ class PlaceSummary {
   bool get isCanonicalData => dataSource == 'canonical';
 
   /// true jika data ini contoh/sampel (bukan cadangan live sebenar).
+  /// WAVE 4A: `qa_synthetic` (data ujian QA berlabel) dan `dummy` (sandaran
+  /// rekaan legasi) turut dikira sampel. Sebelum ini kedua-duanya dipaparkan
+  /// sebagai kad restoran SEBENAR.
   bool get isSample =>
       source == 'mock_fallback' ||
       source == 'demo_preview' ||
-      source == 'offline_fallback';
+      source == 'offline_fallback' ||
+      source == 'qa_synthetic' ||
+      source == 'dummy';
 
   /// NET-01: fallback tempatan bila Functions/rangkaian tidak sampai.
   bool get isOfflineFallback => source == 'offline_fallback';

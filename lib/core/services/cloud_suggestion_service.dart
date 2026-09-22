@@ -3,6 +3,7 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../models/place_summary.dart';
+import '../../models/places_outcome.dart';
 import '../constants/app_constants.dart';
 
 /// Phase 2.2A — satu halaman Explore (pagination server-mediated).
@@ -54,9 +55,25 @@ class CloudSpinResult {
     this.candidates = const [],
     this.source,
     this.contextHash,
+    this.isEmptyArea = false,
+    this.isUnavailable = false,
+    this.retryable = false,
+    this.spinRefunded = false,
   });
 
   final bool paywallRequired;
+
+  /// WAVE 4A — kawasan ini benar-benar tiada restoran yang ngam. BUKAN ralat.
+  final bool isEmptyArea;
+
+  /// WAVE 4A — perkhidmatan tempat tidak dapat dilayan. BUKAN "tiada restoran".
+  final bool isUnavailable;
+
+  /// WAVE 4A — berbaloi mencuba semula (gangguan sementara lwn salah konfigurasi).
+  final bool retryable;
+
+  /// WAVE 4A — kuota spin dipulangkan kerana tiada cadangan dihasilkan.
+  final bool spinRefunded;
   final PlaceSummary? place;
   final String? sessionId;
   final String? suggestionId;
@@ -72,7 +89,14 @@ class CloudSpinResult {
   /// Prompt 6: sumber data (google_places | mock_fallback | ...).
   final String? source;
 
-  bool get isSample => source == 'mock_fallback' || source == 'demo_preview';
+  bool get isSample =>
+      source == 'mock_fallback' ||
+      source == 'demo_preview' ||
+      source == 'offline_fallback' ||
+      source == 'qa_synthetic';
+
+  /// true bila pelayan memulangkan hasil jujur tanpa cadangan.
+  bool get hasNoSuggestion => isEmptyArea || isUnavailable;
 }
 
 /// Klien Cloud Functions (region asia-southeast1).
@@ -133,6 +157,21 @@ class CloudSuggestionService {
           paywallRequired: true,
           spinUsed: (data['spinUsed'] as num?)?.toInt(),
           spinLimit: (data['spinLimit'] as num?)?.toInt(),
+        );
+      }
+      // WAVE 4A — hasil JUJUR daripada pelayan. Tiada satu pun daripadanya
+      // digantikan dengan restoran rekaan oleh klien.
+      final status = data['status'] as String?;
+      if (status == 'OK_EMPTY' || status == 'PLACES_UNAVAILABLE') {
+        return CloudSpinResult(
+          paywallRequired: false,
+          isEmptyArea: status == 'OK_EMPTY',
+          isUnavailable: status == 'PLACES_UNAVAILABLE',
+          retryable: data['retryable'] == true,
+          spinRefunded: data['spinRefunded'] == true,
+          spinUsed: (data['spinUsed'] as num?)?.toInt(),
+          spinLimit: (data['spinLimit'] as num?)?.toInt(),
+          source: data['source'] as String?,
         );
       }
       final primary = data['primary'];
@@ -208,13 +247,21 @@ class CloudSuggestionService {
 
   /// Senarai tempat berdekatan untuk Home (hero + grid).
   /// Hampir selalu hit cache 7 hari di pelayan — sangat jimat API.
-  Future<List<PlaceSummary>?> getNearbyPlaces({
+  ///
+  /// WAVE 4A: memulangkan hasil JUJUR. "Tiada restoran di kawasan ini" dan
+  /// "tidak dapat menghubungi perkhidmatan" ialah dua keadaan berbeza, dan
+  /// TIADA satu pun digantikan dengan restoran rekaan.
+  Future<PlacesOutcome> getNearbyPlaces({
     double? lat,
     double? lng,
     int? radius,
     String? languageCode,
   }) async {
-    if (!firebaseReady) return null;
+    if (!firebaseReady) {
+      return const PlacesOutcome.unavailable(
+        reason: PlacesUnavailableReason.network,
+      );
+    }
     try {
       final callable = _functions.httpsCallable(
         'getNearbyPlaces',
@@ -226,14 +273,12 @@ class CloudSuggestionService {
         'radius': radius,
         'languageCode': languageCode,
       });
-      final data = Map<String, dynamic>.from(res.data);
-      return (data['places'] as List? ?? [])
-          .map((p) =>
-              PlaceSummary.fromMap(Map<String, dynamic>.from(p as Map)))
-          .toList();
+      return PlacesOutcome.fromMap(Map<String, dynamic>.from(res.data));
     } catch (e) {
-      debugPrint('MakanMana: getNearbyPlaces cloud gagal, guna lokal: $e');
-      return null;
+      debugPrint('MakanMana: getNearbyPlaces gagal: $e');
+      return const PlacesOutcome.unavailable(
+        reason: PlacesUnavailableReason.network,
+      );
     }
   }
 

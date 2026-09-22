@@ -290,7 +290,16 @@ void main() {
     expect(place.isSample, isTrue);
     expect(place.isOfflineFallback, isTrue);
     expect(DummySuggestionService.places.first.isSample, isFalse,
-        reason: 'tempat asal tanpa source tidak dilabel');
+        reason: 'senarai MENTAH kekal tanpa source');
+    // WAVE 4A: setiap contoh yang KELUAR daripada perkhidmatan dicop
+    // demo_preview, jadi ia tidak boleh dipaparkan sebagai restoran sebenar.
+    final service = DummySuggestionService();
+    expect(service.heroPick().isSample, isTrue);
+    expect(service.randomPick().isSample, isTrue);
+    expect(service.nearby(limit: 10).every((p) => p.isSample), isTrue);
+    expect(
+        service.byId(DummySuggestionService.places.first.placeId)!.isSample,
+        isTrue);
   });
 
   // SP7.2: pemetaan ralat auth mesra pengguna (tiada mesej mentah Firebase).

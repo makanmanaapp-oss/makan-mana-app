@@ -79,6 +79,27 @@ export async function reserveSpin(
   });
 }
 
+/**
+ * WAVE 4A — pulangkan spin yang DITEMPAH tetapi tidak menghasilkan cadangan.
+ *
+ * Kuota ditempah SEBELUM Places dipanggil. Dahulu pengguna sentiasa menerima
+ * sesuatu kerana pelayan jatuh ke restoran rekaan; kini kawasan kosong atau
+ * gangguan pembekal memulangkan hasil jujur, jadi spin itu TIDAK boleh dikira.
+ *
+ * Tidak pernah turun di bawah sifar, dan hanya menyentuh dokumen HARI INI.
+ */
+export async function releaseSpin(uid: string): Promise<number> {
+  const ref = docRef(uid);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    const used = (snap.data()?.spinUsed as number | undefined) ?? 0;
+    if (used <= 0) return 0;
+    const next = used - 1;
+    tx.set(ref, {spinUsed: next}, {merge: true});
+    return next;
+  });
+}
+
 export async function incrementPaywallShown(uid: string): Promise<void> {
   await docRef(uid).set(
     {

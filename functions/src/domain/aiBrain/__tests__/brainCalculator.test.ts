@@ -53,6 +53,38 @@ test("B13b: offline_fallback excluded", () => assert.equal(realEventExclusionRea
 test("B15: malformed excluded", () => assert.equal(realEventExclusionReason({ ...evt("accept"), eventType: "" as string }), "malformed"));
 test("B16: real owner action included", () => assert.equal(isRealEvent(evt("accept")), true));
 
+// ---------------- WAVE 4A: tempat BUKAN-SEBENAR tidak melatih otak ----------
+// Tempat rekaan legasi dahulu sampai ke sini dengan resultSource "dummy" —
+// nilai yang TIADA dalam senarai pengecualian — jadi ia BELAJAR sebagai
+// citarasa sebenar. Pengecualian kini berdasarkan ID tempat, yang juga
+// meneutralkan dokumen LAMA pada masa BACAAN.
+test("W4A-1: placeId rekaan dikecualikan walau sumbernya kelihatan sah", () => {
+  assert.equal(
+    realEventExclusionReason(evt("accept", {placeId: "dummy_nasi_lemak_bonda", resultSource: "dummy"})),
+    "non_real_place",
+  );
+  assert.equal(
+    realEventExclusionReason(evt("accept", {placeId: "dummy_x", resultSource: "google_places"})),
+    "non_real_place",
+  );
+});
+test("W4A-2: placeId sintetik QA dikecualikan", () => assert.equal(
+  realEventExclusionReason(evt("accept", {placeId: "qa_synthetic_01"})), "non_real_place"));
+test("W4A-3: tempat sebenar dan event tanpa tempat kekal diterima", () => {
+  assert.equal(isRealEvent(evt("accept", {placeId: "ChIJ_sebenar"})), true);
+  assert.equal(isRealEvent(evt("screen_view", {placeId: null})), true);
+});
+test("W4A-4: makan pada tempat rekaan TIDAK mengubah citarasa", () => {
+  const fictional = base({meals: [
+    meal({placeId: "dummy_nasi_lemak_bonda", cuisine: "malay", satisfactionRating: 5}),
+    meal({placeId: "qa_synthetic_01", cuisine: "thai", satisfactionRating: 5}),
+  ]});
+  const none = base({meals: []});
+  assert.deepEqual(fictional.brainDoc.topCuisines, none.brainDoc.topCuisines);
+  const real = base({meals: [meal({placeId: "ChIJ_sebenar", cuisine: "malay", satisfactionRating: 5})]});
+  assert.notDeepEqual(real.brainDoc.topCuisines, none.brainDoc.topCuisines);
+});
+
 test("B-filter: excluded events counted, not learned", () => {
   const r = base({ events: [evt("accept", { resultSource: "mock_fallback" }), evt("accept", { resultSource: "demo_preview" }), evt("accept")], meals: [meal()] });
   assert.equal(r.diagnostics.excludedEvents, 2);

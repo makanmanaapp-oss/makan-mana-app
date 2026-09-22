@@ -432,6 +432,20 @@ class SuggestionActionController extends StateNotifier<SuggestionActionState> {
       // Laluan spin sedia ada (teruji): submitFeedback reject + calon Google
       // seterusnya dalam sesi sama. spinController kemas kini currentSuggestion.
       final next = await _ref.read(spinControllerProvider).reject(place, reasonId);
+      if (next == null) {
+        // WAVE 4A — tiada calon SEBENAR yang tinggal. Dahulu laluan ini
+        // beralih kepada restoran rekaan; kini ia melaporkan kehabisan.
+        state = s.copyWith(
+          processing: false,
+          rejectedPlaceIds: [...s.rejectedPlaceIds, place.placeId],
+          noMore: true,
+        );
+        _ref.read(eventLoggerProvider).logNoMoreSuggestions(
+              sessionId: s.sessionId,
+              sourceMode: SourceMode.spin,
+            );
+        return;
+      }
       state = s.copyWith(
         place: next,
         suggestionId: null, // calon seterusnya belum ada id pelayan sendiri

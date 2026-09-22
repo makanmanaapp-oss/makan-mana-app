@@ -6,6 +6,7 @@ import '../events/event_types.dart';
 import '../providers.dart';
 import '../providers/makanmana_user_context_provider.dart';
 import '../utils/time_slot_utils.dart';
+import '../utils/real_place.dart';
 
 /// Pusat log event AI Brain (Prompt 8). SATU kontrak untuk semua penulisan
 /// event client. Melampirkan medan konteks biasa dari MakanManaUserContext,
@@ -71,6 +72,14 @@ class EventLogger {
     Map<String, dynamic>? metadata,
   }) {
     try {
+      // WAVE 4A — tindakan pada tempat BUKAN-SEBENAR (contoh demo, sintetik QA)
+      // tidak pernah menjadi isyarat citarasa. Ini ialah titik cekik tunggal
+      // klien; pelayan menguatkuasakan perkara sama dalam `submitFeedback`.
+      if (placeId != null && !isRealPlaceId(placeId)) {
+        debugPrint('MakanMana EventLogger: $eventType DILANGKAU '
+            '(tempat bukan-sebenar)');
+        return;
+      }
       final ctx = _ref.read(makanManaUserContextProvider);
       final now = DateTime.now();
       _ref.read(eventRepositoryProvider).log(

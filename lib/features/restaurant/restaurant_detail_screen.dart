@@ -271,12 +271,17 @@ class _RestaurantDetailScreenState
                 uid: diagUid, surfaceSourceLabel: surface, child: w)
             : w;
     final current = ref.watch(currentSuggestionProvider);
-    // Utamakan tempat semasa jika ID sepadan (tempat Google sebenar);
-    // jika tidak cuba senarai dummy.
+    // WAVE 4A — utamakan tempat semasa jika ID sepadan (tempat Google sebenar).
+    // Contoh demo dicari HANYA dalam mod demo eksplisit; dalam produksi, ID
+    // yang tidak dikenali memaparkan keadaan "tidak dijumpai" dan BUKAN
+    // restoran rekaan yang dibentangkan sebagai perniagaan sebenar.
+    final demoMode = !ref.watch(firebaseReadyProvider);
     final place = widget.initialPlace ??
         ((current != null && current.placeId == placeId)
             ? current
-            : ref.read(dummySuggestionServiceProvider).byId(placeId) ??
+            : (demoMode
+                    ? ref.read(dummySuggestionServiceProvider).byId(placeId)
+                    : null) ??
                 current);
 
     // WAVE 2 Restaurant Profile V2: hanya apabila flag canonical ON, cuba baca

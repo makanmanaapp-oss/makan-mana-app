@@ -41,6 +41,7 @@ import 'package:makan_mana/features/suggestions/suggestion_repository.dart';
 import 'package:makan_mana/models/daily_usage.dart';
 import 'package:makan_mana/models/place_summary.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:makan_mana/models/places_outcome.dart';
 
 const _statusBar = 24.0;
 
@@ -390,8 +391,8 @@ void main() {
                 alternatives: [place('p2', 'Kedai Kopi Aman')],
                 source: 'google_places',
               )),
-          nearbyPlacesProvider
-              .overrideWith((ref) async => [place('n1', 'Mee Kari Haji')]),
+          nearbyPlacesProvider.overrideWith(
+              (ref) async => PlacesOutcome.ok([place('n1', 'Mee Kari Haji')])),
           dailyUsageProvider.overrideWith((ref) async => const DailyUsage(
               userId: 'test',
               date: '20260807',

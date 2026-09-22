@@ -52,8 +52,8 @@ class _GroupDecisionScreenState
     }
     setState(() => _creating = true);
     try {
-      final places = await ref.read(nearbyPlacesProvider.future);
-      final options = places
+      final outcome = await ref.read(nearbyPlacesProvider.future);
+      final options = outcome.places
           .where((p) => p.isOpen)
           .take(4)
           .map((p) => {

@@ -13,6 +13,7 @@ import 'package:makan_mana/features/fit/fit_providers.dart';
 import 'package:makan_mana/features/fit/fit_today_screen.dart';
 import 'package:makan_mana/features/fit/fit_widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:makan_mana/models/places_outcome.dart';
 
 /// QA VIEWPORT FIT (ISSUE 001.3).
 ///
@@ -92,7 +93,8 @@ Widget _harness({
       fitAccessProvider.overrideWithValue(access),
       fitProfileProvider
           .overrideWith((ref) => profileStream ?? Stream.value(_profile)),
-      nearbyPlacesProvider.overrideWith((ref) async => const []),
+      nearbyPlacesProvider
+          .overrideWith((ref) async => const PlacesOutcome.emptyArea()),
       if (workouts != null)
         recentWorkoutsProvider.overrideWith((ref) => Stream.value(workouts)),
     ],

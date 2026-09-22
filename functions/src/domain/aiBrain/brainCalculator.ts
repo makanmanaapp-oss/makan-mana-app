@@ -10,6 +10,8 @@
  *  - reput: isyarat lebih baharu lebih penting.
  *  - JANGAN simpan lat/lng tepat, nota alahan/kesihatan, resit, token.
  */
+import {isLearningEligiblePlaceId} from "../places/realPlaceIdentity";
+
 
 export const BRAIN_SCHEMA_VERSION = 2; // 2.4: tambah brainVersion + decay + reset boundary
 export const PRIVACY_VERSION = 1;
@@ -101,6 +103,10 @@ export function decayWeight(ageMs: number, halfLifeDays: number): number {
  */
 export function realEventExclusionReason(e: BrainEvent): string | null {
   if (e.isSample === true) return "isSample";
+  // WAVE 4A — tempat REKAAN (dummy_) dan sintetik QA (qa_synthetic_) tidak
+  // pernah melatih otak, walau apa pun `source` yang direkodkan. Ini juga
+  // meneutralkan dokumen LAMA pada masa BACAAN; tiada dokumen ditulis semula.
+  if (e.placeId && !isLearningEligiblePlaceId(e.placeId)) return "non_real_place";
   if (e.sourceMode === "sample") return "sample_mode";
   if (e.resultSource === "mock_fallback") return "mock_fallback";
   if (e.resultSource === "demo_preview") return "demo_preview";
@@ -213,6 +219,8 @@ export function computeBrain(inputs: BrainInputs): BrainResult {
 
   for (const m of meals) {
     if (m.mealTimeMs < mealSince) continue;
+    // WAVE 4A — makan yang dirakam pada tempat rekaan/sintetik tidak dikira.
+    if (m.placeId && !isLearningEligiblePlaceId(m.placeId)) continue;
     if (boundary != null && m.mealTimeMs < boundary) continue;
     const decay = decayWeight(now - m.mealTimeMs, MEAL_HALFLIFE_DAYS);
     const base = (m.source === "sample_manual_log" ? 0.3 : 1) * decay;

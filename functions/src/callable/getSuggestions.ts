@@ -9,7 +9,6 @@ import {resolveRolloutForRequest} from "../services/rolloutService";
 import {algorithm2LiveEligible as isAlgorithm2LiveEligible} from "../domain/rollout/liveEligibility";
 import {ADMIN_UIDS} from "../config/constants";
 import {db, FieldValue} from "../config/firebase";
-import {DUMMY_PLACES} from "../data/dummyPlaces";
 import {computeContextHash, computeSafetyKey} from "../domain/algorithm2/sessionEngine";
 import {resolveCohortAuthorization} from "../domain/places/canonical/canonicalReadResolver";
 import {applyCanonicalOverlay} from "../services/canonicalReadService";
@@ -22,9 +21,22 @@ import {ScoringContext, scoreAndRank} from "../services/scoringService";
 import {runAlgorithm2ShadowComparison, permissionsForMode} from "../domain/algorithm2/shadowComparison";
 import {
   incrementPaywallShown,
+  releaseSpin,
   reserveSpin,
   spinLimitForPlan,
 } from "../services/usageService";
+import {
+  PLACES_STATUS_OK,
+  PLACES_STATUS_UNAVAILABLE,
+  placesOutcomeWireFields,
+  truthfulPlacesOutcome,
+} from "../domain/places/truthfulPlacesOutcome";
+import {
+  QA_SYNTHETIC_ALGORITHM_VERSION,
+  SYNTHETIC_PLACE_SOURCE,
+  buildSyntheticPlaces,
+  decideSyntheticPlaces,
+} from "../domain/security/qaSurfaces";
 import {PlaceCandidate} from "../types/place";
 import {currentTimeSlot} from "../utils/timeSlot";
 
@@ -76,7 +88,9 @@ interface GetSuggestionsInput {
 /**
  * Spin utama MakanMana (Milestone 4):
  * Google Places API (New) + cache + skor pemberat penuh.
- * Fallback ke senarai dummy jika API key tiada / API gagal.
+ * WAVE 4A: tiada sandaran restoran rekaan — kunci hilang atau gangguan
+ * pembekal memulangkan PLACES_UNAVAILABLE, kawasan kosong memulangkan
+ * OK_EMPTY, dan spin yang tidak berhasil memulangkan kuotanya.
  */
 export const getSuggestions = onCall(
   {secrets: [mapsApiKey]},
@@ -284,7 +298,19 @@ export const getSuggestions = onCall(
     // 30. Fallback selamat ke expandedPool dalam perkhidmatan (tiada dummy).
     const areaCoverageOn = process.env.AREA_COVERAGE_POOL_ENABLED === "true" &&
       input.forceLegacy !== true && algorithm2LiveEligible;
-    if (apiKey) {
+    // WAVE 4A — data tempat SINTETIK QA untuk Home (preview) dan Spin. Aktif
+    // HANYA dengan MM_QA_SYNTHETIC_PLACES=enabled DAN runtime QA; produksi
+    // tidak pernah diaktifkan walaupun bendera ditetapkan. Cabang ini berada
+    // di ATAS setiap laluan Places, jadi tiada panggilan pembekal berlaku.
+    // Ia menggantikan SUMBER CALON sahaja — pemarkahan, penapis, sesi dan
+    // personalisasi di hilir kekal talian paip yang sama (tiada algoritma kedua).
+    const synthetic = decideSyntheticPlaces({env: process.env});
+    let providerError = false;
+    if (synthetic.active) {
+      candidatesSource = buildSyntheticPlaces({lat, lng, count: 20});
+      algorithmVersion = QA_SYNTHETIC_ALGORITHM_VERSION;
+      logger.info("getSuggestions.qaSynthetic", {reason: synthetic.reason, mode});
+    } else if (apiKey) {
       try {
         if (areaCoverageOn) {
           const area = await getAreaCandidatePool({
@@ -323,18 +349,59 @@ export const getSuggestions = onCall(
           });
         }
         algorithmVersion = "places_v1";
-        if (candidatesSource.length === 0) {
-          candidatesSource = DUMMY_PLACES;
-          algorithmVersion = "dummy_server_v1";
-        }
       } catch (e) {
-        console.error("Places API gagal, guna dummy:", e);
-        candidatesSource = DUMMY_PLACES;
-        algorithmVersion = "dummy_server_v1";
+        // Gangguan pembekal (termasuk had masa) BUKAN "tiada hasil".
+        logger.error("getSuggestions.providerError", {
+          error: e instanceof Error ? e.message : "unknown",
+        });
+        providerError = true;
+        candidatesSource = [];
+        algorithmVersion = "places_v1";
       }
     } else {
-      candidatesSource = DUMMY_PLACES;
-      algorithmVersion = "dummy_server_v1";
+      candidatesSource = [];
+      algorithmVersion = "places_v1";
+    }
+
+    // WAVE 4A — hasil JUJUR. Tiada restoran rekaan dalam Home mahupun Spin.
+    // Spin yang tidak menghasilkan cadangan MESTI memulangkan kuota yang
+    // ditempah sebelum pengambilan.
+    if (!synthetic.active) {
+      const outcome = truthfulPlacesOutcome({
+        apiKeyPresent: Boolean(apiKey),
+        providerError,
+        candidates: candidatesSource,
+      });
+      if (outcome.status !== PLACES_STATUS_OK) {
+        const wire = placesOutcomeWireFields(outcome);
+        let spinRefunded = false;
+        if (mode === "spin") {
+          spinUsedNow = await releaseSpin(uid);
+          spinRefunded = true;
+        }
+        logger.info("getSuggestions.noPlaces", {
+          mode,
+          status: wire.status,
+          reason: wire.reason ?? null,
+          retryable: wire.retryable ?? null,
+          spinRefunded,
+        });
+        return {
+          status: wire.status,
+          mode,
+          source: outcome.status === PLACES_STATUS_UNAVAILABLE ? "unavailable" : "google_places",
+          selectedMood: mood,
+          radiusMeters: radiusM,
+          primary: null,
+          alternatives: [],
+          candidates: [],
+          ...(wire.retryable !== undefined ? {retryable: wire.retryable} : {}),
+          ...(wire.reason ? {reason: wire.reason} : {}),
+          ...(mode === "spin" ? {spinUsed: spinUsedNow, spinLimit: spinLimitNow, spinRefunded} : {}),
+          algorithmVersion: "places_v1",
+        };
+      }
+      candidatesSource = outcome.places;
     }
 
     const ctx: ScoringContext = {
@@ -503,7 +570,9 @@ export const getSuggestions = onCall(
 
     // Sumber jujur: Places sebenar vs fallback dummy (untuk label sample UI).
     const source =
-      algorithmVersion === "places_v1" ? "google_places" : "mock_fallback";
+      algorithmVersion === "places_v1" ? "google_places" :
+        algorithmVersion === QA_SYNTHETIC_ALGORITHM_VERSION ? SYNTHETIC_PLACE_SOURCE :
+          "mock_fallback";
 
     // Mod PREVIEW (Home AI Pick): tiada had, tiada tulisan sesi/suggestion,
     // tiada increment. Hanya pulangkan hasil untuk paparan.

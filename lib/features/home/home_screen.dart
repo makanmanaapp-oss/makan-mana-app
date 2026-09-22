@@ -397,6 +397,54 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   /// Prompt 4: keadaan "tiada hasil" jujur — tawar besarkan radius + cuba
   /// lagi (tidak memalsukan hasil). Naikkan radius akan segarkan nearby.
+  /// WAVE 4A — perkhidmatan tempat tidak dapat dilayan. BUKAN "tiada restoran",
+  /// dan BUKAN alasan untuk memaparkan restoran rekaan.
+  Widget _nearbyUnavailableState(BuildContext context, AppLocalizations l) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: context.mm.softFill,
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        children: [
+          const Icon(Icons.cloud_off_rounded,
+              size: 38, color: AppColors.mutedText),
+          const SizedBox(height: 8),
+          Text(l.t('placesUnavailableTitle'),
+              textAlign: TextAlign.center,
+              style:
+                  const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+          const SizedBox(height: 14),
+          OutlinedButton(
+            onPressed: () => ref.invalidate(nearbyPlacesProvider),
+            style: OutlinedButton.styleFrom(minimumSize: const Size(0, 42)),
+            child: Text(l.t('retryAction')),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Rangka semasa memuatkan — bukan restoran contoh.
+  Widget _nearbyLoadingState(BuildContext context) => SizedBox(
+        height: 214,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          padding: EdgeInsets.zero,
+          clipBehavior: Clip.none,
+          itemCount: 3,
+          separatorBuilder: (_, __) => const SizedBox(width: 12),
+          itemBuilder: (_, __) => Container(
+            width: 158,
+            decoration: BoxDecoration(
+              color: context.mm.softFill,
+              borderRadius: BorderRadius.circular(18),
+            ),
+          ),
+        ),
+      );
+
   Widget _nearbyEmptyState(BuildContext context, AppLocalizations l, int r) {
     final notifier = ref.read(makanManaUserContextProvider.notifier);
     final bigger = [5, 10, 15].where((v) => v > r).take(2).toList();
@@ -444,7 +492,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final service = ref.watch(dummySuggestionServiceProvider);
     // Pastikan Home mencetuskan aliran konteks lokasi yang sama digunakan
     // oleh Explore/Spin. Hero sendiri hanya membaca state daripada context.
     ref.watch(locationContextProvider);
@@ -515,10 +562,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       localStatePhrase: MalaysiaStateHeroVoice.phraseFor(ctx.locationState),
     );
 
-    // Tempat sebenar dari pelayan (cache 7 hari); dummy semasa loading.
+    // WAVE 4A — tempat SEBENAR dari pelayan (cache 7 hari). Semasa memuatkan
+    // atau gagal, Home memaparkan keadaan yang jujur — bukan restoran rekaan.
     final nearbyAsync = ref.watch(nearbyPlacesProvider);
-    final places = nearbyAsync.valueOrNull ?? service.nearby();
-    final nearby = [...places]
+    final nearbyOutcome = nearbyAsync.valueOrNull;
+    final nearby = [...(nearbyOutcome?.places ?? const <PlaceSummary>[])]
       ..sort((a, b) => a.distanceKm.compareTo(b.distanceKm));
 
     // Mood asas (penuh untuk Free) + mood premium (preview - Milestone 5).
@@ -924,6 +972,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       loading: () => _aiPickLoading(l),
                       error: (e, _) => _aiPickError(l),
                       data: (s) {
+                        // WAVE 4A — "tidak tersedia" bukan "tiada restoran",
+                        // dan tiada satu pun ditutup dengan tempat rekaan.
+                        if (s.isUnavailable) return _aiPickError(l);
                         if (s.isEmpty || s.primary == null) {
                           return _aiPickEmpty(l, radiusKm);
                         }
@@ -1061,7 +1112,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   ],
                 ),
                 const SizedBox(height: 10),
-                if (nearby.isEmpty)
+                if (nearbyAsync.isLoading && nearbyOutcome == null)
+                  _nearbyLoadingState(context)
+                else if (nearbyAsync.hasError ||
+                    (nearbyOutcome?.isUnavailable ?? false))
+                  _nearbyUnavailableState(context, l)
+                else if (nearby.isEmpty)
                   _nearbyEmptyState(context, l, radiusKm)
                 else
                   // Front Page Redesign 1A — karusel mendatar kad penemuan makanan.

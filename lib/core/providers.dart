@@ -10,6 +10,7 @@ import '../features/suggestions/suggestion_action_controller.dart';
 import '../models/daily_usage.dart';
 import '../models/meal.dart';
 import '../models/place_summary.dart';
+import '../models/places_outcome.dart';
 import '../models/user_profile.dart';
 import '../repositories/auth_repository.dart';
 import '../repositories/event_repository.dart';
@@ -267,8 +268,13 @@ final placeCommunityProvider = StreamProvider.autoDispose
 
 /// Tempat berdekatan sebenar untuk Home (hero pick + grid).
 /// Fallback ke senarai dummy jika Functions/lokasi tidak tersedia.
+/// WAVE 4A — hasil JUJUR untuk grid Home Nearby.
+///
+/// Dahulu: senarai kosong atau ralat digantikan dengan sepuluh restoran
+/// REKAAN. Kini tiga keadaan berbeza dipulangkan (ada hasil / kawasan kosong /
+/// perkhidmatan tidak tersedia) dan UI memaparkan yang sebenarnya berlaku.
 final nearbyPlacesProvider =
-    FutureProvider<List<PlaceSummary>>((ref) async {
+    FutureProvider<PlacesOutcome>((ref) async {
   // Prompt 5: bergantung pada selectedMood — refresh & susun semula bila mood
   // berubah (aplikasi mood dilakukan di client).
   final moodId =
@@ -278,23 +284,22 @@ final nearbyPlacesProvider =
   // Home & Explore TIDAK LAGI menunjuk kawasan berbeza. Watch .future = Home
   // refetch automatik bila lokasi/radius berubah (provider di-invalidate).
   final loc = await ref.watch(locationContextProvider.future);
-  final remote = await ref.watch(cloudSuggestionServiceProvider).getNearbyPlaces(
-        lat: loc.lat,
-        lng: loc.lng,
-        radius: loc.radiusMeters > 0 ? loc.radiusMeters : 3000,
-        languageCode: ref.watch(languageProvider).languageCode,
-      );
-  final base = (remote != null && remote.isNotEmpty)
-      ? remote
-      : ref.watch(dummySuggestionServiceProvider).nearby(limit: 12);
+  final outcome =
+      await ref.watch(cloudSuggestionServiceProvider).getNearbyPlaces(
+            lat: loc.lat,
+            lng: loc.lng,
+            radius: loc.radiusMeters > 0 ? loc.radiusMeters : 3000,
+            languageCode: ref.watch(languageProvider).languageCode,
+          );
+  if (!outcome.hasPlaces) return outcome;
   // Susun semula ikut mood (client-side). Tidak menyentuh skor backend.
   final recent = ref.read(makanManaUserContextProvider).recentPlaceIds;
-  return applyMoodRanking(
-    base,
+  return PlacesOutcome.ok(applyMoodRanking(
+    outcome.places,
     moodId: moodId,
     radiusKm: loc.radiusKmRounded,
     recentPlaceIds: recent,
-  );
+  ));
 });
 
 /// Cadangan semasa yang dipaparkan pada skrin Suggestion.

@@ -52,6 +52,24 @@ class AppShell extends ConsumerWidget {
     if (!context.mounted) return;
     Navigator.of(context, rootNavigator: true).pop();
 
+    // WAVE 4A — pelayan tidak menghasilkan cadangan. Dahulu spin memutar
+    // restoran REKAAN dan merekodkannya sebagai cadangan sebenar; kini
+    // pengguna diberitahu apa yang benar-benar berlaku.
+    if (outcome.hasNoSuggestion) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(outcome.emptyArea
+              ? l.t('placesEmptyAreaTitle')
+              : l.t('placesUnavailableTitle')),
+          action: SnackBarAction(
+            label: l.t('retryAction'),
+            onPressed: () => _startSpin(context, ref),
+          ),
+        ),
+      );
+      return;
+    }
+
     if (outcome.blocked) {
       // Prompt 10: had spin Free dicapai -> event + paywall Plus (unlimited).
       final ent = ref.read(entitlementProvider);

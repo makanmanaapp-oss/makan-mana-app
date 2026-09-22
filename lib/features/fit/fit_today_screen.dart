@@ -6,6 +6,7 @@ import '../../app/localization/app_localizations.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/providers.dart';
 import '../../core/widgets/app_states.dart';
+import '../../models/place_summary.dart';
 import 'fit_charts.dart';
 import 'fit_log_sheets.dart';
 import 'fit_models.dart';
@@ -91,7 +92,9 @@ class FitTodayScreen extends ConsumerWidget {
     final score = ref.watch(dailyFitScoreProvider) ?? 0;
     // Cadangan tempat berdekatan: hiasan - bacaan gagal hanya
     // menyembunyikannya.
-    final nearby = ref.watch(nearbyPlacesProvider).valueOrNull ?? const [];
+    final nearby =
+        ref.watch(nearbyPlacesProvider).valueOrNull?.places ??
+            const <PlaceSummary>[];
     final menus = targets == null
         ? const <MenuSuggestion>[]
         : ref.watch(fitServiceProvider).suggestMenus(

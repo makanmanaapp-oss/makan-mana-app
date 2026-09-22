@@ -13,6 +13,7 @@
 //
 // Ujian ini ditulis SEBELUM pembaikan dan dijalankan pada kod lama dahulu.
 import 'dart:async';
+import 'package:makan_mana/models/places_outcome.dart';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -419,7 +420,8 @@ void main() {
     List<Override> pro(List<Override> extra) => [
           fitAccessProvider.overrideWithValue(FitAccess.full),
           fitProfileProvider.overrideWith((ref) => Stream.value(_profile)),
-          nearbyPlacesProvider.overrideWith((ref) async => const []),
+          nearbyPlacesProvider
+              .overrideWith((ref) async => const PlacesOutcome.emptyArea()),
           ...extra,
         ];
 

@@ -114,6 +114,14 @@ export const SYNTHETIC_PLACES_ENABLED = "enabled";
 /** Penanda yang MESTI kelihatan pada setiap tempat sintetik, dalam UI. */
 export const SYNTHETIC_NAME_PREFIX = "[SINTETIK QA]";
 export const SYNTHETIC_PLACE_ID_PREFIX = "qa_synthetic_";
+/** Sumber yang dilaporkan kepada klien untuk tempat sintetik. */
+export const SYNTHETIC_PLACE_SOURCE = "qa_synthetic";
+/**
+ * WAVE 4A — provenans yang ditulis pada sesi/cadangan QA (Home + Spin).
+ * Menjadikan setiap rekod sintetik boleh dikenal pasti dan boleh dibuang,
+ * dan tidak pernah dikelirukan dengan hasil Places sebenar.
+ */
+export const QA_SYNTHETIC_ALGORITHM_VERSION = "qa_synthetic_v1";
 
 export interface SyntheticPlacesDecision {
   active: boolean;

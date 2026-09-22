@@ -264,7 +264,7 @@ void main() {
   // + 124 kunci kad kedai/detail + 88 kunci laporan/pembetulan Phase 1.11.
   // Baseline semasa termasuk kunci Check-in, social timestamp dan
   // Notification V2 Prompt 2 (16 terjemahan untuk empat jenis group/social).
-  test('l10n: semua 1738 kunci dan parameter sepadan', () {
+  test('l10n: semua kunci dan parameter sepadan merentas 4 bahasa', () {
     final msKeys = AppLocalizations.keysForTesting(const Locale('ms'));
     // Phase 2.2A: +2 kunci (loadMore, endOfResults) merentas 4 bahasa.
     // Location hotfix: +1 kunci (near) merentas 4 bahasa.
@@ -314,7 +314,11 @@ void main() {
     //   dan Ahli grup, tetapan grup, Meal Wallet, sheet taxonomy dan Fit yang
     //   GAGAL dibaca kini berkata begitu, bukannya menunjukkan senarai kosong,
     //   RM0, sifar, atau (tab Ahli) "Profile tak dapat dibuka".
-    expect(msKeys, hasLength(1847));
+    // WAVE 4A: +2 kunci (placesEmptyAreaTitle, placesUnavailableTitle)
+    //   merentas 4 bahasa - "tiada restoran di kawasan ini" dan "tidak dapat
+    //   memuatkan restoran sekarang" kini ayat berasingan yang JUJUR. Sebelum
+    //   ini kedua-dua keadaan digantikan dengan sepuluh restoran REKAAN.
+    expect(msKeys, hasLength(1849));
     final placeholder = RegExp(r'\{[^}]+\}');
     final msValues = AppLocalizations.valuesForTesting(const Locale('ms'));
     for (final language in ['en', 'zh', 'ta']) {

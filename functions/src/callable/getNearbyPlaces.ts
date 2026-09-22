@@ -7,7 +7,6 @@ import {rankUnified} from "../domain/algorithm2/unifiedRanking";
 import {buildRecCtxFromHydration} from "../services/recommendationContextBuilder";
 import {ADMIN_UIDS} from "../config/constants";
 import {db} from "../config/firebase";
-import {DUMMY_PLACES} from "../data/dummyPlaces";
 import {paginateRanked} from "../domain/algorithm2/sessionEngine";
 import {resolveCohortAuthorization} from "../domain/places/canonical/canonicalReadResolver";
 import {
@@ -20,6 +19,12 @@ import {applyCanonicalOverlay} from "../services/canonicalReadService";
 import {getAreaCandidatePool} from "../services/areaCandidatePoolService";
 import {getExpandedPool} from "../services/expandedPoolService";
 import {searchNearby} from "../services/placesService";
+import {
+  PLACES_STATUS_OK,
+  PLACES_STATUS_UNAVAILABLE,
+  placesOutcomeWireFields,
+  truthfulPlacesOutcome,
+} from "../domain/places/truthfulPlacesOutcome";
 import {scoreAndRank} from "../services/scoringService";
 import {PlaceCandidate} from "../types/place";
 import {buildSyntheticPlaces, decideSyntheticPlaces} from "../domain/security/qaSurfaces";
@@ -80,8 +85,11 @@ export const getNearbyPlaces = onCall(
       logger.warn("getNearbyPlaces.noClientCoords", {radiusM, cursor: input.cursor ?? null});
     }
 
-    let candidates: PlaceCandidate[];
+    let candidates: PlaceCandidate[] = [];
     let source = "places_v1";
+    // WAVE 4A — hasil JUJUR: tiada restoran rekaan. Kosong bermakna kosong,
+    // gagal bermakna gagal. Ditetapkan oleh setiap cabang di bawah.
+    let providerError = false;
     const apiKey = mapsApiKey.value();
     // Phase 2.2A/2.6B — kohort + keputusan rollout AUTHORITATIF. Explore + Home
     // use the same live eligibility as Suggestions. Debug remains owner-only.
@@ -149,18 +157,51 @@ export const getNearbyPlaces = onCall(
             apiKey,
           });
         }
-        if (candidates.length === 0) {
-          candidates = DUMMY_PLACES;
-          source = "dummy";
-        }
       } catch (e) {
-        console.error("getNearbyPlaces: Places gagal, guna dummy:", e);
-        candidates = DUMMY_PLACES;
-        source = "dummy";
+        // Gangguan pembekal (termasuk had masa) BUKAN "tiada hasil".
+        logger.error("getNearbyPlaces.providerError", {
+          error: e instanceof Error ? e.message : "unknown",
+        });
+        providerError = true;
+        candidates = [];
       }
-    } else {
-      candidates = DUMMY_PLACES;
-      source = "dummy";
+    }
+
+    // WAVE 4A — keluar AWAL dengan hasil jujur. Tiada tempat rekaan, tiada
+    // pemarkahan atas senarai kosong, tiada sesi dibina daripada ketiadaan.
+    // Data sintetik QA memintas semakan ini: ia bukan hasil pembekal, dan
+    // `decideSyntheticPlaces` sudah mengehadkannya kepada runtime QA sahaja.
+    if (!synthetic.active) {
+      const outcome = truthfulPlacesOutcome({
+        apiKeyPresent: Boolean(apiKey),
+        providerError,
+        candidates,
+      });
+      if (outcome.status !== PLACES_STATUS_OK) {
+        const wire = placesOutcomeWireFields(outcome);
+        logger.info("getNearbyPlaces.noPlaces", {
+          status: wire.status,
+          reason: wire.reason ?? null,
+          retryable: wire.retryable ?? null,
+        });
+        return {
+          ...wire,
+          source: outcome.status === PLACES_STATUS_UNAVAILABLE ? "unavailable" : source,
+          // Pagination Explore: hentikan gelung muat-lagi dengan jujur.
+          nextCursor: null,
+          endOfResults: true,
+          poolSize: 0,
+          ...(diagnosticsAllowed ? {
+            canonicalDiagnostics: {
+              cohort: cohort.maskedIdentity,
+              source: cohort.source,
+              requestLocation,
+              flags: algorithm2FlagSummary(algorithm2LiveEligible),
+            },
+          } : {}),
+        };
+      }
+      candidates = outcome.places;
     }
 
     // Skor ikut profil supaya hero pick Home konsisten dengan Spin.
