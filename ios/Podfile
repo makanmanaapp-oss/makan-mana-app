@@ -21,8 +21,16 @@
 # Ia sengaja TIDAK dikembangkan sekarang: peta yang menamakan konfigurasi yang
 # tidak wujud memecahkan `pod install` untuk semua orang.
 
-# Uncomment this line to define a global platform for your project
-# platform :ios, '13.0'
+# WAVE 3B: DINYAHKOMEN dan DINAIKKAN kepada 15.0.
+#
+# 11 pemalam Firebase/Cloud yang TERKUNCI dalam pubspec.lock mengisytiharkan
+# `ios.deployment_target = '15.0'` (firebase_core, firebase_auth,
+# cloud_firestore, firebase_storage, firebase_messaging, firebase_crashlytics,
+# firebase_app_check, firebase_analytics, cloud_functions dan lain-lain).
+# Dengan baris ini dikomen, CocoaPods menggunakan lalainya sendiri dan
+# `pod install` gagal dengan konflik platform. Projek itu sendiri kini juga
+# IPHONEOS_DEPLOYMENT_TARGET = 15.0, jadi ketiga-tiganya konsisten.
+platform :ios, '15.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
