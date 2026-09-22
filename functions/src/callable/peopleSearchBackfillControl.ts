@@ -6,7 +6,11 @@ import {HttpsError, onCall} from "firebase-functions/v2/https";
 
 import {ADMIN_UIDS} from "../config/constants";
 import {db} from "../config/firebase";
-import {backfillPage, ProfileRow} from "../domain/peopleSearch/peopleSearchBackfill";
+import {
+  backfillPage,
+  ProfileRow,
+  writeConfirmationAccepted,
+} from "../domain/peopleSearch/peopleSearchBackfill";
 import {LowerUpdate} from "../domain/peopleSearch/normalize";
 
 export const backfillPeopleSearchLowerV2 = onCall(async (req) => {
@@ -23,7 +27,7 @@ export const backfillPeopleSearchLowerV2 = onCall(async (req) => {
   };
   const project = process.env.GCLOUD_PROJECT ?? "";
   const write = dryRun === false;
-  if (write && confirm !== project) {
+  if (write && !writeConfirmationAccepted(project, confirm)) {
     throw new HttpsError(
       "failed-precondition",
       `Write mode requires confirm === project id ("${project}").`

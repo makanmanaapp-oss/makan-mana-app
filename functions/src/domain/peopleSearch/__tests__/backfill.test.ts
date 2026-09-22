@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {backfillPage, ProfileRow} from "../peopleSearchBackfill";
+import {backfillPage, ProfileRow, writeConfirmationAccepted} from "../peopleSearchBackfill";
 import {
   computeLowerUpdate,
   LowerUpdate,
@@ -128,4 +128,19 @@ test("batch boundaries: paging covers all rows", async () => {
     cursor = r.nextCursor;
   }
   assert.equal(total, 5);
+});
+
+// WAVE 3C — identiti projek yang hilang mesti gagal-tertutup.
+test("mod tulis: pengesahan mesti sepadan ID projek yang DIKETAHUI", () => {
+  assert.equal(writeConfirmationAccepted("makanmana-c59f3", "makanmana-c59f3"), true);
+  assert.equal(writeConfirmationAccepted("makanmana-c59f3", "salah"), false);
+  assert.equal(writeConfirmationAccepted("makanmana-c59f3", undefined), false);
+  assert.equal(writeConfirmationAccepted("makanmana-c59f3", 42), false);
+});
+
+test("mod tulis: identiti projek HILANG tidak boleh disahkan dengan rentetan kosong", () => {
+  // Kegagalan lama: `confirm !== project` dengan project "" meluluskan confirm "".
+  assert.equal(writeConfirmationAccepted("", ""), false);
+  assert.equal(writeConfirmationAccepted("   ", "   "), false);
+  assert.equal(writeConfirmationAccepted("", undefined), false);
 });

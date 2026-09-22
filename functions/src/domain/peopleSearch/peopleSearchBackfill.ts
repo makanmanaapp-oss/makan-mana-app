@@ -54,3 +54,18 @@ export async function backfillPage(
   }
   return {dryRun: opts.dryRun, scanned, updated, skipped, nextCursor};
 }
+
+/**
+ * Mod TULIS memerlukan pentadbir menaip ID projek sebagai pengesahan.
+ *
+ * WAVE 3C: sebelum ini semakan itu ialah `confirm !== project`. Apabila
+ * identiti projek TIADA, `project` ialah "" dan `confirm: ""` LULUS — identiti
+ * yang hilang membuka laluan tulis. Identiti yang hilang mesti gagal-tertutup.
+ */
+export function writeConfirmationAccepted(
+  project: string,
+  confirm: unknown,
+): boolean {
+  if (project.trim().length === 0) return false;
+  return typeof confirm === "string" && confirm === project;
+}
