@@ -9,11 +9,14 @@ import {FunctionsErrorCode, HttpsError, onCall} from "firebase-functions/v2/http
 import {db, FieldValue} from "../config/firebase";
 import * as core from "../domain/groupInviteLink/inviteLinkV2";
 import {approvedStorageBucket} from "../services/egressTargets";
+import {decideInviteBaseUrl} from "../domain/security/qaSurfaces";
 
 // Firebase Hosting default domain the project controls. Android App Links must
 // still be configured (assetlinks.json) to open the app — see REPORT.
-const INVITE_BASE_URL =
-  process.env.INVITE_BASE_URL ?? "https://makanmana-c59f3.web.app";
+//
+// WAVE 3E: URL asas kini diputuskan oleh decideInviteBaseUrl. Produksi tidak
+// berubah; setiap persekitaran lain MESTI mengkonfigurasikan INVITE_BASE_URL
+// dan ia tidak boleh menunjuk ke Hosting produksi.
 
 function deps(): core.InviteLinkDeps {
   const b = approvedStorageBucket();
@@ -40,12 +43,19 @@ function toHttps(e: unknown): never {
 
 export const createGroupInviteLinkV2 = onCall(async (req) => {
   try {
+    // Diputuskan SEBELUM token dicipta: jemputan yang tidak boleh dikongsi tidak
+    // sepatutnya meninggalkan token yatim dalam pangkalan data.
+    const invite = decideInviteBaseUrl({env: process.env});
+    if (!invite.ok) {
+      console.warn(invite.reason);
+      throw new HttpsError("failed-precondition", "invite_url_not_configured");
+    }
     const r = await core.createGroupInviteLink(
       req.auth?.uid ?? null,
       (req.data ?? {}) as {groupId?: string; expiresInDays?: number; maxUses?: number | null},
       deps()
     );
-    return {...r, url: `${INVITE_BASE_URL}/invite/${r.token}`};
+    return {...r, url: `${invite.baseUrl}/invite/${r.token}`};
   } catch (e) {
     return toHttps(e);
   }

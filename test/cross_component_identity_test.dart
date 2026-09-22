@@ -126,6 +126,28 @@ void main() {
       expect(script, contains(r'"${DART_FLAVOR}" != "${MM_FLAVOR}"'));
     });
 
+    test('WAVE 3E: domain jemputan backend sepadan hos App Links produksi', () {
+      // Lalai jemputan produksi hidup dalam backend (qaSurfaces.ts) dan dalam
+      // manifest Android (hos App Links). Jika ia menyimpang, pautan jemputan
+      // produksi tidak lagi membuka aplikasi.
+      final surfaces = read('functions/src/domain/security/qaSurfaces.ts');
+      expect(
+        surfaces,
+        contains(r'PRODUCTION_INVITE_BASE_URL = `https://${PRODUCTION_PROJECT_ID}.web.app`'),
+      );
+      final prodHost = '${tsConst('PRODUCTION_PROJECT_ID')}.web.app';
+      expect(
+        read('android/app/src/main/AndroidManifest.xml'),
+        contains('android:host="$prodHost"'),
+      );
+      // Callable tidak lagi membawa sandaran produksi berkod-keras sendiri.
+      expect(
+        read('functions/src/callable/groupInviteLinkControl.ts')
+            .contains('?? "https://makanmana-c59f3.web.app"'),
+        isFalse,
+      );
+    });
+
     test('binaan QA iOS tidak boleh mencapai laluan produksi Dart', () {
       // Gerbang tulen ini disemak sepenuhnya dalam platform_configuration_test.
       // Di sini kita hanya menegaskan ia masih terpasang pada ketiga-tiga

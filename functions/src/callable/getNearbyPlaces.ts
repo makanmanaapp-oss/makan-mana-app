@@ -22,6 +22,7 @@ import {getExpandedPool} from "../services/expandedPoolService";
 import {searchNearby} from "../services/placesService";
 import {scoreAndRank} from "../services/scoringService";
 import {PlaceCandidate} from "../types/place";
+import {buildSyntheticPlaces, decideSyntheticPlaces} from "../domain/security/qaSurfaces";
 
 const mapsApiKey = defineSecret("GOOGLE_MAPS_API_KEY");
 
@@ -99,7 +100,15 @@ export const getNearbyPlaces = onCall(
     const areaCoverageOn = process.env.AREA_COVERAGE_POOL_ENABLED === "true" &&
       !forceLegacy && algorithm2LiveEligible;
 
-    if (apiKey) {
+    // WAVE 3E — data tempat SINTETIK untuk QA Explore. Aktif HANYA dengan
+    // MM_QA_SYNTHETIC_PLACES=enabled DAN runtime QA; produksi tidak pernah
+    // diaktifkan walaupun bendera ditetapkan. Tiada panggilan Places.
+    const synthetic = decideSyntheticPlaces({env: process.env});
+    if (synthetic.active) {
+      candidates = buildSyntheticPlaces({lat, lng});
+      source = "qa_synthetic";
+      logger.info("getNearbyPlaces.qaSynthetic", {reason: synthetic.reason});
+    } else if (apiKey) {
       try {
         if (areaCoverageOn) {
           const area = await getAreaCandidatePool({
