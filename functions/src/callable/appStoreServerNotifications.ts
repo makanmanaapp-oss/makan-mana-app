@@ -27,7 +27,7 @@ import {onRequest} from "firebase-functions/v2/https";
 import {defineSecret} from "firebase-functions/params";
 
 import {httpStatusForOutcome} from "../domain/billing/notificationProcessing";
-import {APPLE_BUNDLE_ID} from "../domain/billing/appStoreSubscription";
+import {resolveAppleAppIdentity} from "../domain/billing/appleAppIdentity";
 import {processAppleNotification} from "../services/appleNotificationService";
 
 /** Apple Root CA G3, dibekalkan pemilik. TIDAK ditanam dalam kod. */
@@ -36,9 +36,17 @@ export const appleRootCertificatesForNotifications = defineSecret(
 );
 /** ID aplikasi App Store — diperlukan untuk mengesahkan muatan Production. */
 export const appleAppAppleId = defineSecret("APPLE_APP_APPLE_ID");
+/** appAppleId aplikasi QA (aplikasi ASC berasingan). Kosong sehingga ia wujud. */
+export const appleQaAppAppleIdForNotifications = defineSecret("APPLE_QA_APP_APPLE_ID");
 
 export const appStoreServerNotifications = onRequest(
-  {secrets: [appleRootCertificatesForNotifications, appleAppAppleId]},
+  {
+    secrets: [
+      appleRootCertificatesForNotifications,
+      appleAppAppleId,
+      appleQaAppAppleIdForNotifications,
+    ],
+  },
   async (request, response) => {
     if (request.method !== "POST") {
       response.status(405).send("method_not_allowed");
@@ -71,9 +79,28 @@ export const appStoreServerNotifications = onRequest(
     const parsed = rawAppleId.length > 0 ? Number(rawAppleId) : Number.NaN;
     const appAppleId = Number.isFinite(parsed) ? parsed : undefined;
 
+    // WAVE 4A (S-2/S-4) — bundle dan persekitaran yang dijangka diterbitkan
+    // daripada identiti projek backend, bukan berkod-keras. Identiti yang
+    // tidak dikenali atau bercanggah menolak notifikasi (gagal-tertutup).
+    const identity = resolveAppleAppIdentity({
+      env: process.env,
+      productionAppAppleId: rawAppleId,
+      qaAppAppleId: appleQaAppAppleIdForNotifications.value(),
+    });
+    if (!identity.ok) {
+      console.error(`apple notifications: ${identity.reason}`);
+      response.status(503).send("not_configured");
+      return;
+    }
+
     const outcome = await processAppleNotification({
       signedPayload,
-      config: {trustedRoots, bundleId: APPLE_BUNDLE_ID, appAppleId},
+      config: {
+        trustedRoots,
+        bundleId: identity.identity.bundleId,
+        appAppleId: identity.identity.appAppleId ?? appAppleId,
+        expectedEnvironment: identity.identity.environment,
+      },
     });
 
     const status = httpStatusForOutcome(outcome);

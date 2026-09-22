@@ -16,7 +16,6 @@ import {
   appleAccountMatches,
   appleBundleMatches,
   appleEntitlementToUserFields,
-  APPLE_BUNDLE_ID,
   isAllowedAppleProduct,
   mapAppleSubscriptionToEntitlement,
   type AppleRenewalInfoLike,
@@ -25,13 +24,15 @@ import {
 import {
   AppleJwsError,
   buildAppStoreJwtClaims,
-  verifyAppleJws,
+  verifyAppleJwsForApp,
 } from "../domain/billing/appStoreJws";
+import {
+  assertAppleEntitlementEnvironment,
+  resolveAppleAppIdentity,
+  type AppleAppIdentity,
+} from "../domain/billing/appleAppIdentity";
 import type {EntitlementResult} from "../domain/billing/googlePlaySubscription";
 import {decideEgress} from "../domain/security/egressGuard";
-
-const PRODUCTION_HOST = "https://api.storekit.itunes.apple.com";
-const SANDBOX_HOST = "https://api.storekit-sandbox.itunes.apple.com";
 
 export interface AppleVerificationConfig {
   issuerId: string;
@@ -40,7 +41,12 @@ export interface AppleVerificationConfig {
   privateKeyPem: string;
   /** Apple Root CA G3 (dan mana-mana akar lain), PEM atau DER-base64. */
   trustedRoots: string[];
-  bundleId?: string;
+  /**
+   * WAVE 4A — identiti aplikasi yang DIJANGKA, diterbitkan daripada identiti
+   * projek backend. TIDAK lagi bundle produksi berkod-keras, dan TIDAK PERNAH
+   * dibekalkan oleh klien.
+   */
+  identity: AppleAppIdentity;
 }
 
 /**
@@ -54,7 +60,13 @@ export function readAppleConfig(values: {
   keyId?: string | null;
   privateKeyPem?: string | null;
   trustedRootsPem?: string | null;
-  bundleId?: string | null;
+  /** appAppleId aplikasi PRODUKSI (rahsia). Wajib dalam produksi. */
+  appAppleId?: string | null;
+  /** appAppleId aplikasi QA, bila aplikasi ASC QA wujud. */
+  qaAppAppleId?: string | null;
+  /** Suntikan ujian sahaja. */
+  env?: NodeJS.ProcessEnv;
+  approvedRealQaProjectId?: string | null;
 }): AppleVerificationConfig {
   const issuerId = (values.issuerId ?? "").trim();
   const keyId = (values.keyId ?? "").trim();
@@ -77,12 +89,23 @@ export function readAppleConfig(values: {
       "apple_verification_not_configured",
     );
   }
+  // S-1/S-3/S-4 — identiti aplikasi diterbitkan daripada identiti projek,
+  // bukan daripada nilai berkod-keras dan bukan daripada klien.
+  const decision = resolveAppleAppIdentity({
+    env: values.env ?? process.env,
+    productionAppAppleId: values.appAppleId ?? null,
+    qaAppAppleId: values.qaAppAppleId ?? null,
+    approvedRealQaProjectId: values.approvedRealQaProjectId,
+  });
+  if (!decision.ok) {
+    throw new HttpsError("failed-precondition", decision.reason);
+  }
   return {
     issuerId,
     keyId,
     privateKeyPem,
     trustedRoots,
-    bundleId: (values.bundleId ?? "").trim() || APPLE_BUNDLE_ID,
+    identity: decision.identity,
   };
 }
 
@@ -98,7 +121,7 @@ export function signAppStoreJwt(params: {
   const {config} = params;
   const claims = buildAppStoreJwtClaims({
     issuerId: config.issuerId,
-    bundleId: config.bundleId ?? APPLE_BUNDLE_ID,
+    bundleId: config.identity.bundleId,
     nowMillis: params.nowMillis,
   });
   const header = {alg: "ES256", kid: config.keyId, typ: "JWT"};
@@ -187,20 +210,21 @@ export async function processAppleSubscription(input: {
   const nowMillis = input.nowMillis ?? Date.now();
   const bearer = signAppStoreJwt({config: input.config, nowMillis});
 
-  // Produksi dahulu; Apple memulangkan 404 untuk transaksi sandbox.
-  let environment: "Production" | "Sandbox" = "Production";
-  let result = await statusFetcher({
-    host: PRODUCTION_HOST,
+  // S-1 — SATU hos, ditentukan oleh identiti projek backend. Dahulu kod ini
+  // mencuba produksi lalu jatuh ke sandbox pada 404, dan menganggap hos yang
+  // menjawab sebagai persekitaran. Hos ialah pilihan KITA, bukan bukti; dan
+  // laluan jatuh itu bermakna transaksi Sandbox boleh disahkan terhadap
+  // produksi. Persekitaran kini datang daripada tuntutan BERTANDATANGAN,
+  // yang disahkan terhadap identiti yang dijangka di bawah.
+  const identity = input.config.identity;
+  const environment = identity.environment;
+  const result = await statusFetcher({
+    host: identity.host,
     originalTransactionId: input.originalTransactionId,
     bearer,
   });
   if (result.status === 404) {
-    environment = "Sandbox";
-    result = await statusFetcher({
-      host: SANDBOX_HOST,
-      originalTransactionId: input.originalTransactionId,
-      bearer,
-    });
+    throw new HttpsError("not-found", "Langganan tidak dijumpai.");
   }
   if (result.status !== 200) {
     throw new HttpsError("unavailable", "Gagal sahkan dengan App Store.");
@@ -214,16 +238,26 @@ export async function processAppleSubscription(input: {
   let transaction: AppleTransactionInfoLike | null = null;
   let renewal: AppleRenewalInfoLike | null = null;
   try {
-    transaction = verifyAppleJws({
+    // S-1/S-3 — sahkan tandatangan DAN identiti aplikasi dalam satu langkah:
+    // bundleId, environment dan appAppleId. `verifyAppleJws` telanjang hanya
+    // membuktikan Apple menandatangani sesuatu, bukan bahawa ia milik kita.
+    const expected = {
+      bundleId: identity.bundleId,
+      environment: identity.environment,
+      ...(identity.appAppleId !== undefined ? {appAppleId: identity.appAppleId} : {}),
+    };
+    transaction = verifyAppleJwsForApp({
       jws: last.signedTransactionInfo ?? "",
       trustedRoots: input.config.trustedRoots,
       nowMillis,
+      expected,
     }) as AppleTransactionInfoLike;
     if (last.signedRenewalInfo) {
-      renewal = verifyAppleJws({
+      renewal = verifyAppleJwsForApp({
         jws: last.signedRenewalInfo,
         trustedRoots: input.config.trustedRoots,
         nowMillis,
+        expected,
       }) as AppleRenewalInfoLike;
     }
   } catch (e) {
@@ -233,8 +267,23 @@ export async function processAppleSubscription(input: {
     throw new HttpsError("permission-denied", `Resit App Store ${detail}.`);
   }
 
-  if (!appleBundleMatches(transaction, input.config.bundleId ?? APPLE_BUNDLE_ID)) {
+  if (!appleBundleMatches(transaction, identity.bundleId)) {
     throw new HttpsError("permission-denied", "Resit bukan untuk aplikasi ini.");
+  }
+  // S-2 — pagar KELAYAKAN, disemak SEMULA sebelum apa-apa kekal. Muatan
+  // Sandbox tidak pernah memberikan Pro produksi; muatan Production tidak
+  // pernah menulis ke pangkalan data QA. Ini berlebihan dengan tuntutan yang
+  // disahkan di atas, dengan sengaja: ia ialah sempadan tulisan.
+  try {
+    assertAppleEntitlementEnvironment({
+      expected: identity,
+      payloadEnvironment: (transaction as {environment?: unknown}).environment,
+    });
+  } catch (e) {
+    throw new HttpsError(
+      "permission-denied",
+      e instanceof Error ? e.message : "Persekitaran transaksi tidak dibenarkan.",
+    );
   }
   if (!isAllowedAppleProduct(transaction.productId)) {
     throw new HttpsError("permission-denied", "Produk App Store tidak sah.");

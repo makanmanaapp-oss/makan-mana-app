@@ -35,6 +35,13 @@ export interface AppleNotificationConfig {
   bundleId: string;
   /** Diperlukan untuk Production. */
   appAppleId?: number;
+  /**
+   * WAVE 4A (S-2) — persekitaran yang DIJANGKA untuk runtime ini, diterbitkan
+   * daripada identiti projek backend. Notifikasi Sandbox yang tiba pada titik
+   * akhir PRODUKSI ditolak: tanpa ini, pemprosesan notifikasi ialah pintu
+   * kedua ke pagar kelayakan yang sama.
+   */
+  expectedEnvironment?: string;
 }
 
 function hashId(value: string): string {
@@ -154,6 +161,19 @@ export async function processAppleNotification(params: {
   const environment =
     typeof data.environment === "string" ? data.environment : APPLE_ENV_PRODUCTION;
 
+  // S-2 — pagar persekitaran, sama seperti laluan pembelian.
+  if (
+    params.config.expectedEnvironment !== undefined &&
+    environment !== params.config.expectedEnvironment
+  ) {
+    return {
+      ok: false,
+      failure: {
+        kind: "invalid",
+        reason: `persekitaran notifikasi tidak dibenarkan: dijangka ${params.config.expectedEnvironment}`,
+      },
+    };
+  }
   if (typeof data.bundleId !== "string" || data.bundleId !== params.config.bundleId) {
     return {
       ok: false,
@@ -197,10 +217,13 @@ export async function processAppleNotification(params: {
       }) as AppleTransactionInfoLike;
     }
     if (typeof data.signedRenewalInfo === "string") {
-      renewal = verifyAppleJws({
+      // WAVE 4A — maklumat pembaharuan turut terikat pada identiti aplikasi;
+      // dahulu ia hanya disahkan tandatangannya.
+      renewal = verifyAppleJwsForApp({
         jws: data.signedRenewalInfo,
         trustedRoots: params.config.trustedRoots,
         nowMillis,
+        expected,
       }) as AppleRenewalInfoLike;
     }
   } catch {

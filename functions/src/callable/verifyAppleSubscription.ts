@@ -15,6 +15,14 @@ export const appleIapKeyId = defineSecret("APPLE_IAP_KEY_ID");
 export const appleIapPrivateKey = defineSecret("APPLE_IAP_PRIVATE_KEY");
 /** Apple Root CA G3, dibekalkan pemilik. TIDAK ditanam dalam kod. */
 export const appleRootCertificates = defineSecret("APPLE_ROOT_CERTIFICATES");
+/**
+ * WAVE 4A (S-3) — appAppleId aplikasi PRODUKSI. Tanpanya kita tidak boleh
+ * membuktikan muatan bertandatangan merujuk aplikasi KITA, jadi produksi
+ * gagal-TERTUTUP. Dikongsi dengan laluan notifikasi.
+ */
+export const appleAppAppleIdForVerify = defineSecret("APPLE_APP_APPLE_ID");
+/** appAppleId aplikasi QA (aplikasi ASC berasingan). Kosong sehingga ia wujud. */
+export const appleQaAppAppleId = defineSecret("APPLE_QA_APP_APPLE_ID");
 
 interface VerifyInput {
   productId?: string;
@@ -28,6 +36,8 @@ export const verifyAppleSubscription = onCall(
       appleIapKeyId,
       appleIapPrivateKey,
       appleRootCertificates,
+      appleAppAppleIdForVerify,
+      appleQaAppAppleId,
     ],
   },
   async (request) => {
@@ -52,6 +62,8 @@ export const verifyAppleSubscription = onCall(
       keyId: appleIapKeyId.value(),
       privateKeyPem: appleIapPrivateKey.value(),
       trustedRootsPem: appleRootCertificates.value(),
+      appAppleId: appleAppAppleIdForVerify.value(),
+      qaAppAppleId: appleQaAppAppleId.value(),
     });
 
     const result = await processAppleSubscription({
