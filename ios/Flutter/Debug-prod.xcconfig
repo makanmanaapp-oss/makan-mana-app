@@ -1,20 +1,26 @@
-// MAKANMANA iOS WAVE 3A — konfigurasi Debug untuk flavour 'prod'.
+// MAKANMANA iOS WAVE 3A/3B — konfigurasi Debug untuk flavour 'prod'.
 //
-// STATUS: SOURCE READY, belum disahkan oleh Xcode.
+// STATUS: SOURCE READY + struktur pbxproj disahkan.
+// Penerimaan Xcode kekal MACOS REQUIRED.
 //
-// Fail ini TIDAK berkuat kuasa sehingga konfigurasi binaan bernama
-// 'Debug-prod' wujud dalam Runner.xcodeproj DAN merujuk fail ini.
-// Itu kerja Xcode (MACOS REQUIRED).
+// WAVE 3B: konfigurasi binaan 'Debug-prod' kini WUJUD dalam Runner.xcodeproj dan
+// merujuk fail ini, dan PRODUCT_BUNDLE_IDENTIFIER telah DIBUANG daripada
+// konfigurasi itu — jadi nilai di bawah berkuat kuasa dan bukan lagi
+// diabaikan secara senyap.
 //
-// AMARAN: project.pbxproj pada masa ini menetapkan
-// PRODUCT_BUNDLE_IDENTIFIER secara terus, dan tetapan dalam pbxproj
-// MENGATASI xcconfig. Ia mesti dibuang daripada pbxproj untuk konfigurasi
-// flavour, atau nilai di bawah akan diabaikan secara senyap.
+// Ia MASIH belum disahkan oleh Xcode. Sahkan pada macOS dengan:
+//   xcodebuild -showBuildSettings -project ios/Runner.xcodeproj
+//     -target Runner -configuration Debug-prod | grep PRODUCT_BUNDLE_IDENTIFIER
 
 #include "Generated.xcconfig"
 
 PRODUCT_BUNDLE_IDENTIFIER = com.makanmana.apps
-PRODUCT_NAME = MakanMana
+// PRODUCT_NAME SENGAJA TIDAK DITETAPKAN.
+//
+// Menetapkannya menamakan semula bundle (Runner.app -> MakanMana.app),
+// yang memecahkan TEST_HOST RunnerTests — ia mengekod-keras Runner.app.
+// Ia juga BUKAN nama yang dilihat pengguna: itu CFBundleDisplayName.
+// Lihat cadangan nama paparan dalam laporan Wave 3B.
 
 // Dibaca oleh flavour Flutter dan oleh skrip pemilihan plist.
 MM_FLAVOR = prod

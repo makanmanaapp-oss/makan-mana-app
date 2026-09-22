@@ -1,4 +1,4 @@
-# MAKANMANA iOS WAVE 3A
+# MAKANMANA iOS WAVE 3A/3B
 #
 # Disalin VERBATIM daripada templat SDK Flutter 3.44.4:
 #   packages/flutter_tools/templates/cocoapods/Podfile-ios
@@ -7,19 +7,10 @@
 # TIDAK menjana fail ini — ia memerlukannya sudah wujud, jadi ketiadaannya
 # ialah penghalang sebenar dan bukan sesuatu yang macOS akan betulkan sendiri.
 #
-# PETA KONFIGURASI di bawah mesti sepadan DENGAN TEPAT konfigurasi binaan dalam
-# Runner.xcodeproj. Hari ini projek itu mempunyai tiga: Debug, Profile, Release.
-# Apabila konfigurasi flavour ditambah dalam Xcode (MACOS REQUIRED), peta ini
-# mesti dikembangkan dalam commit yang SAMA, atau `pod install` akan gagal:
-#
-#   project 'Runner', {
-#     'Debug' => :debug,           'Debug-prod' => :debug,    'Debug-qa' => :debug,
-#     'Profile' => :release,       'Profile-prod' => :release,'Profile-qa' => :release,
-#     'Release' => :release,       'Release-prod' => :release,'Release-qa' => :release,
-#   }
-#
-# Ia sengaja TIDAK dikembangkan sekarang: peta yang menamakan konfigurasi yang
-# tidak wujud memecahkan `pod install` untuk semua orang.
+# WAVE 3B: konfigurasi flavour kini WUJUD dalam Runner.xcodeproj, jadi peta di
+# bawah telah dikembangkan kepada kesembilan-sembilannya. Peta ini mesti sepadan
+# DENGAN TEPAT konfigurasi projek atau `pod install` gagal;
+# test/ios_configuration_test.dart menguatkuasakannya pada setiap larian ujian.
 
 # WAVE 3B: DINYAHKOMEN dan DINAIKKAN kepada 15.0.
 #
@@ -39,6 +30,12 @@ project 'Runner', {
   'Debug' => :debug,
   'Profile' => :release,
   'Release' => :release,
+  'Debug-prod' => :debug,
+  'Profile-prod' => :release,
+  'Release-prod' => :release,
+  'Debug-qa' => :debug,
+  'Profile-qa' => :release,
+  'Release-qa' => :release,
 }
 
 def flutter_root
