@@ -1,0 +1,8 @@
+# Skrip binaan dijalankan pada macOS. Penamatan baris CRLF menyebabkan
+# `bad interpreter: /bin/sh^M`, jadi ia tidak boleh bergantung pada
+# core.autocrlf mesin sesiapa.
+*.sh text eol=lf
+
+# Fail konfigurasi Xcode dan CocoaPods dibaca oleh alat macOS.
+*.xcconfig text eol=lf
+Podfile text eol=lf
