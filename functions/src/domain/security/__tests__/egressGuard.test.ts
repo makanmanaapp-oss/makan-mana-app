@@ -3,6 +3,7 @@ import {test} from "node:test";
 
 import {
   APPROVED_QA_PROJECT_ID,
+  PRODUCTION_PROJECT_ID,
   decideEgress,
   isLoopbackDestination,
   isQaProjectId,
@@ -14,12 +15,12 @@ const PROD_MIRROR =
 const LOOPBACK_MIRROR = "http://127.0.0.1:3000/api/internal/sync/mirror";
 
 const qaEnv = {projectId: APPROVED_QA_PROJECT_ID, inEmulator: true};
-const prodEnv = {projectId: "makanmana-prod", inEmulator: false};
+const prodEnv = {projectId: PRODUCTION_PROJECT_ID, inEmulator: false};
 
 test("projek demo- dikenali sebagai QA, projek sebenar tidak", () => {
   assert.equal(isQaProjectId(APPROVED_QA_PROJECT_ID), true);
   assert.equal(isQaProjectId("demo-apa-apa"), true);
-  assert.equal(isQaProjectId("makanmana-prod"), false);
+  assert.equal(isQaProjectId(PRODUCTION_PROJECT_ID), false);
   assert.equal(isQaProjectId(null), false);
   // Bukan awalan — tidak boleh dikira QA hanya kerana mengandungi "demo".
   assert.equal(isQaProjectId("makanmana-demo"), false);
@@ -75,11 +76,11 @@ test("PRODUKSI kekal dibenarkan — cermin dan FCM", () => {
 });
 
 test("PERCANGGAHAN: emulator menjalankan projek sebenar → disekat", () => {
-  const env = {projectId: "makanmana-prod", inEmulator: true};
+  const env = {projectId: PRODUCTION_PROJECT_ID, inEmulator: true};
   for (const kind of ["control_center_mirror", "fcm_push"] as const) {
     const d = decideEgress({kind, destination: LOOPBACK_MIRROR, env});
     assert.equal(d.allowed, false, `${kind} sepatutnya disekat`);
-    assert.match(d.reason, /bukan-QA/);
+    assert.match(d.reason, /identiti PRODUKSI/);
   }
 });
 
@@ -102,7 +103,7 @@ test("identiti projek tidak diketahui → gagal TERTUTUP", () => {
     env,
   });
   assert.equal(d.allowed, false);
-  assert.match(d.reason, /tidak dapat ditentukan/);
+  assert.match(d.reason, /tidak dikenali/);
 });
 
 test("rahsia TIDAK boleh memintas pagar — pagar tidak pernah membacanya", () => {

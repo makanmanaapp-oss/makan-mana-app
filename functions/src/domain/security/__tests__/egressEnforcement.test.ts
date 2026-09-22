@@ -5,6 +5,7 @@ import {test} from "node:test";
 
 import {
   APPROVED_QA_PROJECT_ID,
+  PRODUCTION_PROJECT_ID,
   decideEgress,
   type EgressEnvironment,
 } from "../egressGuard";
@@ -24,7 +25,7 @@ const PROD_MIRROR =
 const LOOPBACK_MIRROR = "http://127.0.0.1:3000/api/internal/sync/mirror";
 
 const QA: EgressEnvironment = {projectId: APPROVED_QA_PROJECT_ID, inEmulator: true};
-const PROD: EgressEnvironment = {projectId: "makanmana-prod", inEmulator: false};
+const PROD: EgressEnvironment = {projectId: PRODUCTION_PROJECT_ID, inEmulator: false};
 
 /** Pengangkutan HTTP palsu — merekod panggilan, tidak pernah keluar. */
 function fakeHttp() {
