@@ -215,6 +215,8 @@ void main() {
   group('4.6A — backfill + rate-limit + link mgmt guards', () {
     final backfillCtl =
         File('functions/src/callable/peopleSearchBackfillControl.ts').readAsStringSync();
+    final backfillDomain =
+        File('functions/src/domain/peopleSearch/peopleSearchBackfill.ts').readAsStringSync();
     // Line endings dinormalkan: fail repo CRLF, padanan guna \n
     final core = File('functions/src/domain/groupInviteLink/inviteLinkV2.ts')
         .readAsStringSync()
@@ -224,7 +226,12 @@ void main() {
 
     test('backfill callable is admin-gated + write needs project confirm (Part 8)', () {
       expect(backfillCtl.contains('permission-denied'), isTrue);
-      expect(backfillCtl.contains('confirm !== project'), isTrue);
+      // WAVE 3C: pengesahan diekstrak ke domain supaya ia boleh diuji, dan
+      // identiti projek yang HILANG kini gagal-tertutup — dahulu `confirm: ""`
+      // meluluskan mod tulis apabila GCLOUD_PROJECT tiada.
+      expect(backfillCtl.contains('!writeConfirmationAccepted(project, confirm)'), isTrue);
+      expect(backfillDomain.contains('if (project.trim().length === 0) return false;'), isTrue);
+      expect(backfillDomain.contains('confirm === project'), isTrue);
       expect(backfillCtl.contains('dryRun = true'), isTrue);
     });
     test('rate limit: authz before rate + fixed window constants (Part 11)', () {
