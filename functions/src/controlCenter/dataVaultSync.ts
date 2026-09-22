@@ -6,6 +6,7 @@ import {onDocumentWritten} from "firebase-functions/v2/firestore";
 import {onSchedule} from "firebase-functions/v2/scheduler";
 
 import {db} from "../config/firebase";
+import {decideEgress} from "../domain/security/egressGuard";
 
 const CONTROL_CENTER_SYNC_SECRET = defineSecret("CONTROL_CENTER_SYNC_SECRET");
 const DATA_VAULT_URL = "https://makanmana-control-center.vercel.app/api/internal/sync/data-vault";
@@ -125,6 +126,9 @@ async function pushBatch(
   const secret = CONTROL_CENTER_SYNC_SECRET.value();
   if (!secret) throw new Error("CONTROL_CENTER_SYNC_SECRET is unavailable.");
 
+  // Pagar egress — dinilai pada setiap panggilan, bebas daripada rahsia.
+  const egress = decideEgress({kind: "control_center_api", destination: DATA_VAULT_URL});
+  if (!egress.allowed) throw new Error(egress.reason);
   const response = await fetch(DATA_VAULT_URL, {
     method: "POST",
     headers: {

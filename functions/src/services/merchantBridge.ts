@@ -8,6 +8,7 @@ import {
   notAuthorized,
   type PlaceAuthorization,
 } from "../domain/restaurantEngagement/merchantAuthorization";
+import {decideEgress} from "../domain/security/egressGuard";
 
 /**
  * Shared trusted Firebase → Control Center merchant bridge. Reused by the Wave 2
@@ -54,6 +55,10 @@ export async function callMerchantBridge(params: {
   const secret = MERCHANT_BRIDGE_SECRET.value();
   if (!secret) throw new HttpsError("unavailable", "merchant_bridge_not_configured");
 
+  // Pagar egress — dinilai pada setiap panggilan, bebas daripada rahsia.
+  const egress = decideEgress({kind: "control_center_api", destination: MERCHANT_BRIDGE_URL});
+  if (!egress.allowed) throw new HttpsError("unavailable", "merchant_bridge_egress_blocked");
+
   const response = await fetch(MERCHANT_BRIDGE_URL, {
     method: "POST",
     headers: {authorization: `Bearer ${secret}`, "content-type": "application/json"},
@@ -93,6 +98,10 @@ export async function authorizeMerchantPlace(
 ): Promise<PlaceAuthorization> {
   const secret = MERCHANT_BRIDGE_SECRET.value();
   if (!secret) return notAuthorized("merchant_bridge_not_configured");
+
+  // Pagar egress — dinilai pada setiap panggilan, bebas daripada rahsia.
+  const egress = decideEgress({kind: "control_center_api", destination: MERCHANT_BRIDGE_URL});
+  if (!egress.allowed) return notAuthorized("merchant_bridge_egress_blocked");
 
   try {
     const response = await fetch(MERCHANT_BRIDGE_URL, {

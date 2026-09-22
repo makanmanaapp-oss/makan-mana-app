@@ -61,11 +61,33 @@ export type ProjectClass =
   | "REAL_QA"
   | "UNKNOWN";
 
-/** Operasi luaran yang dilindungi. */
+/**
+ * Operasi luaran yang dilindungi.
+ *
+ * Kebenaran diberikan MENGIKUT OPERASI, bukan melalui satu suis. Setiap jenis
+ * menamakan kelas destinasi dengan risiko yang berbeza:
+ *
+ *   control_center_mirror  cermin peristiwa ke Control Center produksi
+ *   control_center_api     setiap titik akhir Control Center PRODUKSI yang lain:
+ *                          AI brain, data vault, operasi tempat, jambatan
+ *                          merchant, dan pangkalan data satah kawalannya
+ *   fcm_push               penghantaran FCM
+ *   app_store_api          App Store Server API
+ *   google_play_api        Google Play Developer API (pengesahan langganan)
+ *   google_cloud_api       API Google berskop projek: Places, Vertex AI
+ */
 export type EgressKind =
   | "control_center_mirror"
+  | "control_center_api"
   | "fcm_push"
-  | "app_store_api";
+  | "app_store_api"
+  | "google_play_api"
+  | "google_cloud_api";
+
+/** Control Center ialah satu penempatan produksi; tiada setara QA. */
+function isControlCenterKind(kind: EgressKind): boolean {
+  return kind === "control_center_mirror" || kind === "control_center_api";
+}
 
 export interface EgressEnvironment {
   /** Identiti projek, atau null jika ia tidak dapat ditentukan langsung. */
@@ -275,11 +297,11 @@ export function decideEgress(params: {
             "jadi tiada destinasi boleh dipercayai.",
         };
       }
-      // HANYA cermin Control Center mempunyai setara gelung-balik. Setiap
-      // perkhidmatan luaran yang lain (FCM, App Store Server API) tiada
-      // emulator, jadi panggilan dari QA akan keluar SEBENAR menggunakan
-      // kredensial pemilik.
-      if (params.kind !== "control_center_mirror") {
+      // HANYA Control Center mempunyai setara gelung-balik (konsol tempatan).
+      // Setiap perkhidmatan luaran yang lain — FCM, App Store, Google Play,
+      // Places, Vertex — tiada emulator, jadi panggilan dari QA akan keluar
+      // SEBENAR menggunakan kunci sebenar atau kredensial pemilik.
+      if (!isControlCenterKind(params.kind)) {
         return {
           allowed: false,
           projectClass,
@@ -319,6 +341,7 @@ export function decideEgress(params: {
       }
       switch (params.kind) {
         case "control_center_mirror":
+        case "control_center_api":
           // Control Center ialah satu penempatan produksi. Tiada versi QA
           // baginya, jadi larian QA tidak boleh menulis kepadanya langsung.
           return {
@@ -329,30 +352,37 @@ export function decideEgress(params: {
               `perkhidmatan produksi dan tiada setara QA (${where}).`,
           };
         case "app_store_api":
-          // Diluluskan secara eksplisit diperlukan. Sandbox Apple ialah
+        case "google_play_api":
+          // Diluluskan secara eksplisit diperlukan. API KEDAI (Apple dan Google
+          // Play) membaca data pembelian SEBENAR. Sandbox Apple ialah
           // destinasi BERBEZA dengan kelayakan berbeza; membenarkannya di sini
           // secara lalai akan bermakna larian QA boleh memanggil Apple sebenar.
           return {
             allowed: false,
             projectClass,
             reason:
-              `Egress ${params.kind} DISEKAT: panggilan Apple sebenar tidak ` +
+              `Egress ${params.kind} DISEKAT: API kedai sebenar tidak ` +
               `dibenarkan secara lalai daripada QA (${where}). Pengecualian ` +
-              "Sandbox memerlukan dasar destinasi dan identiti yang " +
-              "diluluskan secara berasingan.",
+              "Sandbox atau ujian memerlukan dasar destinasi dan identiti " +
+              "yang diluluskan secara berasingan.",
           };
         case "fcm_push":
+        case "google_cloud_api":
           // Dibenarkan HANYA kerana identiti sekeliling ialah projek QA itu
-          // sendiri: Admin SDK menghantar melalui projek itu, jadi ia tidak
-          // boleh mencapai peranti produksi. Ini mekanisme yang sama yang
-          // menjadikan FCM selamat dalam produksi.
+          // sendiri: Admin SDK dan ADC bertindak melalui projek itu, jadi ia
+          // tidak boleh mencapai peranti atau sumber produksi. Ini mekanisme
+          // yang sama yang menjadikannya selamat dalam produksi.
+          //
+          // SYARAT: projek QA memegang kunci API SENDIRI. Kunci produksi yang
+          // disalin ke QA akan membilkan produksi — pagar ini tidak membaca
+          // kunci, jadi itu dikuatkuasakan oleh kontrak projek QA, bukan di sini.
           return {
             allowed: true,
             projectClass,
             reason:
               `Egress ${params.kind} dibenarkan: identiti sekeliling ialah ` +
               `projek QA yang diluluskan, jadi penghantaran tidak boleh ` +
-              `mencapai peranti produksi (${where}).`,
+              `mencapai sumber produksi (${where}).`,
           };
       }
     }

@@ -9,6 +9,7 @@ import {
   referencesFromAreaCachePage,
   RuntimeAreaCacheDoc,
 } from "../domain/places/coverage/controlCenterReferenceSanitizer";
+import {decideEgress} from "../domain/security/egressGuard";
 
 const CONTROL_CENTER_SYNC_SECRET = defineSecret("CONTROL_CENTER_SYNC_SECRET");
 const CONTROL_CENTER_PLACE_OPERATIONS_URL =
@@ -44,6 +45,9 @@ function boundedInteger(value: unknown, fallback: number, min: number, max: numb
 
 async function pushReferences(records: Record<string, unknown>[], secret: string): Promise<void> {
   if (records.length === 0) return;
+  // Pagar egress — dinilai pada setiap panggilan, bebas daripada rahsia.
+  const egress = decideEgress({kind: "control_center_api", destination: CONTROL_CENTER_PLACE_OPERATIONS_URL});
+  if (!egress.allowed) throw new Error(egress.reason);
   const response = await fetch(CONTROL_CENTER_PLACE_OPERATIONS_URL, {
     method: "POST",
     headers: {

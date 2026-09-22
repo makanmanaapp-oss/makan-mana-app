@@ -31,9 +31,17 @@ const LOOPBACK_MIRROR = "http://127.0.0.1:3000/api/internal/sync/mirror";
 
 const KINDS: EgressKind[] = [
   "control_center_mirror",
+  "control_center_api",
   "fcm_push",
   "app_store_api",
+  "google_play_api",
+  "google_cloud_api",
 ];
+
+/** Jangkaan untuk SETIAP jenis — diberi nama supaya matriks boleh dibaca. */
+function all(allowed: boolean): Record<EgressKind, boolean> {
+  return Object.fromEntries(KINDS.map((k) => [k, allowed])) as Record<EgressKind, boolean>;
+}
 
 function env(projectId: string | null, inEmulator: boolean): EgressEnvironment {
   return {projectId, inEmulator};
@@ -170,6 +178,8 @@ interface Row {
   /** kind -> destination -> dibenarkan */
   expect: Partial<Record<EgressKind, boolean>>;
   destination?: string;
+  /** Baris yang sengaja menguji hanya beberapa jenis. */
+  focused?: boolean;
 }
 
 const MATRIX: Row[] = [
@@ -178,35 +188,41 @@ const MATRIX: Row[] = [
     env: env(PRODUCTION_PROJECT_ID, false),
     expectClass: "PRODUCTION",
     destination: PROD_MIRROR,
-    expect: {control_center_mirror: true, fcm_push: true, app_store_api: true},
+    // Tingkah laku produksi KEKAL untuk setiap operasi.
+    expect: all(true),
   },
   {
     label: "PRODUKSI DI DALAM emulator",
     env: env(PRODUCTION_PROJECT_ID, true),
     expectClass: "PRODUCTION",
     destination: PROD_MIRROR,
-    expect: {control_center_mirror: false, fcm_push: false, app_store_api: false},
+    expect: all(false),
   },
   {
     label: "QA emulator tempatan, dalam emulator, destinasi gelung-balik",
     env: env(APPROVED_QA_PROJECT_ID, true),
     expectClass: "LOCAL_EMULATOR_QA",
     destination: LOOPBACK_MIRROR,
-    expect: {control_center_mirror: true, fcm_push: false, app_store_api: false},
+    // Hanya Control Center mempunyai setara gelung-balik.
+    expect: {
+      ...all(false),
+      control_center_mirror: true,
+      control_center_api: true,
+    },
   },
   {
     label: "QA emulator tempatan, dalam emulator, destinasi PRODUKSI",
     env: env(APPROVED_QA_PROJECT_ID, true),
     expectClass: "LOCAL_EMULATOR_QA",
     destination: PROD_MIRROR,
-    expect: {control_center_mirror: false, fcm_push: false, app_store_api: false},
+    expect: all(false),
   },
   {
     label: "QA emulator tempatan DI LUAR emulator",
     env: env(APPROVED_QA_PROJECT_ID, false),
     expectClass: "LOCAL_EMULATOR_QA",
     destination: LOOPBACK_MIRROR,
-    expect: {control_center_mirror: false, fcm_push: false, app_store_api: false},
+    expect: all(false),
   },
   {
     label: "QA SEBENAR, di luar emulator",
@@ -214,15 +230,23 @@ const MATRIX: Row[] = [
     realQa: DUMMY_REAL_QA,
     expectClass: "REAL_QA",
     destination: PROD_MIRROR,
-    expect: {control_center_mirror: false, fcm_push: true, app_store_api: false},
+    expect: {
+      control_center_mirror: false,
+      control_center_api: false,
+      fcm_push: true,
+      app_store_api: false,
+      google_play_api: false,
+      google_cloud_api: true,
+    },
   },
   {
-    label: "QA SEBENAR, di luar emulator, cuba cermin gelung-balik",
+    label: "QA SEBENAR, di luar emulator, cuba Control Center gelung-balik",
+    focused: true,
     env: env(DUMMY_REAL_QA, false),
     realQa: DUMMY_REAL_QA,
     expectClass: "REAL_QA",
     destination: LOOPBACK_MIRROR,
-    expect: {control_center_mirror: false},
+    expect: {control_center_mirror: false, control_center_api: false},
   },
   {
     label: "QA SEBENAR DI DALAM emulator",
@@ -230,28 +254,28 @@ const MATRIX: Row[] = [
     realQa: DUMMY_REAL_QA,
     expectClass: "REAL_QA",
     destination: LOOPBACK_MIRROR,
-    expect: {control_center_mirror: false, fcm_push: false, app_store_api: false},
+    expect: all(false),
   },
   {
     label: "projek tidak dikenali di luar emulator",
     env: env("makanmana-prod", false),
     expectClass: "UNKNOWN",
     destination: PROD_MIRROR,
-    expect: {control_center_mirror: false, fcm_push: false, app_store_api: false},
+    expect: all(false),
   },
   {
     label: "projek tidak dikenali dalam emulator",
     env: env("some-other-project", true),
     expectClass: "UNKNOWN",
     destination: LOOPBACK_MIRROR,
-    expect: {control_center_mirror: false, fcm_push: false, app_store_api: false},
+    expect: all(false),
   },
   {
     label: "identiti hilang",
     env: env(null, false),
     expectClass: "UNKNOWN",
     destination: PROD_MIRROR,
-    expect: {control_center_mirror: false, fcm_push: false, app_store_api: false},
+    expect: all(false),
   },
 ];
 
@@ -273,6 +297,36 @@ for (const row of MATRIX) {
     }
   });
 }
+
+test("matriks meliputi SETIAP jenis egress untuk setiap klasifikasi", () => {
+  // Jenis baharu yang ditambah kepada EgressKind tanpa jangkaan matriks akan
+  // jatuh melalui tanpa diuji. Setiap baris penuh mesti menamakan setiap jenis.
+  for (const row of MATRIX) {
+    if (row.focused) continue;
+    for (const kind of KINDS) {
+      assert.ok(kind in row.expect, `${row.label}: tiada jangkaan untuk ${kind}`);
+    }
+  }
+});
+
+test("setiap klasifikasi mempunyai sekurang-kurangnya satu baris matriks PENUH", () => {
+  for (const cls of ["PRODUCTION", "LOCAL_EMULATOR_QA", "REAL_QA", "UNKNOWN"] as ProjectClass[]) {
+    assert.ok(
+      MATRIX.some((r) => r.expectClass === cls && !r.focused),
+      `kelas ${cls} hanya diliputi oleh baris fokus`,
+    );
+  }
+});
+
+test("API kedai (Apple, Google Play) hanya dibenarkan dalam produksi tulen", () => {
+  for (const kind of ["app_store_api", "google_play_api"] as EgressKind[]) {
+    for (const row of MATRIX) {
+      if (!(kind in row.expect)) continue;
+      const expected = row.expectClass === "PRODUCTION" && !row.env.inEmulator;
+      assert.equal(row.expect[kind], expected, `${row.label} / ${kind}`);
+    }
+  }
+});
 
 test("matriks meliputi setiap klasifikasi", () => {
   // Matriks yang kehilangan satu kelas akan lulus sambil meninggalkan laluan

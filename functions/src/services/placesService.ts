@@ -1,6 +1,7 @@
 import {db, FieldValue} from "../config/firebase";
 import {OpeningPeriod, PlaceCandidate} from "../types/place";
 import {malaysiaNow} from "../utils/timeSlot";
+import {decideEgress} from "../domain/security/egressGuard";
 
 /**
  * Google Places API (New) Nearby Search dengan cache jangka panjang.
@@ -223,6 +224,9 @@ async function resolvePhotoUrl(
   apiKey: string,
 ): Promise<string | null> {
   try {
+    // Pagar egress — dinilai pada setiap panggilan, bebas daripada rahsia.
+    const egress = decideEgress({kind: "google_cloud_api"});
+    if (!egress.allowed) return null;
     const res = await fetch(
       `https://places.googleapis.com/v1/${photoName}/media` +
         `?maxWidthPx=800&skipHttpRedirect=true&key=${apiKey}`,
@@ -259,6 +263,9 @@ export async function searchNearby(
     }
   }
 
+  // Pagar egress — dinilai pada setiap panggilan, bebas daripada rahsia.
+  const egress = decideEgress({kind: "google_cloud_api"});
+  if (!egress.allowed) throw new Error(egress.reason);
   const res = await fetch(PLACES_ENDPOINT, {
     method: "POST",
     headers: {

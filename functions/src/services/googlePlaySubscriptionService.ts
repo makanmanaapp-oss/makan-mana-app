@@ -10,6 +10,7 @@ import {
   type EntitlementResult,
   type SubscriptionPurchaseV2Like,
 } from "../domain/billing/googlePlaySubscription";
+import {decideEgress} from "../domain/security/egressGuard";
 
 export const ANDROID_PACKAGE_NAME =
   process.env.ANDROID_PACKAGE_NAME ?? "com.makanmana.apps";
@@ -132,6 +133,9 @@ async function authorizedFetch(
   url: string,
   init?: RequestInit,
 ): Promise<Response> {
+  // Pagar egress — dinilai pada setiap panggilan, bebas daripada rahsia.
+  const egress = decideEgress({kind: "google_play_api"});
+  if (!egress.allowed) throw new HttpsError("unavailable", "play_api_egress_blocked");
   const creds = JSON.parse(serviceAccountJson) as Record<string, unknown>;
   const auth = new GoogleAuth({
     credentials: creds as never,

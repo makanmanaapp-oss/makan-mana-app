@@ -3,6 +3,7 @@ import {HttpsError, onCall} from "firebase-functions/v2/https";
 
 import {db} from "../config/firebase";
 import {logEvent} from "../services/eventService";
+import {decideEgress} from "../domain/security/egressGuard";
 
 const VERTEX_LOCATION = "us-central1";
 const VERTEX_MODEL = "gemini-2.5-flash";
@@ -50,6 +51,9 @@ export const scanCalories = onCall(
       throw new HttpsError("invalid-argument", "Gambar terlalu besar.");
     }
 
+    // Pagar egress — dinilai pada setiap panggilan, bebas daripada rahsia.
+    const egress = decideEgress({kind: "google_cloud_api"});
+    if (!egress.allowed) throw new HttpsError("unavailable", "calorie_scan_egress_blocked");
     const auth = new GoogleAuth({
       scopes: ["https://www.googleapis.com/auth/cloud-platform"],
     });

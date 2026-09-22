@@ -8,6 +8,7 @@ import {
   ClaimedBroadcastRun,
   normalizeClaimedBroadcastRun,
 } from "../domain/notifications/broadcastControlPlane";
+import {decideEgress} from "../domain/security/egressGuard";
 
 const RUNS = "notification_broadcast_runs";
 const CLAIM_LIMIT = 10;
@@ -25,8 +26,14 @@ function controlPlaneBaseUrl(): string {
 }
 
 async function rpcJson<T>(name: string, payload: Record<string, unknown>): Promise<T> {
+  const base = controlPlaneBaseUrl();
+  // Pagar egress — dinilai pada setiap panggilan, bebas daripada rahsia. Ini
+  // pangkalan data satah kawalan Control Center PRODUKSI, dicapai terus
+  // dengan kunci perkhidmatan; kunci itu tidak dibaca langsung apabila disekat.
+  const egress = decideEgress({kind: "control_center_api", destination: base});
+  if (!egress.allowed) throw new Error(egress.reason);
   const key = SUPABASE_SECRET_KEY.value().trim();
-  const response = await fetch(`${controlPlaneBaseUrl()}/rest/v1/rpc/${name}`, {
+  const response = await fetch(`${base}/rest/v1/rpc/${name}`, {
     method: "POST",
     headers: buildSupabaseAdminHeaders(key),
     body: JSON.stringify(payload),
