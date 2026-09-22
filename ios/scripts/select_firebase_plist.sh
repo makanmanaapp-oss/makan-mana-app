@@ -1,8 +1,12 @@
 #!/bin/sh
 # MAKANMANA iOS WAVE 3A — pilih GoogleService-Info.plist mengikut flavour.
 #
-# Ditambah sebagai Run Script build phase dalam Xcode (MACOS REQUIRED),
-# SEBELUM fasa "Copy Bundle Resources".
+# Dijalankan sebagai Run Script build phase dalam Runner.xcodeproj, SELEPAS
+# fasa "Resources" (Copy Bundle Resources) dan sebelum Embed Frameworks.
+#
+# PEMBETULAN WAVE 3B: Wave 3A berkata "SEBELUM Copy Bundle Resources". Itu
+# salah. Bundle .app belum dipasang pada ketika itu, dan apa-apa yang
+# diletakkan di sana boleh ditulis ganti oleh fasa Resources itu sendiri.
 #
 # MENGAPA IA WUJUD
 # ----------------
@@ -66,6 +70,31 @@ if [ "${PLIST_BUNDLE_ID}" != "${PRODUCT_BUNDLE_IDENTIFIER}" ]; then
   exit 1
 fi
 
+# Semakan BUNDLE_ID sahaja tidak mencukupi. Dua projek Firebase boleh
+# mendaftarkan bundle id yang SAMA, jadi plist produksi untuk
+# com.makanmana.apps.qa boleh wujud dan lulus semakan di atas. Ikatan kepada
+# identiti PROJEK ialah yang benar-benar memisahkan QA daripada produksi.
+MM_PRODUCTION_PROJECT_ID="makanmana-c59f3"
+PLIST_PROJECT_ID="$(plist_value PROJECT_ID "${SOURCE_PLIST}")"
+
+if [ -z "${PLIST_PROJECT_ID}" ]; then
+  echo "error: ${SOURCE_PLIST} tiada PROJECT_ID. Identiti projek Firebasenya tidak dapat disahkan." >&2
+  exit 1
+fi
+
+if [ "${MM_FLAVOR}" = "prod" ]; then
+  if [ "${PLIST_PROJECT_ID}" != "${MM_PRODUCTION_PROJECT_ID}" ]; then
+    echo "error: binaan produksi, tetapi plist adalah untuk projek '${PLIST_PROJECT_ID}'." >&2
+    exit 1
+  fi
+else
+  if [ "${PLIST_PROJECT_ID}" = "${MM_PRODUCTION_PROJECT_ID}" ]; then
+    echo "error: flavour '${MM_FLAVOR}' membawa plist projek PRODUKSI ('${PLIST_PROJECT_ID}')." >&2
+    echo "note: QA mesti mempunyai projek Firebase tersendiri. Binaan DISEKAT." >&2
+    exit 1
+  fi
+fi
+
 # Google Sign-In iOS memerlukan skim URL panggil-balik REVERSED_CLIENT_ID, dan
 # nilainya BERBEZA antara QA dan produksi. Ia hidup dalam Info.plist melalui
 # $(MM_GOOGLE_REVERSED_CLIENT_ID), jadi ia boleh menyimpang daripada plist yang
@@ -85,11 +114,14 @@ if [ "${MM_GOOGLE_REVERSED_CLIENT_ID}" != "${PLIST_REVERSED}" ]; then
   exit 1
 fi
 
-echo "note: BUNDLE_ID dan REVERSED_CLIENT_ID disahkan untuk flavour '${MM_FLAVOR}'."
+echo "note: PROJECT_ID, BUNDLE_ID dan REVERSED_CLIENT_ID disahkan untuk flavour '${MM_FLAVOR}'."
 
 # Sahkan DAHULU, salin kemudian: plist yang salah tidak sepatutnya pernah masuk
 # ke dalam bundle, walaupun binaan kemudiannya gagal.
-DEST="${BUILT_PRODUCTS_DIR}/${PRODUCT_NAME}.app/GoogleService-Info.plist"
+# FULL_PRODUCT_NAME sudah termasuk sambungan .app dan menghormati
+# WRAPPER_EXTENSION; ${PRODUCT_NAME}.app meneka nama itu.
+APP_DIR="${BUILT_PRODUCTS_DIR}/${FULL_PRODUCT_NAME:-${PRODUCT_NAME}.app}"
+DEST="${APP_DIR}/GoogleService-Info.plist"
 mkdir -p "$(dirname "${DEST}")"
 cp "${SOURCE_PLIST}" "${DEST}"
 echo "note: GoogleService-Info.plist flavour '${MM_FLAVOR}' disalin."
