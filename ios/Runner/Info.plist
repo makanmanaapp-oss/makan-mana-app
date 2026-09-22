@@ -89,5 +89,23 @@
 		<string>zh-Hans</string>
 		<string>ta</string>
 	</array>
+	<!-- Google Sign-In iOS memanggil balik aplikasi melalui skim URL
+	     REVERSED_CLIENT_ID. Nilainya BERBEZA antara QA dan produksi, jadi ia
+	     datang dari xcconfig flavour dan bukan dikodkan keras di sini.
+	     select_firebase_plist.sh menolak binaan jika ia kosong atau tidak
+	     sepadan GoogleService-Info.plist yang sedang dibundel. -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>google-sign-in</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>$(MM_GOOGLE_REVERSED_CLIENT_ID)</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>
