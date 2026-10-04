@@ -67,3 +67,10 @@ makanmana-c59f3-*.json
 
 # Local Node dependencies for rules emulator tests
 /rules_test/node_modules/
+
+# Owner-provided iOS configuration and signing keys: local / CI only.
+**/GoogleService-Info*.plist
+ios/Firebase/**/*.json
+ios/Flutter/Firebase-*.generated.xcconfig
+*.p8
+*.p12

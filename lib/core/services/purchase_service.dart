@@ -8,6 +8,7 @@ import 'package:in_app_purchase_storekit/in_app_purchase_storekit.dart';
 
 import '../constants/app_constants.dart';
 import '../constants/plan_constants.dart';
+import 'apple_purchase_request.dart';
 
 enum PurchaseFlow {
   storeStarted,
@@ -48,7 +49,7 @@ class PurchaseService {
     _subscription = InAppPurchase.instance.purchaseStream.listen(
       _onPurchases,
       onError: (Object e) {
-        debugPrint('MakanMana: purchaseStream: $e');
+        debugPrint('MakanMana: purchase stream failed.');
         _results.add(const PurchaseResult(PurchaseOutcome.error));
       },
     );
@@ -232,7 +233,11 @@ class PurchaseService {
     final productId = purchase.productID;
     final token = purchase.verificationData.serverVerificationData.trim();
 
-    if (!firebaseReady || productId.isEmpty || token.isEmpty) {
+    final isApple = defaultTargetPlatform == TargetPlatform.iOS;
+    final appleRequest = isApple ? applePurchaseRequest(purchase) : null;
+    if (!firebaseReady ||
+        productId.isEmpty ||
+        (isApple ? appleRequest == null : token.isEmpty)) {
       _results.add(
         const PurchaseResult(PurchaseOutcome.error),
       );
@@ -240,12 +245,16 @@ class PurchaseService {
     }
 
     try {
-      final result = await _fns
-          .httpsCallable('verifyGooglePlaySubscription')
-          .call<Map<dynamic, dynamic>>({
-        'productId': productId,
-        'purchaseToken': token,
-      });
+      final result = isApple
+          ? await _fns
+              .httpsCallable('verifyAppleSubscription')
+              .call<Map<dynamic, dynamic>>(appleRequest)
+          : await _fns
+              .httpsCallable('verifyGooglePlaySubscription')
+              .call<Map<dynamic, dynamic>>({
+              'productId': productId,
+              'purchaseToken': token,
+            });
 
       final data = result.data;
 
@@ -254,8 +263,7 @@ class PurchaseService {
       final planStatus = data['planStatus'] as String?;
 
       // Nama field mesti sama dengan backend production.
-      final localCompletionAllowed =
-          data['localCompletionAllowed'] == true ||
+      final localCompletionAllowed = data['localCompletionAllowed'] == true ||
           data['allowCompletePurchase'] == true;
 
       _results.add(
@@ -271,7 +279,7 @@ class PurchaseService {
       return localCompletionAllowed;
     } on FirebaseFunctionsException catch (e) {
       debugPrint(
-        'MakanMana: verifyGooglePlaySubscription: ${e.code}',
+        'MakanMana: subscription verification: ${e.code}',
       );
 
       _results.add(
@@ -282,10 +290,8 @@ class PurchaseService {
       );
 
       return false;
-    } catch (e) {
-      debugPrint(
-        'MakanMana: verify subscription ralat: $e',
-      );
+    } catch (_) {
+      debugPrint('MakanMana: subscription verification failed.');
 
       _results.add(
         const PurchaseResult(PurchaseOutcome.error),

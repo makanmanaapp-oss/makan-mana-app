@@ -1,3 +1,4 @@
+import {planForSubscriptionUser} from "../domain/billing/appleAccess";
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 
 import {db, FieldValue} from "../config/firebase";
@@ -27,7 +28,7 @@ export const saveScanMeal = onCall(
     }
     // Calorie Scan is a Pro feature — enforce on the server.
     const userSnap = await db.collection("users").doc(uid).get();
-    const plan = (userSnap.data()?.plan as string | undefined) ?? "free";
+    const plan = planForSubscriptionUser(userSnap.data());
     if (plan !== "pro") {
       return {status: "PRO_REQUIRED"};
     }

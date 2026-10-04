@@ -1,3 +1,4 @@
+import {planForSubscriptionUser} from "../domain/billing/appleAccess";
 import {GoogleAuth} from "google-auth-library";
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 
@@ -38,7 +39,7 @@ export const scanCalories = onCall(
     }
     // Penguatkuasaan Pro di pelayan.
     const userSnap = await db.collection("users").doc(uid).get();
-    const plan = (userSnap.data()?.plan as string | undefined) ?? "free";
+    const plan = planForSubscriptionUser(userSnap.data());
     if (plan !== "pro") {
       return {status: "PRO_REQUIRED"};
     }

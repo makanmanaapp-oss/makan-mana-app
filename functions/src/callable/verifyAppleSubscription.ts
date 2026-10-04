@@ -2,7 +2,7 @@
 // menghantar produk dan `originalTransactionId` legap; ia tidak pernah memberi
 // pelan kepada dirinya sendiri.
 import {HttpsError, onCall} from "firebase-functions/v2/https";
-import {defineSecret} from "firebase-functions/params";
+import {defineSecret, defineString} from "firebase-functions/params";
 
 import {
   processAppleSubscription,
@@ -22,7 +22,7 @@ export const appleRootCertificates = defineSecret("APPLE_ROOT_CERTIFICATES");
  */
 export const appleAppAppleIdForVerify = defineSecret("APPLE_APP_APPLE_ID");
 /** appAppleId aplikasi QA (aplikasi ASC berasingan). Kosong sehingga ia wujud. */
-export const appleQaAppAppleId = defineSecret("APPLE_QA_APP_APPLE_ID");
+export const appleQaAppAppleId = defineString("APPLE_QA_APP_APPLE_ID", {default: ""});
 
 interface VerifyInput {
   productId?: string;
@@ -37,7 +37,6 @@ export const verifyAppleSubscription = onCall(
       appleIapPrivateKey,
       appleRootCertificates,
       appleAppAppleIdForVerify,
-      appleQaAppAppleId,
     ],
   },
   async (request) => {
@@ -47,12 +46,12 @@ export const verifyAppleSubscription = onCall(
     }
 
     const input = (request.data ?? {}) as VerifyInput;
-    const productId = (input.productId ?? "").trim();
-    const originalTransactionId = (input.originalTransactionId ?? "").trim();
+    const productId = typeof input.productId === "string" ? input.productId.trim() : "";
+    const originalTransactionId = typeof input.originalTransactionId === "string" ? input.originalTransactionId.trim() : "";
     if (!productId) {
       throw new HttpsError("invalid-argument", "Produk tidak sah.");
     }
-    if (originalTransactionId.length < 4) {
+    if (!/^[0-9]{4,64}$/.test(originalTransactionId)) {
       throw new HttpsError("invalid-argument", "ID transaksi tidak sah.");
     }
 
@@ -83,6 +82,7 @@ export const verifyAppleSubscription = onCall(
       expiryMillis: e.expiryMillis,
       autoRenewing: e.autoRenewing,
       environment: result.environment,
+      localCompletionAllowed: true,
     };
   },
 );

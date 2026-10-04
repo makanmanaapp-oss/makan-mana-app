@@ -1,3 +1,4 @@
+import {planForSubscriptionUser} from "../domain/billing/appleAccess";
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 
 import {db} from "../config/firebase";
@@ -52,7 +53,9 @@ function allowed(value: unknown, list: readonly string[]): string | null {
 async function readViewerPlan(uid: string): Promise<string> {
   try {
     const snap = await db.collection("users").doc(uid).get();
-    const plan = snap.exists ? snap.data()?.plan : null;
+    const plan = snap.exists
+      ? (snap.data()?.planSource === "app_store" ? planForSubscriptionUser(snap.data()) : snap.data()?.plan)
+      : null;
     return typeof plan === "string" && plan ? plan : "free";
   } catch {
     // Fail closed toward the LEAST access: an unreadable plan is 'free', so

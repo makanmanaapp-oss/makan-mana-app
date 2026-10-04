@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
@@ -15,8 +16,12 @@ class GoogleAuthService {
 
   static Future<void> _ensureInitialized() async {
     if (_initialized) return;
-    await GoogleSignIn.instance
-        .initialize(serverClientId: kWebServerClientId);
+    await GoogleSignIn.instance.initialize(
+      clientId: defaultTargetPlatform == TargetPlatform.iOS
+          ? const String.fromEnvironment('IOS_GOOGLE_CLIENT_ID')
+          : null,
+      serverClientId: kWebServerClientId,
+    );
     _initialized = true;
   }
 

@@ -13,24 +13,17 @@ import {HttpsError} from "firebase-functions/v2/https";
 
 import {db, FieldValue} from "../config/firebase";
 import {
-  appleAccountMatches,
-  appleBundleMatches,
   appleEntitlementToUserFields,
-  isAllowedAppleProduct,
-  mapAppleSubscriptionToEntitlement,
-  type AppleRenewalInfoLike,
-  type AppleTransactionInfoLike,
 } from "../domain/billing/appStoreSubscription";
 import {
-  AppleJwsError,
   buildAppStoreJwtClaims,
-  verifyAppleJwsForApp,
 } from "../domain/billing/appStoreJws";
 import {
-  assertAppleEntitlementEnvironment,
   resolveAppleAppIdentity,
   type AppleAppIdentity,
 } from "../domain/billing/appleAppIdentity";
+import {createAppleSignedDataVerifier, type AppleSignedData} from "../domain/billing/appleSignedData";
+import {verifyAppleStatus, type AppleStatusResponse} from "../domain/billing/applePurchaseVerification";
 import type {EntitlementResult} from "../domain/billing/googlePlaySubscription";
 import {decideEgress} from "../domain/security/egressGuard";
 
@@ -139,16 +132,7 @@ export function signAppStoreJwt(params: {
 }
 
 /** Bentuk respons `GET /inApps/v1/subscriptions/{id}` yang kita perlukan. */
-interface StatusResponseLike {
-  data?: Array<{
-    lastTransactions?: Array<{
-      status?: number | null;
-      originalTransactionId?: string | null;
-      signedTransactionInfo?: string | null;
-      signedRenewalInfo?: string | null;
-    }> | null;
-  }> | null;
-}
+type StatusResponseLike = AppleStatusResponse;
 
 /** Pengangkutan boleh-suntik supaya ujian tidak pernah menyentuh rangkaian. */
 export type AppleStatusFetcher = (params: {
@@ -169,7 +153,7 @@ const defaultFetcher: AppleStatusFetcher = async ({
 
   const response = await fetch(
     `${host}/inApps/v1/subscriptions/${encodeURIComponent(originalTransactionId)}`,
-    {headers: {authorization: `Bearer ${bearer}`}},
+    {headers: {authorization: `Bearer ${bearer}`}, signal: AbortSignal.timeout(15000)},
   );
   const body = response.ok ? ((await response.json()) as StatusResponseLike) : {};
   return {status: response.status, body};
@@ -206,6 +190,8 @@ export async function processAppleSubscription(input: {
   config: AppleVerificationConfig;
   nowMillis?: number;
   source: string;
+  /** Offline test dependencies; never derived from request data. */
+  verifier?: AppleSignedData;
 }): Promise<AppleVerificationResult> {
   const nowMillis = input.nowMillis ?? Date.now();
   const bearer = signAppStoreJwt({config: input.config, nowMillis});
@@ -230,85 +216,36 @@ export async function processAppleSubscription(input: {
     throw new HttpsError("unavailable", "Gagal sahkan dengan App Store.");
   }
 
-  const last = result.body.data?.[0]?.lastTransactions?.[0];
-  if (!last) {
-    throw new HttpsError("not-found", "Langganan tidak dijumpai.");
-  }
-
-  let transaction: AppleTransactionInfoLike | null = null;
-  let renewal: AppleRenewalInfoLike | null = null;
+  let verified: Awaited<ReturnType<typeof verifyAppleStatus>>;
   try {
-    // S-1/S-3 — sahkan tandatangan DAN identiti aplikasi dalam satu langkah:
-    // bundleId, environment dan appAppleId. `verifyAppleJws` telanjang hanya
-    // membuktikan Apple menandatangani sesuatu, bukan bahawa ia milik kita.
-    const expected = {
-      bundleId: identity.bundleId,
-      environment: identity.environment,
-      ...(identity.appAppleId !== undefined ? {appAppleId: identity.appAppleId} : {}),
-    };
-    transaction = verifyAppleJwsForApp({
-      jws: last.signedTransactionInfo ?? "",
-      trustedRoots: input.config.trustedRoots,
-      nowMillis,
-      expected,
-    }) as AppleTransactionInfoLike;
-    if (last.signedRenewalInfo) {
-      renewal = verifyAppleJwsForApp({
-        jws: last.signedRenewalInfo,
+    verified = await verifyAppleStatus({
+      body: result.body,
+      verifier: input.verifier ?? createAppleSignedDataVerifier({
         trustedRoots: input.config.trustedRoots,
-        nowMillis,
-        expected,
-      }) as AppleRenewalInfoLike;
-    }
-  } catch (e) {
-    // Tandatangan tidak sah bermakna muatan itu tidak boleh dipercayai
-    // LANGSUNG. Tiada laluan degradasi.
-    const detail = e instanceof AppleJwsError ? e.message : "tidak sah";
-    throw new HttpsError("permission-denied", `Resit App Store ${detail}.`);
-  }
-
-  if (!appleBundleMatches(transaction, identity.bundleId)) {
-    throw new HttpsError("permission-denied", "Resit bukan untuk aplikasi ini.");
-  }
-  // S-2 — pagar KELAYAKAN, disemak SEMULA sebelum apa-apa kekal. Muatan
-  // Sandbox tidak pernah memberikan Pro produksi; muatan Production tidak
-  // pernah menulis ke pangkalan data QA. Ini berlebihan dengan tuntutan yang
-  // disahkan di atas, dengan sengaja: ia ialah sempadan tulisan.
-  try {
-    assertAppleEntitlementEnvironment({
-      expected: identity,
-      payloadEnvironment: (transaction as {environment?: unknown}).environment,
+        bundleId: identity.bundleId,
+        environment: identity.environment,
+        appAppleId: identity.appAppleId,
+      }),
+      identity,
+      uid: input.uid,
+      expectedProductId: input.expectedProductId,
+      nowMillis,
     });
-  } catch (e) {
-    throw new HttpsError(
-      "permission-denied",
-      e instanceof Error ? e.message : "Persekitaran transaksi tidak dibenarkan.",
-    );
+  } catch {
+    throw new HttpsError("permission-denied", "apple_subscription_verification_failed");
   }
-  if (!isAllowedAppleProduct(transaction.productId)) {
-    throw new HttpsError("permission-denied", "Produk App Store tidak sah.");
-  }
-  if (transaction.productId !== input.expectedProductId) {
-    throw new HttpsError("permission-denied", "Produk pembelian tidak sepadan.");
-  }
-  if (!appleAccountMatches(transaction, input.uid)) {
-    throw new HttpsError(
-      "permission-denied",
-      "Pembelian tidak sepadan dengan akaun ini.",
-    );
-  }
-
-  const entitlement = mapAppleSubscriptionToEntitlement(
-    {status: last.status ?? null, transaction, renewal},
-    nowMillis,
-  );
-
-  const originalTransactionId =
-    transaction.originalTransactionId ?? input.originalTransactionId;
+  const {transaction, renewal, entitlement} = verified;
+  const originalTransactionId = transaction.originalTransactionId!;
   const idHash = hashId(originalTransactionId);
   const verificationRef = db.collection("subscription_verifications").doc(idHash);
   const userRef = db.collection("users").doc(input.uid);
   const fields = appleEntitlementToUserFields(entitlement);
+  const eventHash = hashId(JSON.stringify([
+    environment, originalTransactionId, transaction.transactionId,
+    transaction.signedDate, entitlement.planStatus, entitlement.expiryMillis,
+    renewal?.autoRenewStatus, transaction.revocationDate ?? null,
+  ]));
+  const eventRef = db.collection("subscription_events").doc(`apple_${eventHash}`);
 
   await db.runTransaction(async (tx) => {
     const existing = await tx.get(verificationRef);
@@ -319,6 +256,18 @@ export async function processAppleSubscription(input: {
         "Transaksi App Store ini milik akaun lain.",
       );
     }
+    const event = await tx.get(eventRef);
+    const lastSignedDate = existing.exists ? existing.get("lastVerifiedSignedDate") : undefined;
+    if (typeof lastSignedDate === "number" && lastSignedDate > transaction.signedDate!) {
+      throw new HttpsError("failed-precondition", "apple_subscription_refresh_required");
+    }
+    // A delayed verify response must never undo a newer refund/notification.
+    const notificationDate = existing.exists ? existing.get("lastNotificationSignedDate") : undefined;
+    if (existing.get("revoked") === true ||
+        (typeof notificationDate === "number" && notificationDate > transaction.signedDate!)) {
+      throw new HttpsError("failed-precondition", "apple_subscription_refresh_required");
+    }
+    if (event.exists) return;
     tx.set(
       verificationRef,
       {
@@ -326,6 +275,8 @@ export async function processAppleSubscription(input: {
         platform: "app_store",
         productId: transaction.productId ?? null,
         environment,
+        lastVerifiedSignedDate: transaction.signedDate,
+        transactionIdHash: hashId(transaction.transactionId!),
         planStatus: entitlement.planStatus,
         entitled: entitlement.entitled,
         updatedAt: FieldValue.serverTimestamp(),
@@ -335,7 +286,7 @@ export async function processAppleSubscription(input: {
     tx.set(userRef, {...fields, planUpdatedAt: FieldValue.serverTimestamp()}, {
       merge: true,
     });
-    tx.set(db.collection("subscription_events").doc(), {
+    tx.set(eventRef, {
       uid: input.uid,
       platform: "app_store",
       eventType: "verify",

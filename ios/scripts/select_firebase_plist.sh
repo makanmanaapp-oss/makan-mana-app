@@ -46,10 +46,7 @@ fi
 # menghantar QA kepada Firebase produksi.
 
 plist_value() {
-  # Plist Firebase ialah XML rata: <key>K</key><string>V</string>.
-  sed -n "/<key>$1<\/key>/,/<\/string>/p" "$2" \
-    | sed -n 's:.*<string>\(.*\)</string>.*:\1:p' \
-    | head -1
+  /usr/libexec/PlistBuddy -c "Print :$1" "$2" 2>/dev/null || true
 }
 
 PLIST_BUNDLE_ID="$(plist_value BUNDLE_ID "${SOURCE_PLIST}")"

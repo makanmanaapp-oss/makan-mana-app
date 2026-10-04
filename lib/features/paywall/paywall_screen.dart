@@ -73,9 +73,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     final uid = ref.read(authRepositoryProvider).currentUser?.uid ?? '';
     try {
       if (plan != 'free') {
-        final flow = await ref
-            .read(purchaseServiceProvider)
-            .buy(uid: uid, plan: plan);
+        final flow =
+            await ref.read(purchaseServiceProvider).buy(uid: uid, plan: plan);
         if (flow == PurchaseFlow.storeStarted) {
           return; // Play uruskan UI bayaran sebenar.
         }
@@ -145,8 +144,10 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
     final l = AppLocalizations.of(context);
     // Halaman langganan khusus produk/app (rasmi Google Play).
     final uri = Uri.parse(
-      'https://play.google.com/store/account/subscriptions'
-      '?package=${PlanConstants.androidPackageName}',
+      defaultTargetPlatform == TargetPlatform.iOS
+          ? 'https://apps.apple.com/account/subscriptions'
+          : 'https://play.google.com/store/account/subscriptions'
+              '?package=${PlanConstants.androidPackageName}',
     );
     final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!ok && mounted) {
@@ -225,14 +226,11 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   : const LinearGradient(
                       colors: [AppColors.primaryRed, Color(0xFFFF6B45)],
                     ),
-              color: context.isDarkMode
-                  ? MMColors.redTintSurfaceDark
-                  : null,
+              color: context.isDarkMode ? MMColors.redTintSurfaceDark : null,
               borderRadius: BorderRadius.circular(18),
               border: context.isDarkMode
                   ? Border.all(
-                      color:
-                          AppColors.primaryRed.withValues(alpha: 0.45))
+                      color: AppColors.primaryRed.withValues(alpha: 0.45))
                   : null,
             ),
             child: Row(
@@ -265,8 +263,8 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 10, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
                     color: AppColors.warmYellow,
                     borderRadius: BorderRadius.circular(12),
@@ -286,9 +284,10 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           // Tajuk mengikut pelan disasarkan (jika datang dari ciri terkunci).
           if (widget.args != null) ...[
             Text(
-              targetPro ? l.t('paywallProHeadline') : l.t('paywallPlusHeadline'),
-              style: const TextStyle(
-                  fontSize: 22, fontWeight: FontWeight.w800),
+              targetPro
+                  ? l.t('paywallProHeadline')
+                  : l.t('paywallPlusHeadline'),
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
             ),
             const SizedBox(height: 6),
             Text(
@@ -491,8 +490,8 @@ class _PlanCard extends StatelessWidget {
               ),
               if (promoBadge != null)
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 8, vertical: 3),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
                     color: AppColors.warmYellow,
                     borderRadius: BorderRadius.circular(10),

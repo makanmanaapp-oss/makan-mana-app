@@ -79,9 +79,8 @@
 	<string>MakanMana needs access to your photos so you can attach a photo to a post or a bill.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>MakanMana needs the camera so you can take a photo of your food or a receipt.</string>
-	<!-- Push: notifikasi latar. Keupayaan Push Notifications + fail
-	     entitlements (aps-environment) mesti ditambah dalam Xcode di macOS -
-	     ia memerlukan pasukan penandatanganan. -->
+	<!-- Background delivery. Runner.entitlements supplies aps-environment;
+	     the owner must verify the matching signed provisioning profile on macOS. -->
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

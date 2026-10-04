@@ -73,14 +73,14 @@ export const APPLE_BUNDLE_ID = "com.makanmana.apps";
 export function isAllowedAppleProduct(
   productId: string | null | undefined,
 ): boolean {
-  return typeof productId === "string" && productId in PRODUCT_ALLOWLIST;
+  return typeof productId === "string" && Object.hasOwn(PRODUCT_ALLOWLIST, productId);
 }
 
 /** Pelan untuk produk yang dibenarkan, atau null. */
 export function planForAppleProduct(
   productId: string | null | undefined,
 ): Plan | null {
-  if (typeof productId === "string" && productId in PRODUCT_ALLOWLIST) {
+  if (typeof productId === "string" && Object.hasOwn(PRODUCT_ALLOWLIST, productId)) {
     return PRODUCT_ALLOWLIST[productId];
   }
   return null;
@@ -185,7 +185,7 @@ export function mapAppleSubscriptionToEntitlement(
     case APPLE_STATUS_ACTIVE: {
       // Apple boleh melaporkan ACTIVE sebentar selepas tamat tempoh; masa
       // adalah muktamad.
-      if (expiryMillis !== null && expiryMillis <= nowMillis) {
+      if (expiryMillis === null || expiryMillis <= nowMillis) {
         return deny("expired", "aktif tetapi expiresDate sudah lepas");
       }
       if (!autoRenewing) {
@@ -195,10 +195,10 @@ export function mapAppleSubscriptionToEntitlement(
     }
     case APPLE_STATUS_GRACE_PERIOD: {
       const graceEnds = finiteOrNull(renewal?.gracePeriodExpiresDate);
-      if (graceEnds !== null && graceEnds <= nowMillis) {
+      if (graceEnds === null || graceEnds <= nowMillis) {
         return deny("on_hold", "tempoh tangguh sudah tamat");
       }
-      return entitle("grace_period", "tempoh tangguh pembayaran");
+      return {...entitle("grace_period", "tempoh tangguh pembayaran"), expiryMillis: graceEnds};
     }
     case APPLE_STATUS_BILLING_RETRY:
       return deny("on_hold", "cubaan semula pembayaran, tiada tempoh tangguh");

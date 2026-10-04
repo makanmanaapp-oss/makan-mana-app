@@ -1,3 +1,4 @@
+import {planForSubscriptionUser} from "../domain/billing/appleAccess";
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 
 import {db} from "../config/firebase";
@@ -28,7 +29,7 @@ export const getWeeklyReport = onCall(async (request) => {
   }
   // Penguatkuasaan Pro di pelayan (client hanya papar preview).
   const userSnap = await db.collection("users").doc(uid).get();
-  const plan = (userSnap.data()?.plan as string | undefined) ?? "free";
+  const plan = planForSubscriptionUser(userSnap.data());
   if (plan !== "pro") {
     return {status: "PRO_REQUIRED"};
   }

@@ -1,83 +1,41 @@
-# Konfigurasi Firebase iOS
+# Firebase iOS production configuration
 
-Setiap folder di sini menerima `GoogleService-Info.plist` **sebenar** yang
-dimuat turun daripada konsol Firebase.
+The current release identity is `com.makanmana.apps` in `makanmana-c59f3`.
+App Store Connect app ID: `6817102237`. Existing QA scaffolding uses
+`com.makanmana.apps.qa` and remains gated; it is not an approved release identity.
 
-| Folder | Bundle ID | Projek Firebase |
-| --- | --- | --- |
-| `prod/` | `com.makanmana.apps` | projek produksi |
-| `qa/` | `com.makanmana.apps.qa` | keputusan pemilik — lihat nota di bawah |
+The real downloaded owner file belongs only at:
+`ios/Firebase/prod/GoogleService-Info.plist`.
+It is ignored by Git. Do not fabricate it or use the production file for QA.
 
-## Tiada fail palsu di sini
+Run from the project root after the owner supplies it:
 
-Tiada `GoogleService-Info.plist` dicipta oleh alat. Mereka-reka satu bermakna
-mereka-reka App ID, kunci API dan nombor projek — konfigurasi rekaan yang
-menyamar sebagai sesuatu yang berfungsi. Fail ini hanya boleh datang daripada
-konsol Firebase selepas aplikasi iOS didaftarkan.
-
-## Jangan gunakan plist produksi untuk QA
-
-`ios/scripts/select_firebase_plist.sh` memilih mengikut flavour dan
-**menghentikan binaan** apabila plist yang betul tiada. Ia tidak pernah jatuh
-balik kepada flavour lain.
-
-## Nota tentang projek QA
-
-Keputusan pemilik ialah QA Simulator dahulu. Jika QA iOS akhirnya menggunakan
-emulator Firebase (seperti Android), `qa/` memerlukan plist bagi projek
-`demo-`. Jika ia menggunakan projek Firebase QA sebenar, itu mengubah andaian
-awalan `demo-` dalam pagar egress backend dan pagar itu mesti dikemas kini
-dalam commit yang sama.
-
-## Tindakan konsol yang diperlukan (kerja pemilik, APPLE CONFIG REQUIRED)
-
-Tiada satu pun daripada ini boleh dilakukan dari sini — ia memerlukan akses
-konsol. Selepas setiap plist ada, tiada kod lain perlu berubah.
-
-**Firebase Console → Project settings → Your apps → Add app → iOS**
-
-| # | Tindakan | Nilai |
-| --- | --- | --- |
-| 1 | Daftar aplikasi iOS dalam projek **produksi** | Bundle ID `com.makanmana.apps` |
-| 2 | Muat turun `GoogleService-Info.plist` | letak dalam `ios/Firebase/prod/` |
-| 3 | Daftar aplikasi iOS kedua untuk QA | Bundle ID `com.makanmana.apps.qa` |
-| 4 | Muat turun plist QA | letak dalam `ios/Firebase/qa/` |
-| 5 | Authentication → Sign-in method → **Apple** | wajib: App Store menolak app yang menawarkan log masuk sosial tanpa Sign in with Apple |
-| 6 | App Check → daftar **App Attest** untuk kedua-dua bundle | App Check sudah diaktifkan dalam kod |
-
-**Apple Developer → Certificates, Identifiers & Profiles**
-
-| # | Tindakan | Nilai |
-| --- | --- | --- |
-| 7 | Cipta App ID | `com.makanmana.apps` dan `com.makanmana.apps.qa` |
-| 8 | Hidupkan keupayaan: Push Notifications, Sign in with Apple, In-App Purchase | kedua-dua App ID |
-| 9 | Muat naik kunci APNs ke Firebase Cloud Messaging | diperlukan untuk push iOS |
-| 10 | App Store Connect → cipta langganan | ID produk mesti sepadan katalog sedia ada |
-
-## Selepas plist ada: satu nilai untuk disalin
-
-Buka setiap plist, cari `REVERSED_CLIENT_ID`, dan tampalkannya ke dalam
-ketiga-tiga xcconfig bagi flavour itu:
-
-```
-ios/Flutter/{Debug,Profile,Release}-prod.xcconfig  ← REVERSED_CLIENT_ID plist prod
-ios/Flutter/{Debug,Profile,Release}-qa.xcconfig    ← REVERSED_CLIENT_ID plist qa
+```powershell
+python ios/scripts/prepare_production_firebase.py --plist /path/to/real/GoogleService-Info.plist
 ```
 
-Nilai itu menjadi skim URL panggil-balik Google Sign-In dalam `Info.plist`.
-Menampal nilai yang salah tidak akan gagal secara senyap:
-`select_firebase_plist.sh` membandingkan xcconfig dengan plist yang sedang
-dibundel dan menghentikan binaan apabila ia menyimpang.
+This verifies bundle/project/client identities before copying, then quietly derives
+ignored `ios/Firebase/prod/firebase-defines.json` and
+`ios/Flutter/Firebase-prod.generated.xcconfig` from that exact file. The latter
+sets the real Google Sign-In callback for all three production configurations.
 
-## Mengapa `CLIENT_ID` tidak perlu disalin ke mana-mana
+A later macOS build must include:
 
-`GoogleAuthService` hanya menghantar `serverClientId`. Pemalam iOS
-(`google_sign_in_ios` 6.3.0) membaca `CLIENT_ID` terus daripada
-`GoogleService-Info.plist` di dalam *main bundle* — iaitu tepat fail yang
-disalin oleh `select_firebase_plist.sh`. Jadi pemilihan plist mengikut flavour
-turut memacu Google Sign-In, dan tiada ID klien iOS dikodkan keras dalam
-sumber Dart.
+```sh
+flutter build ipa --release --flavor prod \
+  --dart-define-from-file=ios/Firebase/prod/firebase-defines.json
+```
 
-Disahkan terhadap sumber pemalam, bukan dokumentasi:
-`FLTGoogleSignInPlugin.m` → `configurationWithClientIdentifier:` jatuh balik
-kepada `self.googleServiceProperties[@"CLIENT_ID"]`.
+The native build phase separately validates project, bundle, callback and Dart
+flavor before bundling the plist. Missing configuration stops the build/startup.
+Android Firebase options and dependencies are unchanged.
+
+Use the existing Apple identifiers and existing subscription products. Do not
+create additional identifiers or infer a QA identity from its name. The current
+QA project allowlist is intentionally unassigned. TestFlight billing uses Sandbox;
+the production backend rejects it, so isolated Sandbox billing is still a gate.
+
+Owner console actions and required configuration are listed in
+`MAKANMANA_IOS_FIRST_BUILD_READINESS.md` and
+`MAKANMANA_IOS_REQUIRED_CONFIGURATION.md` at the project root. These supersede
+older setup notes that requested new Apple IDs or manual callback copying.

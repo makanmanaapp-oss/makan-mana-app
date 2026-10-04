@@ -19,16 +19,14 @@ import {
   type StoredSubscriptionRecord,
   type VerifiedNotification,
 } from "../domain/billing/notificationProcessing";
-import type {
-  AppleRenewalInfoLike,
-  AppleTransactionInfoLike,
-} from "../domain/billing/appStoreSubscription";
 import {
-  APPLE_ENV_PRODUCTION,
-  AppleJwsError,
-  verifyAppleJws,
-  verifyAppleJwsForApp,
-} from "../domain/billing/appStoreJws";
+  appleEntitlementToUserFields,
+  isAllowedAppleProduct,
+  type AppleRenewalInfoLike,
+  type AppleTransactionInfoLike,
+} from "../domain/billing/appStoreSubscription";
+import {appleTokenBelongsTo} from "../domain/billing/appleAccountToken";
+import {createAppleSignedDataVerifier, type AppleSignedData} from "../domain/billing/appleSignedData";
 
 export interface AppleNotificationConfig {
   trustedRoots: string[];
@@ -41,7 +39,7 @@ export interface AppleNotificationConfig {
    * akhir PRODUKSI ditolak: tanpa ini, pemprosesan notifikasi ialah pintu
    * kedua ke pagar kelayakan yang sama.
    */
-  expectedEnvironment?: string;
+  expectedEnvironment: string;
 }
 
 function hashId(value: string): string {
@@ -82,7 +80,23 @@ const firestoreStore: NotificationStore = {
     const subRef = db.collection("subscription_verifications").doc(input.subscriptionKey);
 
     await db.runTransaction(async (tx) => {
-      if (input.entitlement !== null) {
+      const [receipt, current] = await Promise.all([tx.get(receiptRef), tx.get(subRef)]);
+      if (receipt.exists) return;
+      const currentDate = current.get("lastNotificationSignedDate");
+      const stale = typeof currentDate === "number" &&
+        (input.signedDate === null || input.signedDate <= currentDate);
+      const cannotUnrevoke = current.get("revoked") === true && !input.revoked;
+      const currentOwner = current.get("uid");
+      const lastVerifiedDate = current.get("lastVerifiedSignedDate");
+      const olderThanVerification = typeof lastVerifiedDate === "number" &&
+        (input.signedDate === null || input.signedDate < lastVerifiedDate);
+      const mayApply = !stale && !cannotUnrevoke && !olderThanVerification;
+      // Binding may have appeared after loadSubscription. Resolve it again
+      // within this transaction to avoid losing a concurrent refund/expiry.
+      const userWrite = input.entitlement !== null && typeof currentOwner === "string" &&
+        appleTokenBelongsTo(input.verifiedAccountToken, currentOwner)
+        ? {uid: currentOwner, fields: appleEntitlementToUserFields(input.entitlement)} : null;
+      if (input.entitlement !== null && mayApply) {
         tx.set(
           subRef,
           {
@@ -100,10 +114,10 @@ const firestoreStore: NotificationStore = {
         );
       }
 
-      if (input.userWrite !== null) {
+      if (userWrite !== null && mayApply) {
         tx.set(
-          db.collection("users").doc(input.userWrite.uid),
-          {...input.userWrite.fields, planUpdatedAt: FieldValue.serverTimestamp()},
+          db.collection("users").doc(userWrite.uid),
+          {...userWrite.fields, planUpdatedAt: FieldValue.serverTimestamp()},
           {merge: true},
         );
       }
@@ -112,12 +126,12 @@ const firestoreStore: NotificationStore = {
       // di antaranya akan menghasilkan kesan yang digunakan tanpa resit, dan
       // penghantaran semula akan menggunakannya sekali lagi.
       tx.set(receiptRef, {
-        outcome: input.outcome,
+        outcome: mayApply ? input.outcome : "stale",
         subscriptionKey: input.subscriptionKey,
         notificationType: input.notificationType,
         subtype: input.subtype,
         entitled: input.entitlement?.entitled ?? null,
-        ownerResolved: input.userWrite !== null,
+        ownerResolved: userWrite !== null,
         receivedAt: FieldValue.serverTimestamp(),
       });
     });
@@ -135,103 +149,53 @@ export async function processAppleNotification(params: {
   config: AppleNotificationConfig;
   nowMillis?: number;
   store?: NotificationStore;
+  verifier?: AppleSignedData;
 }): Promise<ProcessOutcome> {
   const nowMillis = params.nowMillis ?? Date.now();
   const store = params.store ?? firestoreStore;
 
-  let outer: Record<string, unknown>;
-  try {
-    outer = verifyAppleJws({
-      jws: params.signedPayload,
-      trustedRoots: params.config.trustedRoots,
-      nowMillis,
-    });
-  } catch (e) {
-    if (e instanceof AppleJwsError && /gagal-tertutup/.test(e.message)) {
-      // Akar tidak dikonfigurasikan ialah masalah KITA, bukan muatan buruk.
-      return {ok: false, failure: {kind: "transient", reason: e.message}};
-    }
-    return {
-      ok: false,
-      failure: {kind: "invalid", reason: "sampul notifikasi tidak boleh disahkan"},
-    };
-  }
-
-  const data = (outer.data ?? {}) as Record<string, unknown>;
-  const environment =
-    typeof data.environment === "string" ? data.environment : APPLE_ENV_PRODUCTION;
-
-  // S-2 — pagar persekitaran, sama seperti laluan pembelian.
-  if (
-    params.config.expectedEnvironment !== undefined &&
-    environment !== params.config.expectedEnvironment
-  ) {
-    return {
-      ok: false,
-      failure: {
-        kind: "invalid",
-        reason: `persekitaran notifikasi tidak dibenarkan: dijangka ${params.config.expectedEnvironment}`,
-      },
-    };
-  }
-  if (typeof data.bundleId !== "string" || data.bundleId !== params.config.bundleId) {
-    return {
-      ok: false,
-      failure: {kind: "invalid", reason: "bundleId notifikasi tidak sepadan"},
-    };
-  }
-  if (environment === APPLE_ENV_PRODUCTION && params.config.appAppleId === undefined) {
-    return {
-      ok: false,
-      failure: {
-        kind: "transient",
-        reason: "appAppleId diperlukan untuk Production tetapi tidak dikonfigurasikan",
-      },
-    };
-  }
-  if (
-    params.config.appAppleId !== undefined &&
-    asNumber(data.appAppleId) !== params.config.appAppleId
-  ) {
-    return {
-      ok: false,
-      failure: {kind: "invalid", reason: "appAppleId notifikasi tidak sepadan"},
-    };
-  }
-
-  const expected = {
-    bundleId: params.config.bundleId,
-    environment,
-    appAppleId: params.config.appAppleId,
-  };
-
   let transaction: AppleTransactionInfoLike | null = null;
   let renewal: AppleRenewalInfoLike | null = null;
+  let outer;
   try {
-    if (typeof data.signedTransactionInfo === "string") {
-      transaction = verifyAppleJwsForApp({
-        jws: data.signedTransactionInfo,
-        trustedRoots: params.config.trustedRoots,
-        nowMillis,
-        expected,
-      }) as AppleTransactionInfoLike;
+    const verifier = params.verifier ?? createAppleSignedDataVerifier({
+      trustedRoots: params.config.trustedRoots,
+      bundleId: params.config.bundleId,
+      environment: params.config.expectedEnvironment,
+      appAppleId: params.config.appAppleId,
+    });
+    outer = await verifier.verifyAndDecodeNotification(params.signedPayload);
+    const data = outer.data;
+    if (!data || data.bundleId !== params.config.bundleId ||
+        data.environment !== params.config.expectedEnvironment ||
+        (params.config.expectedEnvironment === "Production" &&
+          data.appAppleId !== params.config.appAppleId)) {
+      throw new Error("apple_notification_identity_mismatch");
     }
-    if (typeof data.signedRenewalInfo === "string") {
-      // WAVE 4A — maklumat pembaharuan turut terikat pada identiti aplikasi;
-      // dahulu ia hanya disahkan tandatangannya.
-      renewal = verifyAppleJwsForApp({
-        jws: data.signedRenewalInfo,
-        trustedRoots: params.config.trustedRoots,
-        nowMillis,
-        expected,
-      }) as AppleRenewalInfoLike;
+    if (data.signedTransactionInfo) {
+      transaction = await verifier.verifyAndDecodeTransaction(data.signedTransactionInfo);
+      if (transaction.bundleId !== params.config.bundleId ||
+          transaction.environment !== params.config.expectedEnvironment ||
+          !isAllowedAppleProduct(transaction.productId) ||
+          !transaction.originalTransactionId || transaction.type !== "Auto-Renewable Subscription") {
+        throw new Error("apple_transaction_identity_mismatch");
+      }
+    }
+    if (data.signedRenewalInfo) {
+      const decodedRenewal = await verifier.verifyAndDecodeRenewalInfo(data.signedRenewalInfo);
+      if (!transaction || decodedRenewal.environment !== params.config.expectedEnvironment ||
+          decodedRenewal.originalTransactionId !== transaction.originalTransactionId ||
+          decodedRenewal.productId !== transaction.productId) {
+        throw new Error("apple_renewal_mismatch");
+      }
+      renewal = decodedRenewal;
     }
   } catch {
-    return {
-      ok: false,
-      failure: {kind: "invalid", reason: "muatan bersarang tidak boleh disahkan"},
-    };
+    // Includes certificate/OCSP outages: never acknowledge data not verified.
+    return {ok: false, failure: {kind: "transient", reason: "apple_notification_verification_failed"}};
   }
+  const data = outer.data!;
+  const environment = params.config.expectedEnvironment;
 
   const originalTransactionId =
     typeof transaction?.originalTransactionId === "string"

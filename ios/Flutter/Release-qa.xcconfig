@@ -1,3 +1,4 @@
+#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.release-qa.xcconfig"
 // MAKANMANA iOS WAVE 3A/3B — konfigurasi Release untuk flavour 'qa'.
 //
 // STATUS: SOURCE READY + struktur pbxproj disahkan.

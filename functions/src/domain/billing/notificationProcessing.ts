@@ -52,6 +52,9 @@ export interface CommitInput {
   entitlement: EntitlementResult | null;
   /** Medan pengguna untuk ditulis, hanya apabila pemilik disahkan. */
   userWrite: {uid: string; fields: Record<string, unknown>} | null;
+  /** Verified signed binding, used only to recheck ownership atomically.
+   * Never stored in receipts or logged. */
+  verifiedAccountToken?: string | null;
 }
 
 /**
@@ -183,6 +186,7 @@ export async function applyVerifiedNotification(params: {
     productId: verified.transaction?.productId ?? null,
     revoked,
     entitlement,
+    verifiedAccountToken: verified.transaction?.appAccountToken ?? null,
     userWrite:
       entitlement !== null && ownerUid !== null && ownerMatches
         ? {uid: ownerUid, fields: appleEntitlementToUserFields(entitlement)}

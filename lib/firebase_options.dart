@@ -4,6 +4,8 @@ import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
 
+import 'core/security/ios_firebase_configuration.dart';
+
 /// Default [FirebaseOptions] for use with your Firebase apps.
 ///
 /// Example:
@@ -26,9 +28,16 @@ class DefaultFirebaseOptions {
       case TargetPlatform.android:
         return android;
       case TargetPlatform.iOS:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for ios - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
+        return productionIosFirebaseOptions(
+          apiKey: const String.fromEnvironment('IOS_FIREBASE_API_KEY'),
+          appId: const String.fromEnvironment('IOS_FIREBASE_APP_ID'),
+          messagingSenderId:
+              const String.fromEnvironment('IOS_FIREBASE_SENDER_ID'),
+          projectId: const String.fromEnvironment('IOS_FIREBASE_PROJECT_ID'),
+          bundleId: const String.fromEnvironment('IOS_FIREBASE_BUNDLE_ID'),
+          storageBucket:
+              const String.fromEnvironment('IOS_FIREBASE_STORAGE_BUCKET'),
+          clientId: const String.fromEnvironment('IOS_GOOGLE_CLIENT_ID'),
         );
       case TargetPlatform.macOS:
         throw UnsupportedError(

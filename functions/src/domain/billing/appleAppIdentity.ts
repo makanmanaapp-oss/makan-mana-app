@@ -27,6 +27,8 @@ import {
 } from "../security/egressGuard";
 
 /** Bundle produksi. Terkunci (keputusan pemilik). */
+export const APPLE_PRODUCTION_APP_ID = 6817102237;
+
 export const APPLE_PRODUCTION_BUNDLE_ID = "com.makanmana.apps";
 
 /** Bundle QA. Terkunci (keputusan pemilik); aplikasi ASC berasingan. */
@@ -111,8 +113,8 @@ export function resolveAppleAppIdentity(params: {
         String(params.productionAppAppleId) :
         params.productionAppAppleId,
     );
-    if (appAppleId === undefined) {
-      return deny("appAppleId produksi tidak dikonfigurasikan");
+    if (appAppleId !== APPLE_PRODUCTION_APP_ID) {
+      return deny("appAppleId produksi tidak dikonfigurasikan atau tidak sepadan");
     }
     return {
       ok: true,

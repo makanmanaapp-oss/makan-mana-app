@@ -1,3 +1,4 @@
+import {planForSubscriptionUser} from "../domain/billing/appleAccess";
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 
 import {db, FieldValue} from "../config/firebase";
@@ -19,7 +20,7 @@ export const refreshMyPlanStatus = onCall(async (request) => {
   const data = (snap.data() ?? {}) as Record<string, unknown>;
 
   const planSource = (data.planSource as string | undefined) ?? "";
-  const plan = (data.plan as string | undefined) ?? "free";
+  const plan = planForSubscriptionUser(data);
   const expiresAt = data.couponExpiresAt as
     | FirebaseFirestore.Timestamp
     | undefined;

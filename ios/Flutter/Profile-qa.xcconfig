@@ -1,3 +1,4 @@
+#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.profile-qa.xcconfig"
 // MAKANMANA iOS WAVE 3A/3B — konfigurasi Profile untuk flavour 'qa'.
 //
 // STATUS: SOURCE READY + struktur pbxproj disahkan.

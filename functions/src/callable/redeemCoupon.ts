@@ -1,3 +1,4 @@
+import {planForSubscriptionUser} from "../domain/billing/appleAccess";
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 
 import {db, FieldValue, Timestamp} from "../config/firebase";
@@ -110,7 +111,7 @@ export const redeemCoupon = onCall(async (request) => {
 
     const userSnap = await tx.get(userRef);
     const userData = (userSnap.data() ?? {}) as Record<string, unknown>;
-    const currentPlan = (userData.plan as string | undefined) ?? "free";
+    const currentPlan = planForSubscriptionUser(userData);
     const currentSource =
       (userData.planSource as string | undefined) ?? "";
 

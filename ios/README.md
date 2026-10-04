@@ -1,3 +1,6 @@
+> Current source audit: see `../MAKANMANA_IOS_FIRST_BUILD_READINESS.md` (4 October 2026).
+> The historical notes below describe earlier commits and do not establish current readiness.
+
 # Asas iOS — disediakan pada Windows, BELUM DIBINA
 
 ## Calon keluaran (21 Sep 2026)

@@ -1,0 +1,99 @@
+# Manual workflow only. No webhook trigger, automatic upload, or store submission.
+# Owner must configure the named integration and encrypted environment group.
+workflows:
+  ios-first-build:
+    name: Makan Mana first iOS archive (manual)
+    instance_type: mac_mini_m2
+    max_build_duration: 120
+    integrations:
+      app_store_connect: makanmana-ios-owner
+    environment:
+      flutter: 3.44.4
+      xcode: latest
+      cocoapods: default
+      node: 22
+      groups:
+        - makanmana_ios_production
+      vars:
+        BUNDLE_ID: com.makanmana.apps
+        APP_STORE_APP_ID: "6817102237"
+        ENABLE_TESTFLIGHT_UPLOAD: "false"
+    scripts:
+      - name: Resolve locked Flutter dependencies
+        script: |
+          set -eu
+          flutter pub get --enforce-lockfile
+      - name: Prepare owner Firebase configuration quietly
+        script: |
+          set -eu
+          set +x
+          python3 - <<'PY'
+          import base64, os
+          from pathlib import Path
+          raw = os.environ.get("IOS_FIREBASE_PLIST_BASE64", "")
+          if not raw:
+              raise SystemExit("Missing owner Firebase plist in encrypted CI environment.")
+          target = Path("ios/Firebase/prod/GoogleService-Info.plist")
+          target.parent.mkdir(parents=True, exist_ok=True)
+          target.write_bytes(base64.b64decode(raw, validate=True))
+          PY
+          python3 ios/scripts/prepare_production_firebase.py --plist ios/Firebase/prod/GoogleService-Info.plist
+      - name: Analyze and run Flutter tests
+        script: |
+          set -eu
+          flutter analyze --no-pub
+          flutter test --no-pub
+          python3 ios/scripts/validate_pbxproj.py ios/Runner.xcodeproj/project.pbxproj
+          python3 -m unittest discover -s ios/scripts/tests -p "test_*.py"
+      - name: Build and test backend source (no deployment)
+        script: |
+          set -eu
+          cd functions
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run build
+          npm run test:offline
+      - name: Install CocoaPods
+        script: |
+          set -eu
+          cd ios
+          pod install
+      - name: Fetch automatic Apple signing through owner integration
+        script: |
+          set -eu
+          keychain initialize
+          # Fetch existing assets for the existing App ID; never create identifiers.
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE
+          keychain add-certificates
+          xcode-project use-profiles
+      - name: Archive production IPA
+        script: |
+          set -eu
+          : "${IOS_BUILD_NUMBER:?Owner must set a unique numeric iOS build number}"
+          flutter build ipa --release --flavor prod \
+            --build-number="$IOS_BUILD_NUMBER" \
+            --dart-define-from-file=ios/Firebase/prod/firebase-defines.json \
+            --export-options-plist=/Users/builder/export_options.plist
+      - name: Validate the built production archive quietly
+        script: |
+          set -eu
+          for ipa in build/ios/ipa/*.ipa; do
+            test -f "$ipa"
+            python3 ios/scripts/validate_production_archive.py --ipa "$ipa" \
+              --app build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app
+          done
+      - name: Optional owner-enabled upload (no beta review or App Store submission)
+        script: |
+          set -eu
+          if [ "${ENABLE_TESTFLIGHT_UPLOAD:-false}" != "true" ]; then
+            echo "Upload disabled. Signed IPA retained as build artifact."
+            exit 0
+          fi
+          # This command uploads only; it never submits for review or releases.
+          for ipa in build/ios/ipa/*.ipa; do
+            test -f "$ipa"
+            app-store-connect publish --path "$ipa"
+          done
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - build/ios/archive/*.xcarchive
+      - ios/Podfile.lock

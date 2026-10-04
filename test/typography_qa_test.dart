@@ -318,7 +318,8 @@ void main() {
     //   merentas 4 bahasa - "tiada restoran di kawasan ini" dan "tidak dapat
     //   memuatkan restoran sekarang" kini ayat berasingan yang JUJUR. Sebelum
     //   ini kedua-dua keadaan digantikan dengan sepuluh restoran REKAAN.
-    expect(msKeys, hasLength(1849));
+    // First iOS release: +1 native Apple sign-in label in all four languages.
+    expect(msKeys, hasLength(1850));
     final placeholder = RegExp(r'\{[^}]+\}');
     final msValues = AppLocalizations.valuesForTesting(const Locale('ms'));
     for (final language in ['en', 'zh', 'ta']) {

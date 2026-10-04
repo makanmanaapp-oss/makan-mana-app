@@ -1,3 +1,4 @@
+import {planForSubscriptionUser} from "../domain/billing/appleAccess";
 import {defineSecret} from "firebase-functions/params";
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 import {logger} from "firebase-functions/v2";
@@ -123,7 +124,7 @@ export const getSuggestions = onCall(
 
     // Pelan dari users/{uid}; JANGAN percaya pelan dari client.
     const userSnap = await db.collection("users").doc(uid).get();
-    const plan = (userSnap.data()?.plan as string | undefined) ?? "free";
+    const plan = planForSubscriptionUser(userSnap.data());
 
     // Phase 2.4 — versi brain dibaca AWAL supaya contextHash (sesi) berubah bila
     // brain berubah → sesi BAHARU guna brain terkini; sesi aktif lama kekal.

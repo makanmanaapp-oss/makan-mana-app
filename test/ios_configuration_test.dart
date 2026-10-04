@@ -16,7 +16,8 @@ void main() {
 
   group('Podfile', () {
     test('wujud dan berasal daripada templat Flutter', () {
-      expect(exists('ios/Podfile'), isTrue, reason: 'pod install TIDAK menjananya');
+      expect(exists('ios/Podfile'), isTrue,
+          reason: 'pod install TIDAK menjananya');
       final podfile = read('ios/Podfile');
       expect(podfile, contains('flutter_ios_podfile_setup'));
       expect(podfile, contains('flutter_install_all_ios_pods'));
@@ -35,17 +36,19 @@ void main() {
           .join('\n');
       final pbxproj = read('ios/Runner.xcodeproj/project.pbxproj');
 
-      final mapBlock = RegExp(r"project 'Runner', \{([^}]*)\}").firstMatch(podfile);
+      final mapBlock =
+          RegExp(r"project 'Runner', \{([^}]*)\}").firstMatch(podfile);
       expect(mapBlock, isNotNull, reason: 'peta konfigurasi tidak dijumpai');
       final mapped = RegExp(r"'([^']+)' =>")
           .allMatches(mapBlock!.group(1)!)
           .map((m) => m.group(1)!)
           .toSet();
 
-      final declared = RegExp(r'name = "?(Debug|Profile|Release)(-[A-Za-z0-9]+)?"?;')
-          .allMatches(pbxproj)
-          .map((m) => '${m.group(1)}${m.group(2) ?? ''}')
-          .toSet();
+      final declared =
+          RegExp(r'name = "?(Debug|Profile|Release)(-[A-Za-z0-9]+)?"?;')
+              .allMatches(pbxproj)
+              .map((m) => '${m.group(1)}${m.group(2) ?? ''}')
+              .toSet();
 
       // Bukan hampa: kedua-dua sisi mesti benar-benar menghurai sesuatu.
       expect(declared, contains('Release'));
@@ -54,7 +57,8 @@ void main() {
       expect(
         mapped,
         equals(declared),
-        reason: 'Podfile memetakan $mapped tetapi pbxproj mengisytiharkan $declared',
+        reason:
+            'Podfile memetakan $mapped tetapi pbxproj mengisytiharkan $declared',
       );
     });
   });
@@ -170,14 +174,16 @@ void main() {
   group('pengawal silang-persekitaran', () {
     test('plist disemak terhadap identiti binaan sebelum disalin', () {
       final script = read('ios/scripts/select_firebase_plist.sh');
-      final guard = script.indexOf(r'${PLIST_BUNDLE_ID}" != "${PRODUCT_BUNDLE_IDENTIFIER}');
+      final guard = script
+          .indexOf(r'${PLIST_BUNDLE_ID}" != "${PRODUCT_BUNDLE_IDENTIFIER}');
       final copy = script.indexOf(r'cp "${SOURCE_PLIST}"');
       expect(guard, greaterThan(-1), reason: 'pengawal BUNDLE_ID tiada');
       expect(copy, greaterThan(-1));
       expect(
         guard,
         lessThan(copy),
-        reason: 'plist yang salah tidak sepatutnya pernah masuk ke dalam bundle',
+        reason:
+            'plist yang salah tidak sepatutnya pernah masuk ke dalam bundle',
       );
     });
 
@@ -188,7 +194,8 @@ void main() {
 
     test('skim URL kosong atau menyimpang menghentikan binaan', () {
       final script = read('ios/scripts/select_firebase_plist.sh');
-      expect(script, contains(r'if [ -z "${MM_GOOGLE_REVERSED_CLIENT_ID:-}" ]'));
+      expect(
+          script, contains(r'if [ -z "${MM_GOOGLE_REVERSED_CLIENT_ID:-}" ]'));
       expect(
         script,
         contains(r'"${MM_GOOGLE_REVERSED_CLIENT_ID}" != "${PLIST_REVERSED}"'),
@@ -197,7 +204,8 @@ void main() {
   });
 
   group('WAVE 3B: konfigurasi flavour Xcode', () {
-    test('kesembilan-sembilan konfigurasi diisytiharkan dalam ketiga-tiga senarai',
+    test(
+        'kesembilan-sembilan konfigurasi diisytiharkan dalam ketiga-tiga senarai',
         () {
       final pbxproj = read('ios/Runner.xcodeproj/project.pbxproj');
       final lists = RegExp(
@@ -231,17 +239,21 @@ void main() {
         dotAll: true,
       ).allMatches(pbxproj)) {
         final base = m.group(1)!;
-        if (!base.contains('-')) continue; // Debug.xcconfig/Release.xcconfig legasi
+        if (!base.contains('-')) {
+          continue; // Debug.xcconfig/Release.xcconfig legasi
+        }
         checked++;
         expect(
           m.group(2)!.contains('PRODUCT_BUNDLE_IDENTIFIER'),
           isFalse,
           reason: '${m.group(3)} menetapkannya dalam pbxproj, mengatasi $base',
         );
-        expect(m.group(3), base, reason: 'konfigurasi mesti guna xcconfig senamanya');
+        expect(m.group(3), base,
+            reason: 'konfigurasi mesti guna xcconfig senamanya');
       }
       // Bukan hampa: gelung yang memadankan sifar konfigurasi akan lulus senyap.
-      expect(checked, 6, reason: 'jangka 6 konfigurasi flavour, semak $checked');
+      expect(checked, 6,
+          reason: 'jangka 6 konfigurasi flavour, semak $checked');
     });
 
     test('xcconfig flavour tidak menetapkan PRODUCT_NAME', () {
@@ -252,7 +264,8 @@ void main() {
               .split('\n')
               .where((l) => !l.trimLeft().startsWith('//'))
               .join('\n');
-          expect(body.contains('PRODUCT_NAME'), isFalse, reason: '$config-$flavor');
+          expect(body.contains('PRODUCT_NAME'), isFalse,
+              reason: '$config-$flavor');
         }
       }
       expect(
@@ -264,8 +277,8 @@ void main() {
 
     test('skema flavour wujud dan menunjuk konfigurasinya sendiri', () {
       for (final flavor in ['prod', 'qa']) {
-        final scheme =
-            read('ios/Runner.xcodeproj/xcshareddata/xcschemes/$flavor.xcscheme');
+        final scheme = read(
+            'ios/Runner.xcodeproj/xcshareddata/xcschemes/$flavor.xcscheme');
         for (final entry in {
           'Test': 'Debug',
           'Launch': 'Debug',
@@ -274,8 +287,10 @@ void main() {
           'Archive': 'Release',
         }.entries) {
           expect(
-            RegExp('<${entry.key}Action[^>]*?buildConfiguration = '
-                    '"${entry.value}-$flavor"', dotAll: true)
+            RegExp(
+                    '<${entry.key}Action[^>]*?buildConfiguration = '
+                    '"${entry.value}-$flavor"',
+                    dotAll: true)
                 .hasMatch(scheme),
             isTrue,
             reason: '$flavor: ${entry.key}Action bukan ${entry.value}-$flavor',
@@ -301,7 +316,8 @@ void main() {
       final phases = RegExp(r'buildPhases = \(([^)]*)\)', dotAll: true)
           .allMatches(pbxproj)
           .map((m) => m.group(1)!)
-          .firstWhere((b) => b.contains('select_firebase_plist') || b.contains('MakanMana:'));
+          .firstWhere((b) =>
+              b.contains('select_firebase_plist') || b.contains('MakanMana:'));
       final resources = phases.indexOf('/* Resources */');
       final select = phases.indexOf('MakanMana:');
       expect(resources, greaterThan(-1));
@@ -328,11 +344,11 @@ void main() {
       expect(
         RegExp(r"^platform :ios, '15\.0'", multiLine: true).hasMatch(podfile),
         isTrue,
-        reason: 'platform dikomen atau tidak sepadan projek → pod install gagal',
+        reason:
+            'platform dikomen atau tidak sepadan projek → pod install gagal',
       );
     });
   });
-
 
   // ---------------------------------------------------------------------
   // WAVE 3C — nama paparan
@@ -383,8 +399,9 @@ void main() {
     final fromTarget = settingIn(targetBody, key);
     if (fromTarget != null) return fromTarget;
 
-    final base = RegExp(r'baseConfigurationReference = \w{24} /\* ([\w.-]+) \*/')
-        .firstMatch(targetBody);
+    final base =
+        RegExp(r'baseConfigurationReference = \w{24} /\* ([\w.-]+) \*/')
+            .firstMatch(targetBody);
     if (base != null) {
       final file = 'ios/Flutter/${base.group(1)!.trim()}';
       if (File(file).existsSync()) {
@@ -405,7 +422,7 @@ void main() {
   group('WAVE 3C: nama paparan diselesaikan', () {
     test('produksi diselesaikan kepada MakanMana', () {
       for (final config in ['Debug-prod', 'Profile-prod', 'Release-prod']) {
-        expect(resolveSetting(config, 'MM_DISPLAY_NAME'), 'MakanMana',
+        expect(resolveSetting(config, 'MM_DISPLAY_NAME'), 'Makan Mana',
             reason: config);
       }
     });
@@ -421,14 +438,14 @@ void main() {
       // Kegagalan yang ditakuti: xcconfig QA kehilangan tetapan itu dan
       // lalai peringkat-projek mengambil alih, memberi QA nama produksi.
       for (final config in ['Debug-qa', 'Profile-qa', 'Release-qa']) {
-        expect(resolveSetting(config, 'MM_DISPLAY_NAME'),
-            isNot('MakanMana'), reason: config);
+        expect(resolveSetting(config, 'MM_DISPLAY_NAME'), isNot('MakanMana'),
+            reason: config);
       }
     });
 
     test('konfigurasi asal mengekalkan nama produksi TEPAT', () {
       for (final config in ['Debug', 'Profile', 'Release']) {
-        expect(resolveSetting(config, 'MM_DISPLAY_NAME'), 'MakanMana',
+        expect(resolveSetting(config, 'MM_DISPLAY_NAME'), 'Makan Mana',
             reason: '$config ialah laluan produksi lama');
       }
     });
@@ -446,9 +463,15 @@ void main() {
 
     test('tiada nilai kosong boleh diselesaikan', () {
       for (final config in [
-        'Debug', 'Profile', 'Release',
-        'Debug-prod', 'Profile-prod', 'Release-prod',
-        'Debug-qa', 'Profile-qa', 'Release-qa',
+        'Debug',
+        'Profile',
+        'Release',
+        'Debug-prod',
+        'Profile-prod',
+        'Release-prod',
+        'Debug-qa',
+        'Profile-qa',
+        'Release-qa',
       ]) {
         expect(resolveSetting(config, 'MM_DISPLAY_NAME'), isNotEmpty,
             reason: '$config diselesaikan menjadi kosong');
@@ -469,7 +492,6 @@ void main() {
           reason: 'penyetempatan akan mengatasi nama flavour: $offenders');
     });
   });
-
 
   group('WAVE 3C: penjajaran flavour natif lwn Dart', () {
     test('skrip menyahkod DART_DEFINES dan membandingkan flavour', () {
@@ -514,11 +536,11 @@ void main() {
 
   group('tiada konfigurasi Firebase palsu dalam repo', () {
     test('tiada GoogleService-Info.plist dicommit di mana-mana', () {
-      final offenders = Directory('ios')
-          .listSync(recursive: true)
-          .whereType<File>()
-          .where((f) => f.path.replaceAll(r'\', '/').endsWith('GoogleService-Info.plist'))
-          .map((f) => f.path)
+      final tracked = Process.runSync('git', ['ls-files', '--', 'ios']);
+      expect(tracked.exitCode, 0);
+      final offenders = (tracked.stdout as String)
+          .split('\n')
+          .where((path) => path.trim().endsWith('GoogleService-Info.plist'))
           .toList();
       expect(
         offenders,

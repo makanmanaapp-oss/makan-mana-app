@@ -1,3 +1,4 @@
+#include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.release-prod.xcconfig"
 // MAKANMANA iOS WAVE 3A/3B — konfigurasi Release untuk flavour 'prod'.
 //
 // STATUS: SOURCE READY + struktur pbxproj disahkan.
@@ -42,4 +43,6 @@ MM_GOOGLE_REVERSED_CLIENT_ID =
 //
 // Sama-bait dengan nama produksi sebelum ini. Dinyatakan di sini dan
 // bukan diwarisi, supaya ia kelihatan pada titik konfigurasi.
-MM_DISPLAY_NAME = MakanMana
+MM_DISPLAY_NAME = Makan Mana
+
+#include? "Firebase-prod.generated.xcconfig"

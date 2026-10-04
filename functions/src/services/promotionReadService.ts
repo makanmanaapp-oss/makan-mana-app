@@ -1,3 +1,4 @@
+import {planForSubscriptionUser} from "../domain/billing/appleAccess";
 /**
  * WAVE 4 — Commercial Tools: public promotion read boundary.
  *
@@ -36,7 +37,9 @@ const CANDIDATE_STATUSES: PromotionStatus[] = [
 async function readViewerPlan(uid: string): Promise<string> {
   try {
     const snap = await db.collection("users").doc(uid).get();
-    const plan = snap.exists ? snap.data()?.plan : null;
+    const plan = snap.exists
+      ? (snap.data()?.planSource === "app_store" ? planForSubscriptionUser(snap.data()) : snap.data()?.plan)
+      : null;
     return typeof plan === "string" && plan ? plan : "free";
   } catch {
     // Fail closed toward the LEAST access: an unreadable plan is 'free', so a

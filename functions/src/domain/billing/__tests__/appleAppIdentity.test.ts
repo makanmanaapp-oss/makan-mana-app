@@ -28,7 +28,7 @@ import {PRODUCTION_PROJECT_ID, APPROVED_QA_PROJECT_ID} from "../../security/egre
  */
 
 const REAL_QA = "makanmana-qa-sebenar";
-const PROD_APP_ID = "6478000000";
+const PROD_APP_ID = "6817102237";
 const QA_APP_ID = "6479000000";
 
 const PROD_ENV = {
@@ -251,7 +251,7 @@ function source(relativePath: string): string {
 
 test("laluan pembelian menggunakan pengesah berskop-aplikasi, bukan yang telanjang", () => {
   const text = source("src/services/appleSubscriptionService.ts");
-  assert.ok(/verifyAppleJwsForApp/.test(text), "masih menggunakan verifyAppleJws telanjang");
+  assert.ok(/verifyAppleStatus/.test(text), "purchase must use the signed status verifier");
   assert.equal(
     /\bverifyAppleJws\s*\(/.test(text.replace(/verifyAppleJwsForApp\s*\(/g, "")),
     false,
@@ -269,7 +269,7 @@ test("laluan pembelian TIDAK LAGI jatuh produksi->sandbox pada 404", () => {
 
 test("pagar kelayakan dipanggil SEBELUM sebarang tulisan", () => {
   const text = source("src/services/appleSubscriptionService.ts");
-  const gate = text.indexOf("assertAppleEntitlementEnvironment");
+  const gate = text.indexOf("await verifyAppleStatus");
   const write = text.indexOf("db.runTransaction");
   assert.ok(gate > 0, "pagar kelayakan tiada");
   assert.ok(write > 0 && gate < write, "pagar selepas tulisan");
@@ -281,11 +281,8 @@ test("laluan notifikasi berkongsi penyelesai identiti dan pagar persekitaran", (
   assert.equal(/APPLE_BUNDLE_ID/.test(callable), false, "bundle masih berkod-keras");
   const service = source("src/services/appleNotificationService.ts");
   assert.ok(/expectedEnvironment/.test(service));
-  assert.equal(
-    /\bverifyAppleJws\s*\(/.test(
-      service.replace(/verifyAppleJwsForApp\s*\(/g, ""),
-    ),
-    true,
-    "sampul luar masih disahkan tanpa skop (dijangka: identiti belum diketahui pada ketika itu)",
-  );
+  assert.ok(service.includes("verifyAndDecodeNotification"));
+  assert.ok(service.includes("verifyAndDecodeTransaction"));
+  assert.ok(service.includes("verifyAndDecodeRenewalInfo"));
+  assert.equal(/\bverifyAppleJws\s*\(/.test(service), false);
 });
