@@ -41,7 +41,14 @@ workflows:
       - name: Analyze and run Flutter tests
         script: |
           set -eu
-          flutter analyze --no-pub
+          # Analyze owned source roots; generated dependency packages stay outside.
+          set -- lib test
+          for source_dir in integration_test tool tools bin scripts ops; do
+            if [ -d "$source_dir" ]; then
+              set -- "$@" "$source_dir"
+            fi
+          done
+          flutter analyze --no-pub "$@"
           flutter test --no-pub
           python3 ios/scripts/validate_pbxproj.py ios/Runner.xcodeproj/project.pbxproj
           python3 -m unittest discover -s ios/scripts/tests -p "test_*.py"
