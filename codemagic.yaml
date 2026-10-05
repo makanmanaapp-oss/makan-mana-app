@@ -8,6 +8,11 @@ workflows:
     integrations:
       app_store_connect: makanmana-ios-owner
     environment:
+      ios_signing:
+        provisioning_profiles:
+          - makanmana-ios-appstore-profile
+        certificates:
+          - makanmana-ios-distribution
       flutter: 3.44.4
       xcode: latest
       cocoapods: default
@@ -72,13 +77,9 @@ workflows:
           set -eu
           cd ios
           pod install
-      - name: Fetch automatic Apple signing through owner integration
+      - name: Apply Codemagic-managed Apple signing
         script: |
           set -eu
-          keychain initialize
-          # Fetch existing assets for the existing App ID; never create identifiers.
-          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE
-          keychain add-certificates
           xcode-project use-profiles
       - name: Archive production IPA
         script: |
