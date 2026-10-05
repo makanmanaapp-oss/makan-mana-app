@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -103,8 +105,8 @@ class _PhoneLoginScreenState extends ConsumerState<PhoneLoginScreen> {
           await FirebaseAuth.instance.signInWithCredential(credential);
       final user = cred.user;
       if (user != null) {
-        // Bootstrap kongsi SP10.1B — tiada medan protected, tiada null.
-        await bootstrapSignedInUser(ref, user);
+        // Firebase credential success must not wait for Firestore bootstrap.
+        unawaited(bootstrapSignedInUser(ref, user));
       }
       if (!mounted) return;
       final prefs = ref.read(appPrefsProvider);
