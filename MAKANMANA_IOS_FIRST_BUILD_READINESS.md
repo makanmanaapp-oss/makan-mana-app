@@ -4,6 +4,68 @@
 
 Prepared on **4 October 2026**, on Windows. See `MAKANMANA_IOS_REQUIRED_CONFIGURATION.md` for the exact credential names and owner setup.
 
+## Authoritative macOS baseline follow-up — 5 October 2026
+
+Owner-authorized source fix for Codemagic build **6ac344bc7394575b200b2d9a**,
+index **4**, which tested commit
+`7ff96b3f7372ee380ccde613e9b3b27af407b3f3`. The supplied
+`makan-mana-app_4_artifacts.zip` has SHA-256
+`2e7dd256abe45051318c8e273b16e8465ca45daff6f99746e243b6f85bdbcfcb`.
+Its `source-head.txt` independently confirms the full tested commit; the build
+ID/index are identified by the owner. Recorded environment: Flutter **3.44.4**,
+engine `a10d8ac38de835021c8d2f920dbf50a920ccc030`, macOS **26.5.1 / 25F80**.
+
+The authoritative JSON report records **1,872 passed, 25 failed, 0 skipped**.
+Every failed case has exactly one strict golden pixel exception. No overflow
+or behavior exception accompanies those cases. All **25** master images are
+byte-identical to the approved default Windows baselines, and all actual images
+have matching dimensions. Pixel counts recomputed from the PNGs agree exactly
+with the CI log: Profile **2.610572–3.281597%**, Home **3.042719–5.115318%**.
+
+All OLD/ACTUAL/DIFF images were visually reviewed in **13** contact sheets.
+Cards, sections, CTAs, content, line wrapping and viewport clipping match.
+Differences concentrate on text/icon edge rendering, anti-aliasing and small
+intrinsic glyph advances, with no material background/color change or production
+layout regression. Classification:
+**CROSS_HOST_RENDERING_REQUIRES_STRICT_HOST_BASELINES**. This establishes a host
+rendering difference after explicit font loading; it does not identify the
+specific native rendering implementation responsible.
+
+The test-only shared host resolver selects `goldens/macos/<filename>` on macOS
+and retains `goldens/<filename>` on other hosts. Only the Home/Profile golden
+calls use it. **8 Profile + 17 Home** macOS baselines were copied byte-for-byte
+from this build's **actual/testImage** files; no master or diff was imported.
+Every PNG decodes, has the expected dimensions, and retains its source SHA-256.
+Default Windows baselines and the existing font loader are unchanged. Three
+path regression tests cover macOS mapping, default mapping, and all 25 existing
+baseline pairs. Comparator tolerance remains **0%**, with no skips or overrides.
+
+Ignored evidence: `.buildlog/codemagic-build-4-authoritative/`, including the raw
+extraction, complete inventory, `golden_audit.json`, readable `golden_audit.md`,
+contact sheets and `macos_golden_manifest.json` (all 25 hashes, dimensions,
+actual-image source paths and corresponding test cases). Raw evidence and local
+logs must not be committed.
+
+**Source candidate: READY_FOR_FINAL_CODEMAGIC_MACOS_RETRY.** Windows validation:
+Profile **14/14**, Home **18/18**, affected strict goldens **25/25**, path
+regression tests **3/3**, full Flutter suite **1,900 passed / 0 failed / 0 skipped**
+(the prior 1,897 plus three legitimate path tests), analyzer **0 issues**, and
+`git diff --check` **PASS**. All 25 macOS baseline pairs pass static filename,
+PNG decoding, dimension and source-hash validation. No macOS execution of this
+new path selection has been performed locally.
+
+The next owner action is a **manual macOS retry** of the pushed candidate using
+the existing workflow. Actual macOS repeatability must still be proved by that
+retry. Build 4 stopped at Flutter tests and did not establish signing, native
+archive, archive validation or device acceptance. The release is not yet ready
+for TestFlight. Production UI, Android, pubspec, Firebase/backend, signing,
+bundle ID, version/build number, analysis options and Codemagic configuration
+are unchanged; `ENABLE_TESTFLIGHT_UPLOAD` remains **false**. No workflow run,
+merge, deployment or upload is authorized by this source fix.
+
+The earlier dated sections below record previous checks; the authoritative
+build 4 evidence above supersedes their macOS evidence gap.
+
 ## Golden stabilization and source readiness — 5 October 2026
 
 **Source working tree: READY_FOR_CODEMAGIC_MACOS_RETRY.** This is readiness for

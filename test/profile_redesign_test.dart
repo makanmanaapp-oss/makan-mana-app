@@ -22,6 +22,7 @@ import 'package:makan_mana/features/profile/profile_screen.dart';
 import 'package:makan_mana/features/social/social_providers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'helpers/golden_host_path.dart';
 import 'support/makanmana_golden_fonts.dart';
 
 const _freeDoc = <String, dynamic>{
@@ -127,7 +128,7 @@ void main() {
 
           await expectLater(
             find.byType(ProfileScreen),
-            matchesGoldenFile('goldens/profile_$tag.png'),
+            matchesGoldenFile(goldenHostPath('profile_$tag.png')),
           );
         });
       }

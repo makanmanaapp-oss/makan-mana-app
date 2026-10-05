@@ -24,6 +24,7 @@ import 'package:makan_mana/models/place_summary.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:makan_mana/models/places_outcome.dart';
 
+import 'helpers/golden_host_path.dart';
 import 'support/makanmana_golden_fonts.dart';
 
 PlaceSummary _place(String id, String name,
@@ -184,7 +185,7 @@ void main() {
         // Bukti visual: tangkapan skrin golden per konfigurasi.
         await expectLater(
           find.byType(HomeScreen),
-          matchesGoldenFile('goldens/home_$tag.png'),
+          matchesGoldenFile(goldenHostPath('home_$tag.png')),
         );
         // Buang widget → dispose batalkan Timer carousel hero (elak
         // "pending timer" pada penghujung ujian).
@@ -210,7 +211,7 @@ void main() {
     expect(tester.takeException(), isNull);
     await expectLater(
       find.byType(HomeScreen),
-      matchesGoldenFile('goldens/home_scrolled_normal_bright.png'),
+      matchesGoldenFile(goldenHostPath('home_scrolled_normal_bright.png')),
     );
     await tester.pumpWidget(const SizedBox()); // dispose → batal Timer carousel
   });
