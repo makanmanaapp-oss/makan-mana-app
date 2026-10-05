@@ -1,10 +1,20 @@
 # Manual workflow only. No webhook trigger, automatic upload, or store submission.
+# Upload to TestFlight is an explicit manual build input and defaults to OFF.
 # Owner must configure the named integration and encrypted environment group.
 workflows:
   ios-first-build:
     name: Makan Mana first iOS archive (manual)
     instance_type: mac_mini_m2
     max_build_duration: 120
+    inputs:
+      ios_build_number:
+        description: Unique iOS build number for App Store Connect
+        type: number
+        default: 2
+      upload_to_testflight:
+        description: Upload the signed IPA to App Store Connect/TestFlight after validation
+        type: boolean
+        default: false
     integrations:
       app_store_connect: makanmana-ios-owner
     environment:
@@ -20,7 +30,6 @@ workflows:
       vars:
         BUNDLE_ID: com.makanmana.apps
         APP_STORE_APP_ID: "6817102237"
-        ENABLE_TESTFLIGHT_UPLOAD: "false"
     scripts:
       - name: Resolve locked Flutter dependencies
         script: |
@@ -82,6 +91,7 @@ workflows:
       - name: Archive production IPA
         script: |
           set -eu
+          IOS_BUILD_NUMBER="${{ inputs.ios_build_number }}"
           : "${IOS_BUILD_NUMBER:?Owner must set a unique numeric iOS build number}"
           flutter build ipa --release --flavor prod \
             --build-number="$IOS_BUILD_NUMBER" \
@@ -98,7 +108,7 @@ workflows:
       - name: Optional owner-enabled upload (no beta review or App Store submission)
         script: |
           set -eu
-          if [ "${ENABLE_TESTFLIGHT_UPLOAD:-false}" != "true" ]; then
+          if [ "${{ inputs.upload_to_testflight }}" != "true" ]; then
             echo "Upload disabled. Signed IPA retained as build artifact."
             exit 0
           fi
