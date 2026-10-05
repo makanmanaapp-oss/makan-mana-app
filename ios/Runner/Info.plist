@@ -30,6 +30,8 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -75,6 +77,8 @@
 	     ms/zh/ta hidup dalam <lang>.lproj/InfoPlist.strings. -->
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>MakanMana uses your location to suggest places to eat near you.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>MakanMana uses your location to support nearby food suggestions when location-based features are enabled.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>MakanMana needs access to your photos so you can attach a photo to a post or a bill.</string>
 	<key>NSCameraUsageDescription</key>
