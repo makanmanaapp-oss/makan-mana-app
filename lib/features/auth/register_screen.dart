@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -69,11 +71,11 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           .signUp(email, _passwordCtrl.text);
       final user = cred.user;
       if (user != null) {
-        // SP10.1B: bootstrap KONGSI semua provider — users/{uid} tanpa
-        // medan protected/null + cermin nama ke public_profiles via
-        // pelayan (fire-and-forget dalam helper).
-        await bootstrapSignedInUser(ref, user,
-            displayNameOverride: displayName);
+        // Account creation is complete once FirebaseAuth succeeds. Keep the
+        // profile mirror asynchronous so a slow/denied Firestore write cannot
+        // trap a newly-created user on the registration screen.
+        unawaited(bootstrapSignedInUser(ref, user,
+            displayNameOverride: displayName));
       }
       if (!mounted) return;
       _showMessage(l.t('registerSuccess'));
