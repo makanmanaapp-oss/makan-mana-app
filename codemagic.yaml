@@ -9,10 +9,8 @@ workflows:
       app_store_connect: makanmana-ios-owner
     environment:
       ios_signing:
-        provisioning_profiles:
-          - makanmana-ios-appstore-profile
-        certificates:
-          - makanmana-ios-distribution
+        distribution_type: app_store
+        bundle_identifier: com.makanmana.apps
       flutter: 3.44.4
       xcode: latest
       cocoapods: default
