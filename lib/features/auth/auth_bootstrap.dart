@@ -54,20 +54,29 @@ Future<void> bootstrapSignedInUser(
       displayNameOverride ?? (isNew ? user.displayName : null);
   final photoUrl = isNew ? user.photoURL : null;
 
-  await ref.read(userRepositoryProvider).upsertUser(
-        AppUser(
-          uid: user.uid,
-          email: user.email ?? '',
-          displayName: displayName,
-          photoUrl: photoUrl,
-          language: ref.read(languageProvider).languageCode,
-        ),
-        extra: authExtraFields(
-          phoneNumber: user.phoneNumber,
-          providerIds:
-              user.providerData.map((p) => p.providerId).toList(),
-        ),
-      );
+  // AUTH-RESILIENCE: Authentication success must never be turned into a
+  // apparent login failure just because the profile mirror is temporarily
+  // unavailable (Firestore rules/App Check/network). FirebaseAuth is the
+  // authority for the signed-in session; profile sync is best-effort and can
+  // retry on a later app/session refresh.
+  try {
+    await ref.read(userRepositoryProvider).upsertUser(
+          AppUser(
+            uid: user.uid,
+            email: user.email ?? '',
+            displayName: displayName,
+            photoUrl: photoUrl,
+            language: ref.read(languageProvider).languageCode,
+          ),
+          extra: authExtraFields(
+            phoneNumber: user.phoneNumber,
+            providerIds:
+                user.providerData.map((p) => p.providerId).toList(),
+          ),
+        );
+  } catch (e) {
+    debugPrint('MakanMana: auth profile sync tertangguh: $e');
+  }
 
   // Phase 1.14F-R: aktifkan kohort kanonikal dalaman (owner-only, debug-only).
   // Awam/keluaran + bukan-owner kekal legacyOnly (reset selamat). Ini menyambung
