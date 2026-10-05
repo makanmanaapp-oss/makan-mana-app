@@ -49,7 +49,15 @@ workflows:
             fi
           done
           flutter analyze --no-pub "$@"
-          flutter test --no-pub
+          mkdir -p .buildlog
+          git rev-parse HEAD > .buildlog/source-head.txt
+          flutter --version --machine > .buildlog/flutter-version.json
+          sw_vers > .buildlog/macos-version.txt
+          # Old feedback PNGs exist in the checkout; export only this run's diffs.
+          if [ -d test/failures ]; then
+            find test/failures -type f \( -name '*_masterImage.png' -o -name '*_testImage.png' -o -name '*_isolatedDiff.png' -o -name '*_maskedDiff.png' \) -delete
+          fi
+          flutter test --no-pub --file-reporter=json:.buildlog/flutter-test-results.json
           python3 ios/scripts/validate_pbxproj.py ios/Runner.xcodeproj/project.pbxproj
           python3 -m unittest discover -s ios/scripts/tests -p "test_*.py"
       - name: Build and test backend source (no deployment)
@@ -101,6 +109,9 @@ workflows:
             app-store-connect publish --path "$ipa"
           done
     artifacts:
+      # Collect test diagnostics even when the strict test step fails.
+      - test/failures/**
+      - .buildlog/**/*
       - build/ios/ipa/*.ipa
       - build/ios/archive/*.xcarchive
       - ios/Podfile.lock

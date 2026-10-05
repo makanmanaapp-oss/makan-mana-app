@@ -22,6 +22,8 @@ import 'package:makan_mana/features/profile/profile_screen.dart';
 import 'package:makan_mana/features/social/social_providers.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/makanmana_golden_fonts.dart';
+
 const _freeDoc = <String, dynamic>{
   'displayName': 'Nadia Rahman',
   'username': 'nadiarahman',
@@ -57,7 +59,8 @@ Widget _harness({
       userPlanProvider.overrideWith((ref) => Stream.value(plan)),
     ],
     child: MaterialApp(
-      theme: dark ? AppTheme.dark() : AppTheme.light(),
+      theme: (dark ? AppTheme.dark() : AppTheme.light())
+          .copyWith(platform: TargetPlatform.android),
       locale: const Locale('en'),
       supportedLocales: AppLocalizations.supportedLocales,
       localizationsDelegates: const [
@@ -91,6 +94,7 @@ void main() {
   late SharedPreferences prefs;
 
   setUpAll(() async {
+    await loadMakanManaGoldenFonts();
     SharedPreferences.setMockInitialValues({});
     prefs = await SharedPreferences.getInstance();
   });
@@ -101,8 +105,7 @@ void main() {
         final mode = dark ? 'Dark' : 'Bright';
         final tag = '${p.label}_${mode.toLowerCase()}';
         testWidgets('Profile render $tag (no overflow)', (tester) async {
-          await tester.binding.setSurfaceSize(p.size);
-          addTearDown(() => tester.binding.setSurfaceSize(null));
+          await configureMakanManaGoldenView(tester, p.size);
           await _pump(
             tester,
             _harness(
@@ -133,8 +136,7 @@ void main() {
 
   testWidgets('Free plan: badge=Free, Upgrade CTA shown, no trial line',
       (tester) async {
-    await tester.binding.setSurfaceSize(const Size(412, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await configureMakanManaGoldenView(tester, const Size(412, 900));
     await _pump(
       tester,
       _harness(
@@ -153,8 +155,7 @@ void main() {
 
   testWidgets('Pro Trial: badge=Pro Trial + real expiry line + CTA',
       (tester) async {
-    await tester.binding.setSurfaceSize(const Size(412, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await configureMakanManaGoldenView(tester, const Size(412, 900));
     await _pump(
       tester,
       _harness(
@@ -175,8 +176,7 @@ void main() {
 
   testWidgets('Language tile opens dialog (callback preserved)',
       (tester) async {
-    await tester.binding.setSurfaceSize(const Size(412, 900));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await configureMakanManaGoldenView(tester, const Size(412, 900));
     await _pump(
       tester,
       _harness(

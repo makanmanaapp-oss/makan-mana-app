@@ -4,6 +4,120 @@
 
 Prepared on **4 October 2026**, on Windows. See `MAKANMANA_IOS_REQUIRED_CONFIGURATION.md` for the exact credential names and owner setup.
 
+## Golden stabilization and source readiness — 5 October 2026
+
+**Source working tree: READY_FOR_CODEMAGIC_MACOS_RETRY.** This is readiness for
+the first authoritative macOS retry, not confirmation of a signed archive or
+TestFlight readiness. Initial/local/remote HEAD remains
+`514d236a1ea9271fafc23b49c2930bec37b1b960` on
+`ios/candidate-rc-20260921`. The working tree was initially clean. No commit,
+push, merge, Codemagic run, signing operation, deployment or upload was performed.
+The owner must authorize committing/pushing these reviewed changes before the
+remote workflow can use them.
+
+The confirmed harness defect was that neither Home nor Profile explicitly
+loaded the production Inter family. They used Flutter's default test font,
+FlutterTest, despite the production theme requesting Inter. The new scoped
+helper loads the repository's Regular/Medium/SemiBold/Bold assets once per test
+isolate, with verified font weights 400/500/600/700. It also loads the existing
+production Material Icons asset, replacing missing-glyph boxes with real icons.
+There are no downloaded fonts, dependencies, global font configuration or
+production Dart changes. Both harnesses explicitly use the Android target
+platform and matching physical/logical viewport dimensions at DPR 1; their
+existing locale, text scaling, frame timing and fixed Home clock are preserved.
+
+The Home fixture's `🍜` is metadata only: the actual restaurant visual uses
+`PlaceImage` Latin monograms. An assertion now confirms the emoji is not rendered
+in the viewport goldens. Profile uses the Latin initial from the existing Nadia
+fixture and no emoji preset. No fixture content required substitution, and
+production emoji support is unchanged.
+
+All **25** updated PNGs were audited as OLD/NEW/DIFF across **13** contact sheets.
+Each image retains its original width and height. The new real font changes
+glyph widths, wrapping and intrinsic heights, including the Profile CTA Wrap
+and Home heading/card text; those differences are expected font-driven reflow,
+not edits to production spacing or layout. As a control, temporary copies of
+the **original HEAD test harnesses with only font loading added** passed all
+**32 tests**, including **25 exact pixel matches** against the new baselines.
+This independently reproduces every updated pixel without view, theme or
+fixture changes. The negative-run screenshots and regenerated baselines also
+match exactly for all 25 images. No sections or CTAs were removed; existing
+overflow, plan, callback, route and scroll assertions remain active.
+
+Final validation on Windows, Flutter 3.44.4 / Dart 3.12.2:
+
+- Profile focused suite: **14 passed**, including **8/8 strict goldens**.
+- Home focused suite: **18 passed**, including **17/17 strict goldens**.
+- Total affected goldens: **25/25 passed, 0 tolerance, 0 skipped**.
+- `flutter analyze --no-pub lib test scripts ops`: **0 issues**.
+- Full `flutter test --no-pub`, with the supported additional JSON file reporter:
+  **1,897 passed, 0 failed, 0 skipped**.
+- iOS project structural validation: **PASS**; Python Firebase preparation unit
+  suite: **3 passed**. These do not replace Xcode validation.
+- YAML parsing, shell syntax, workflow identity/environment and script-order
+  invariants: **PASS**. All signing/build/upload scripts are unchanged.
+- `git diff --check`: **PASS**.
+
+Codemagic now retains `test/failures/**` and `.buildlog/**/*`, including the
+additional JSON test report, source SHA, Flutter/engine version and macOS version.
+Before testing, only historical generated feedback PNGs in the CI checkout are
+cleared, so failure images belong to that run. The normal workflow never updates
+goldens. Strict failures still stop the build under `set -eu`; no failure masking
+or automatic publishing was added. `ENABLE_TESTFLIGHT_UPLOAD` remains `false`.
+Local historical feedback files were restored byte-for-byte after collecting
+this task's evidence and are not part of this change.
+
+The actual host-specific mechanism behind the earlier supplied Codemagic
+percentages is still unverified without its original build/artifacts. macOS
+pixel equivalence must be established by the authorized retry. If strict
+rasterization differences remain, use the actual macOS diffs for review;
+no macOS baselines were invented and no platform-specific paths were added.
+CocoaPods/native compilation, owner signing, archive validation and device
+acceptance remain unverified; the TestFlight blockers recorded below still apply.
+
+Local evidence is ignored under `.buildlog/ios-golden-stabilization/`: `before/`,
+`after/`, `diff/`, `contact-sheet/`, negative-run reports, font-only control,
+strict retest reports, final analyzer/full-suite results and workflow validation.
+Those diagnostics, build outputs, credentials and signing material are unstaged.
+
+Exact files changed by this stabilization (30 paths; 25 PNGs + 5 source/config/doc):
+
+```text
+MAKANMANA_IOS_FIRST_BUILD_READINESS.md
+codemagic.yaml
+test/home_redesign_viewport_test.dart
+test/profile_redesign_test.dart
+test/support/makanmana_golden_fonts.dart
+test/goldens/home_large430_s10_bright.png
+test/goldens/home_large430_s10_dark.png
+test/goldens/home_large430_s12_bright.png
+test/goldens/home_large430_s12_dark.png
+test/goldens/home_normal412_s10_bright.png
+test/goldens/home_normal412_s10_dark.png
+test/goldens/home_normal412_s13_bright.png
+test/goldens/home_normal412_s13_dark.png
+test/goldens/home_scrolled_normal_bright.png
+test/goldens/home_small320_s10_bright.png
+test/goldens/home_small320_s10_dark.png
+test/goldens/home_small320_s12_bright.png
+test/goldens/home_small320_s12_dark.png
+test/goldens/home_small360_s10_bright.png
+test/goldens/home_small360_s10_dark.png
+test/goldens/home_small360_s13_bright.png
+test/goldens/home_small360_s13_dark.png
+test/goldens/profile_normal412_s10_bright.png
+test/goldens/profile_normal412_s10_dark.png
+test/goldens/profile_normal412_s13_bright.png
+test/goldens/profile_normal412_s13_dark.png
+test/goldens/profile_small360_s10_bright.png
+test/goldens/profile_small360_s10_dark.png
+test/goldens/profile_small360_s13_bright.png
+test/goldens/profile_small360_s13_dark.png
+```
+
+Android, pubspec/dependency versions, production UI, backend behavior, Firebase
+configuration, signing, release flags and build numbers have **zero changes**.
+
 ## Real production Firebase plist follow-up — 4 October 2026
 
 This update changes only the Firebase/Google configuration state and records the remaining native/signing/TestFlight gates. Earlier subscription, capability and privacy findings below remain applicable.

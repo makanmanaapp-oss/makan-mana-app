@@ -24,6 +24,8 @@ import 'package:makan_mana/models/place_summary.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:makan_mana/models/places_outcome.dart';
 
+import 'support/makanmana_golden_fonts.dart';
+
 PlaceSummary _place(String id, String name,
         {double rating = 4.5,
         double dist = 1.2,
@@ -34,6 +36,7 @@ PlaceSummary _place(String id, String name,
       placeId: id,
       name: name,
       cuisine: cuisine,
+      // Metadata only: PlaceImage renders a Latin monogram, not this emoji.
       emoji: '🍜',
       rating: rating,
       userRatingCount: 120,
@@ -101,7 +104,8 @@ Widget _harness({
       homeClockProvider.overrideWithValue(() => DateTime(2026, 9, 7, 20, 30)),
     ],
     child: MaterialApp(
-      theme: dark ? AppTheme.dark() : AppTheme.light(),
+      theme: (dark ? AppTheme.dark() : AppTheme.light())
+          .copyWith(platform: TargetPlatform.android),
       locale: Locale(language),
       supportedLocales: AppLocalizations.supportedLocales,
       localizationsDelegates: const [
@@ -128,6 +132,7 @@ void main() {
   late SharedPreferences prefs;
 
   setUpAll(() async {
+    await loadMakanManaGoldenFonts();
     SharedPreferences.setMockInitialValues({});
     prefs = await SharedPreferences.getInstance();
     // Stub geolocator so the real HomeScreen location probe reports "service
@@ -153,8 +158,7 @@ void main() {
       final tag = '${p.label}_${mode.toLowerCase()}';
 
       testWidgets('Home redesign render $tag (no overflow)', (tester) async {
-        await tester.binding.setSurfaceSize(p.size);
-        addTearDown(() => tester.binding.setSurfaceSize(null));
+        await configureMakanManaGoldenView(tester, p.size);
         await _pump(
           tester,
           _harness(
@@ -174,6 +178,8 @@ void main() {
         expect(find.text(l.t('nearbyTitle')), findsOneWidget);
         expect(find.text('Warung Pak Din'), findsOneWidget);
         expect(find.text('Mee Kari Haji'), findsOneWidget);
+        expect(find.text('🍜'), findsNothing,
+            reason: 'food emoji metadata must not introduce system glyphs');
 
         // Bukti visual: tangkapan skrin golden per konfigurasi.
         await expectLater(
@@ -192,8 +198,7 @@ void main() {
   testWidgets('Home redesign scrolled normal Bright (nearby+fit)',
       (tester) async {
     const size = Size(412, 892);
-    await tester.binding.setSurfaceSize(size);
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await configureMakanManaGoldenView(tester, size);
     await _pump(
       tester,
       _harness(
@@ -213,8 +218,7 @@ void main() {
   // Regresi khusus: skala teks 1.30 pada 360dp tidak melimpah selepas skrol.
   testWidgets('Home redesign sweep-scroll 360@1.3 no overflow', (tester) async {
     const size = Size(360, 780);
-    await tester.binding.setSurfaceSize(size);
-    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await configureMakanManaGoldenView(tester, size);
     await _pump(
       tester,
       _harness(
