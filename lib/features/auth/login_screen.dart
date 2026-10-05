@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -70,9 +72,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
       final user = cred.user;
       if (user != null) {
-        // SP10.1B: bootstrap kongsi semua provider — akaun pulang
-        // TIDAK ditimpa (null dibuang), tiada medan protected.
-        await bootstrapSignedInUser(ref, user);
+        // AUTH-UX: FirebaseAuth success is the login boundary. Do not keep the
+        // user on the login screen while Firestore/profile bootstrap waits.
+        // Profile sync is best-effort and continues in the background.
+        unawaited(bootstrapSignedInUser(ref, user));
       }
       _routeNext();
     } on FirebaseAuthException catch (e) {
@@ -94,9 +97,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       final cred = await GoogleAuthService.signInWithGoogle();
       final user = cred.user;
       if (user != null) {
-        // Bootstrap kongsi: akaun baharu dapat nama/gambar Google;
-        // akaun pulang TIDAK ditimpa; tiada medan protected.
-        await bootstrapSignedInUser(ref, user);
+        // Route immediately after Google/Firebase credential success.
+        unawaited(bootstrapSignedInUser(ref, user));
       }
       _routeNext();
     } on GoogleSignInException catch (e) {
@@ -115,7 +117,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() => _appleLoading = true);
     try {
       final cred = await AppleAuthService.signIn();
-      if (cred.user != null) await bootstrapSignedInUser(ref, cred.user!);
+      if (cred.user != null) {
+        // Route immediately after native Apple/Firebase credential success.
+        unawaited(bootstrapSignedInUser(ref, cred.user!));
+      }
       _routeNext();
     } on FirebaseAuthException catch (e) {
       if (e.code != 'canceled' &&
