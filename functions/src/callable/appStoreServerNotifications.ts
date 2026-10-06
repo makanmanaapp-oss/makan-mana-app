@@ -24,7 +24,7 @@
 // invarian itu diuji di satu tempat dan bukan tersebar di sini.
 
 import {onRequest} from "firebase-functions/v2/https";
-import {defineSecret, defineString} from "firebase-functions/params";
+import {defineSecret} from "firebase-functions/params";
 
 import {httpStatusForOutcome} from "../domain/billing/notificationProcessing";
 import {resolveAppleAppIdentity} from "../domain/billing/appleAppIdentity";
@@ -36,9 +36,6 @@ export const appleRootCertificatesForNotifications = defineSecret(
 );
 /** ID aplikasi App Store — diperlukan untuk mengesahkan muatan Production. */
 export const appleAppAppleId = defineSecret("APPLE_APP_APPLE_ID");
-/** appAppleId aplikasi QA (aplikasi ASC berasingan). Kosong sehingga ia wujud. */
-export const appleQaAppAppleIdForNotifications = defineString("APPLE_QA_APP_APPLE_ID", {default: ""});
-
 export const appStoreServerNotifications = onRequest(
   {
     secrets: [
@@ -84,7 +81,7 @@ export const appStoreServerNotifications = onRequest(
     const identity = resolveAppleAppIdentity({
       env: process.env,
       productionAppAppleId: rawAppleId,
-      qaAppAppleId: appleQaAppAppleIdForNotifications.value(),
+      qaAppAppleId: null,
     });
     if (!identity.ok) {
       console.error(`apple notifications: ${identity.reason}`);
