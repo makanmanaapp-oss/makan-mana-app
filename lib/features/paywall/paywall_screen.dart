@@ -16,8 +16,8 @@ import '../../core/services/purchase_service.dart';
 import '../../core/widgets/mm_icons.dart';
 
 /// Paywall (Prompt 10): papar Free/Plus/Pro, copy & harga betul, event
-/// paywall_viewed / upgrade_clicked. Tiada gateway pembayaran sebenar dibina
-/// — CTA guna aliran mock/dev sedia ada, tidak memalsukan bayaran berjaya.
+/// paywall_viewed / upgrade_clicked. CTA berbayar menggunakan StoreKit /
+/// Google Play sebenar dan kelayakan hanya diberikan selepas verifikasi pelayan.
 class PaywallScreen extends ConsumerStatefulWidget {
   const PaywallScreen({super.key, this.args});
 
@@ -58,7 +58,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
   /// secara manual di Firebase Console (bukan melalui butang ini).
   Future<void> _purchase(String plan) async {
     final l = AppLocalizations.of(context);
-    // Event upgrade_clicked (tiada data bayaran; paymentImplemented=false).
+    // Event upgrade_clicked. Store billing sebenar tersedia untuk pelan berbayar.
     ref.read(eventLoggerProvider).logEvent(
       EventType.upgradeClicked,
       sourceScreen: widget.args?.sourceScreen ?? 'paywall',
@@ -66,7 +66,7 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
         'selectedPlan': plan,
         if (widget.args?.featureId != null) 'featureId': widget.args!.featureId,
         'price': PlanTier.parse(plan).priceLabel,
-        'paymentImplemented': false,
+        'paymentImplemented': true,
       },
     );
 
