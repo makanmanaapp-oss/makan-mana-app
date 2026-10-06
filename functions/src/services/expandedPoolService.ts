@@ -1,7 +1,7 @@
 /**
  * Algorithm 2 / Phase 2.2A — retrieval pool DIPERLUAS (I/O). Kohort sahaja.
  *
- * Strategi berpagar: cache v4 dahulu → jika tidak cukup, JALANKAN sehingga 3
+ * Strategi berpagar: cache v4 dahulu → jika tidak cukup, JALANKAN sehingga 4
  * kueri searchNearby tidak-bertindih (pusat + 2 sel/gelang bersebelahan) →
  * gabung + nyahduplikasi (provider id + alias) → cache v4. TIDAK PERNAH melebihi
  * 4 kueri provider. searchNearby itu sendiri cache-first (7 hari), jadi warm = 0
@@ -134,7 +134,7 @@ export async function getExpandedPool(
     diagnostics: {
       providerCalls, rawCount, uniqueCount: inRadius.length,
       duplicateCount: rawCount - merged.length, sourceBatchCount: batches.length,
-      cacheHit: false, cacheAgeMs: null, schemaVersion: 3,
+      cacheHit: false, cacheAgeMs: null, schemaVersion: 4,
     },
   };
 }
