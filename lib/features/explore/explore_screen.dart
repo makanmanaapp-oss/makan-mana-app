@@ -65,7 +65,11 @@ class _ExploreScreenState extends ConsumerState<ExploreScreen> {
     var places = _cuisineFilter == null
         ? all
         : all.where((p) => p.cuisine == _cuisineFilter).toList();
-    if (_query.isNotEmpty) {
+    // Dalam app sebenar, carian ialah server-backed. Jangan tapis semula
+    // hasil provider hanya berdasarkan name/cuisine di klien, kerana query
+    // kawasan seperti "Puncak Alam" biasanya padan melalui alamat. Penapisan
+    // lokal kekal hanya untuk demo tanpa Firebase.
+    if (_query.isNotEmpty && isDemo) {
       final q = _query.toLowerCase();
       places = places
           .where((p) =>
