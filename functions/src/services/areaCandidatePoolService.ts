@@ -3,8 +3,9 @@
  *
  * Database-first: baca kolam calon SATU kawasan dari simpanan kekal per-sel
  * (`area_place_cache/{cellId}`) DAHULU. Temui jurang provider (expandedPool)
- * HANYA bila liputan tidak cukup/basi, kemudian SIMPAN calon baharu (preserve
- * old) supaya pangkalan data tumbuh: 37 → 52 → 88 → 140 → 220+.
+ * HANYA bila liputan provider tidak cukup/basi, kemudian SIMPAN calon baharu.
+ * Final response = SEMUA MakanMana canonical dalam radius + sehingga 70
+ * provider/Google supplemental selepas dedupe. Jadi final pool boleh >70.
  */
 import { db, FieldValue } from "../config/firebase";
 import { PlaceCandidate } from "../types/place";
@@ -23,10 +24,12 @@ import {
 
 const C_AREA = "area_place_cache";
 const CELL_FRESH_MS = 24 * 60 * 60 * 1000;
-// Release discovery: 12 terlalu rendah dan menyebabkan kawasan dianggap
-// "cukup" selepas hanya satu page UI. Sasaran 36 memberi bekalan sekurang-
-// kurangnya tiga page Explore sebelum coverage dianggap sihat.
-const MIN_DENSITY = 36;
+// Kedai MakanMana canonical TIDAK menghabiskan quota provider. Provider/Google
+// hanya supplement: cuba bina sekurang-kurangnya 50 supaya cache dianggap
+// berguna, dengan hard response cap 70 selepas dedupe. Final pool boleh >70
+// kerana SEMUA candidate canonical MakanMana dikekalkan.
+const GOOGLE_DISCOVERY_MIN = 50;
+const GOOGLE_SUPPLEMENT_LIMIT = 70;
 const DISCOVERY_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 const MAX_CANDIDATES_PER_CELL = 400;
 const CURRENT_MEDIA_VERSION = 2;
@@ -105,14 +108,46 @@ function coverageStatusOf(
   return { status: "HEALTHY", cooldownActive };
 }
 
+function isMakanManaCanonical(c: PlaceCandidate): boolean {
+  return typeof c.canonicalPlaceId === "string" &&
+    c.canonicalPlaceId.trim().length > 0;
+}
+
+/**
+ * Source quota:
+ *  - semua kedai canonical MakanMana dalam radius KEKAL;
+ *  - Google/provider hanya supplement sehingga 70;
+ *  - susunan input (sudah distance-sorted) dikekalkan;
+ *  - dedupe canonical/provider berjalan sebelum quota.
+ *
+ * Maka 42 MakanMana + 70 Google boleh menghasilkan sehingga 112 candidate
+ * sebelum ranking, bukannya berhenti pada 70.
+ */
 function dedupePool(pool: AreaCandidatePool): AreaCandidatePool {
-  const candidates = dedupeCanonicalCandidates(pool.candidates);
+  const deduped = dedupeCanonicalCandidates(pool.candidates);
+  const candidates: PlaceCandidate[] = [];
+  let providerCount = 0;
+
+  for (const candidate of deduped) {
+    if (isMakanManaCanonical(candidate)) {
+      candidates.push(candidate);
+      continue;
+    }
+    if (providerCount < GOOGLE_SUPPLEMENT_LIMIT) {
+      candidates.push(candidate);
+      providerCount++;
+    }
+  }
+
   return {
     ...pool,
     candidates,
-    // Keep diagnostics honest after user-visible identity dedupe.
-    exactRadiusCount: Math.min(pool.exactRadiusCount, candidates.length),
-    activePlaceCount: Math.min(pool.activePlaceCount, candidates.length),
+    canonicalPlaceIds: candidates.map(
+      (p) => p.canonicalPlaceId?.trim() || p.placeId,
+    ),
+    // Keep diagnostics honest after identity dedupe + source quota.
+    exactRadiusCount: candidates.length,
+    activePlaceCount: candidates.filter((p) => p.isOpen).length,
   };
 }
 
@@ -132,12 +167,21 @@ export async function getAreaCandidatePool(req: AreaPoolRequest): Promise<AreaPo
     }
     const known = [...knownByKey.values()];
 
+    const knownCanonicalCount = known.filter(
+      (p) => p.candidate != null && isMakanManaCanonical(p.candidate),
+    ).length;
     const knownPoolPre = buildAreaCandidatePool({
       centerLat: req.lat, centerLng: req.lng, radiusMeters: req.radiusMeters,
-      coverageCellIds: cellIds, merged: known, knownCanonicalCount: known.length,
+      coverageCellIds: cellIds, merged: known, knownCanonicalCount,
       freshnessStatus: "HEALTHY", discoveryPerformed: false, discoveryReason: "db",
       newlyDiscoveredCount: 0, now: req.now,
     });
+    // Hanya provider/non-canonical dikira untuk keputusan top-up Google.
+    // 100 kedai MakanMana + 10 Google masih layak discovery kerana quota
+    // Google tidak pernah "dimakan" oleh data milik MakanMana.
+    const knownProviderActiveCount = knownPoolPre.candidates.filter(
+      (p) => !isMakanManaCanonical(p) && p.isOpen,
+    ).length;
 
     const { status, cooldownActive } = coverageStatusOf(cellIds, cellDocs, req.now);
 
@@ -149,9 +193,9 @@ export async function getAreaCandidatePool(req: AreaPoolRequest): Promise<AreaPo
       (doc) => (doc.mediaVersion ?? 0) < CURRENT_MEDIA_VERSION,
     );
     const baseDecision = decideAreaDiscovery({
-      knownActiveCount: knownPoolPre.activePlaceCount,
+      knownActiveCount: knownProviderActiveCount,
       coverageStatus: status,
-      minDensity: MIN_DENSITY,
+      minDensity: GOOGLE_DISCOVERY_MIN,
       radiusExpanded: req.radiusExpanded === true,
       cooldownActive,
       forced: req.forced === true,
@@ -188,7 +232,7 @@ export async function getAreaCandidatePool(req: AreaPoolRequest): Promise<AreaPo
 
     const pool = dedupePool(buildAreaCandidatePool({
       centerLat: req.lat, centerLng: req.lng, radiusMeters: req.radiusMeters,
-      coverageCellIds: cellIds, merged, knownCanonicalCount: known.length,
+      coverageCellIds: cellIds, merged, knownCanonicalCount,
       freshnessStatus: status,
       discoveryPerformed: decision.discover, discoveryReason: decision.reason,
       newlyDiscoveredCount: newlyDiscovered, now: req.now,
