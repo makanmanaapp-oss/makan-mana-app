@@ -11,6 +11,7 @@ import 'package:makan_mana/core/providers/makanmana_user_context_provider.dart';
 import 'package:makan_mana/core/services/cloud_suggestion_service.dart';
 import 'package:makan_mana/core/services/location_service.dart';
 import 'package:makan_mana/features/explore/explore_pagination_controller.dart';
+import 'package:makan_mana/features/suggestions/suggestion_repository.dart';
 import 'package:makan_mana/models/place_summary.dart';
 import 'package:makan_mana/models/places_outcome.dart';
 import 'package:makan_mana/repositories/auth_repository.dart';
@@ -59,8 +60,8 @@ class _FakeLocation extends LocationService {
 /// Explore (getNearbyPlacesPage) supaya boleh dibandingkan.
 class _RecordingService extends CloudSuggestionService {
   _RecordingService() : super(firebaseReady: true);
-  double? homeLat, homeLng, exploreLat, exploreLng;
-  int? homeRadius, exploreRadius;
+  double? homeLat, homeLng, exploreLat, exploreLng, previewLat, previewLng;
+  int? homeRadius, exploreRadius, previewRadius;
 
   @override
   Future<PlacesOutcome> getNearbyPlaces({
@@ -73,6 +74,22 @@ class _RecordingService extends CloudSuggestionService {
     homeLng = lng;
     homeRadius = radius;
     return PlacesOutcome.ok([_p('h1')]);
+  }
+
+  @override
+  Future<CloudSpinResult?> getSuggestions({
+    required Map<String, dynamic> payload,
+    String mode = 'spin',
+  }) async {
+    previewLat = (payload['lat'] as num?)?.toDouble();
+    previewLng = (payload['lng'] as num?)?.toDouble();
+    previewRadius = (payload['radiusMeters'] as num?)?.toInt();
+    return CloudSpinResult(
+      paywallRequired: false,
+      place: _p('preview'),
+      candidates: const [],
+      source: 'google_places',
+    );
   }
 
   @override
@@ -131,6 +148,28 @@ void main() {
     expect(rec.exploreLng, 100.3288);
     // BUKAN lokasi lalai KL.
     expect(rec.exploreLat, isNot(3.1478));
+  });
+
+  test(
+      'Home AI Pick keeps authoritative GPS even if Core Spine is reset',
+      () async {
+    final rec = _RecordingService();
+    final c = _container(rec, _FakeLocation(_pos(5.4141, 100.3288)));
+    addTearDown(c.dispose);
+
+    // Resolve GPS first, then simulate a late profile hydration/reset replacing
+    // the Core Spine snapshot. The cached authoritative location must still be
+    // used by Home preview instead of sending null lat/lng to getSuggestions.
+    final loc = await c.read(locationContextProvider.future);
+    expect(loc.hasLocation, isTrue);
+    c.read(makanManaUserContextProvider.notifier).clear();
+
+    final suggestion = await c.read(homeSuggestionProvider.future);
+
+    expect(suggestion.primary?.placeId, 'preview');
+    expect(rec.previewLat, 5.4141);
+    expect(rec.previewLng, 100.3288);
+    expect(rec.previewRadius, 3000);
   });
 
   test('radius matches across Home and Explore', () async {
