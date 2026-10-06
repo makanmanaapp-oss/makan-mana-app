@@ -73,7 +73,9 @@ class PlacesOutcome {
       return PlacesOutcome.unavailable(
         reason: data['reason'] == 'not_configured'
             ? PlacesUnavailableReason.notConfigured
-            : PlacesUnavailableReason.providerError,
+            : data['reason'] == 'location_unavailable'
+                ? PlacesUnavailableReason.location
+                : PlacesUnavailableReason.providerError,
         retryable: data['retryable'] != false,
       );
     }
