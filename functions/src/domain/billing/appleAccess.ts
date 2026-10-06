@@ -8,7 +8,8 @@ export function planForSubscriptionUser(
   nowMillis: number = Date.now(),
 ): string {
   const plan = (data?.plan as string | undefined) ?? "free";
-  const source = data?.planSource;
+  if (!data) return plan;
+  const source = data.planSource;
   if (source !== "app_store" && source !== "app_store_testflight") return plan;
   const expiry = data.subscriptionExpiryMillis;
   if (!isAllowedAppleProduct(data.subscriptionProductId as string | null | undefined) ||
