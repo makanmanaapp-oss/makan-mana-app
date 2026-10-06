@@ -246,9 +246,9 @@ export function pickNextAlternative(
 }
 
 // --- Bounded provider query planning ----------------------------------------
-export const MAX_COLD_PROVIDER_QUERIES = 3;
+export const MAX_COLD_PROVIDER_QUERIES = 4;
 /**
- * Berapa kueri provider dibenarkan? 0 jika cache sudah cukup. Had keras 3.
+ * Berapa kueri provider dibenarkan? 0 jika cache sudah cukup. Had keras 4.
  */
 export function planProviderQueries(
   cachedUniqueEligible: number,
