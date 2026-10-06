@@ -20,6 +20,12 @@ test("missing expiry, unlisted product, pending, retry and revoked Apple plans f
   }
 });
 
+test("TestFlight App Store source obeys the same expiry gate", () => {
+  const sandbox = {...paid, planSource: "app_store_testflight"};
+  assert.equal(planForSubscriptionUser(sandbox, NOW), "pro");
+  assert.equal(planForSubscriptionUser(sandbox, NOW + 1000), "free");
+});
+
 test("valid cancellation and grace remain accessible only up to the stored deadline", () => {
   for (const planStatus of ["cancelled_but_active", "grace_period"]) {
     assert.equal(planForSubscriptionUser({...paid, planStatus}, NOW), "pro");
