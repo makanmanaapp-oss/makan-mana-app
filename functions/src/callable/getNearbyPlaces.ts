@@ -137,7 +137,11 @@ export const getNearbyPlaces = onCall(
     // MM_QA_SYNTHETIC_PLACES=enabled DAN runtime QA; produksi tidak pernah
     // diaktifkan walaupun bendera ditetapkan. Tiada panggilan Places.
     const synthetic = decideSyntheticPlaces({env: process.env});
-    if (!hasClientCoords && query && apiKey) {
+    if (synthetic.active) {
+      candidates = buildSyntheticPlaces({lat, lng});
+      source = "qa_synthetic";
+      logger.info("getNearbyPlaces.qaSynthetic", {reason: synthetic.reason});
+    } else if (!hasClientCoords && query && apiKey) {
       // Carian kawasan/nama global. Jangan bias kepada KL apabila GPS tiada.
       try {
         candidates = await searchTextRestaurants({
@@ -155,10 +159,6 @@ export const getNearbyPlaces = onCall(
         providerError = true;
         candidates = [];
       }
-    } else if (synthetic.active) {
-      candidates = buildSyntheticPlaces({lat, lng});
-      source = "qa_synthetic";
-      logger.info("getNearbyPlaces.qaSynthetic", {reason: synthetic.reason});
     } else if (apiKey) {
       try {
         if (areaCoverageOn) {
