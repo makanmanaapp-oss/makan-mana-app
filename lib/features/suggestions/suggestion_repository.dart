@@ -86,7 +86,19 @@ final homeSuggestionProvider =
     );
   }
 
-  final payload = full.buildSuggestionRequestBase();
+  // LOCATION RACE FIX — lokasi untuk request preview datang TERUS daripada
+  // locationContextProvider yang baru diselesaikan, bukan daripada snapshot
+  // Core Spine yang boleh ditimpa seketika oleh hydration profil yang bermula
+  // sebelum GPS siap. Ini memastikan Home AI Pick dan Nearby menghantar
+  // koordinat/radius authoritative yang sama.
+  final payload = {
+    ...full.buildSuggestionRequestBase(),
+    'lat': loc.lat,
+    'lng': loc.lng,
+    'radiusKm': loc.radiusMeters / 1000,
+    'radiusMeters': loc.radiusMeters,
+    'locationGrid': loc.locationGrid,
+  };
   final res = await ref
       .read(cloudSuggestionServiceProvider)
       .getSuggestions(payload: payload, mode: 'preview');
