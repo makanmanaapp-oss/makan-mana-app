@@ -810,9 +810,9 @@ class AppLocalizations {
       'searchHint': 'Cari makanan atau tempat...',
       'yourArea': 'Sekitar lokasi anda',
       // Phase 2.8A — pendedahan jujur lokasi lalai (fallback KL).
-      'locDefaultArea': 'Sekitar KL (lokasi lalai)',
+      'locDefaultArea': 'Lokasi belum tersedia',
       'locFallbackNotice':
-          'Lokasi tidak tersedia. Menunjukkan cadangan sekitar Kuala Lumpur.',
+          'Benarkan lokasi peranti atau cari nama kawasan untuk melihat kedai yang betul.',
       'chooseArea': 'Pilih kawasan',
       'near': 'Berhampiran',
       'moodTitle': 'Apakah mood anda hari ini?',
@@ -2216,9 +2216,9 @@ class AppLocalizations {
       'searchHint': 'Search food or places...',
       'yourArea': 'Around your location',
       // Phase 2.8A — honest default-fallback (KL) disclosure.
-      'locDefaultArea': 'Around KL (default location)',
+      'locDefaultArea': 'Location unavailable',
       'locFallbackNotice':
-          'Location unavailable. Showing suggestions around Kuala Lumpur.',
+          'Allow device location or search for an area to see the correct nearby places.',
       'chooseArea': 'Choose an area',
       'near': 'Near',
       'moodTitle': 'Your mood today?',
@@ -3574,8 +3574,8 @@ class AppLocalizations {
       'searchHint': '搜索食物或地点...',
       'yourArea': '你附近',
       // Phase 2.8A — terjemahan mesin, MENUNGGU semakan penutur asli (zh).
-      'locDefaultArea': '吉隆坡一带（预设位置）',
-      'locFallbackNotice': '无法取得定位。显示吉隆坡一带的建议。',
+      'locDefaultArea': '无法取得定位',
+      'locFallbackNotice': '请允许设备定位，或搜索地区名称以查看正确的附近餐厅。',
       'chooseArea': '选择地区',
       'near': '靠近',
       'moodTitle': '今天的心情？',
@@ -4938,9 +4938,9 @@ class AppLocalizations {
       'searchHint': 'உணவு அல்லது இடம் தேடவும்...',
       'yourArea': 'உங்கள் அருகில்',
       // Phase 2.8A — terjemahan mesin, MENUNGGU semakan penutur asli (ta).
-      'locDefaultArea': 'கோலாலம்பூர் அருகில் (இயல்பு இருப்பிடம்)',
+      'locDefaultArea': 'இருப்பிடம் கிடைக்கவில்லை',
       'locFallbackNotice':
-          'இருப்பிடம் கிடைக்கவில்லை. கோலாலம்பூர் அருகில் பரிந்துரைகளைக் காட்டுகிறது.',
+          'சரியான அருகிலுள்ள இடங்களைப் பார்க்க சாதன இருப்பிடத்தை அனுமதிக்கவும் அல்லது பகுதியைத் தேடவும்.',
       'chooseArea': 'ஒரு பகுதியைத் தேர்வுசெய்க',
       'near': 'அருகில்',
       'moodTitle': 'இன்றைய மனநிலை?',
