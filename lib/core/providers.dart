@@ -284,6 +284,14 @@ final nearbyPlacesProvider =
   // Home & Explore TIDAK LAGI menunjuk kawasan berbeza. Watch .future = Home
   // refetch automatik bila lokasi/radius berubah (provider di-invalidate).
   final loc = await ref.watch(locationContextProvider.future);
+  // Jangan lagi hantar lat/lng null ke backend. Laluan lama menyebabkan server
+  // menggunakan pusat KL dan Home memaparkan kedai yang salah kawasan.
+  if (!loc.hasLocation) {
+    return const PlacesOutcome.unavailable(
+      reason: PlacesUnavailableReason.location,
+      retryable: true,
+    );
+  }
   final outcome =
       await ref.watch(cloudSuggestionServiceProvider).getNearbyPlaces(
             lat: loc.lat,
