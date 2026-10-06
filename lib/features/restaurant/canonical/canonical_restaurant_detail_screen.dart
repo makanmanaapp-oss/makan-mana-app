@@ -116,7 +116,9 @@ class CanonicalRestaurantDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: Text(vm.title)),
+      // Nama penuh dipaparkan dalam identity header. AppBar dibiarkan bersih
+      // supaya nama panjang tidak diulang lalu dipotong dengan ellipsis.
+      appBar: AppBar(),
       body: CanonicalRestaurantDetailBody(
         vm: vm,
         callbacks: callbacks,
