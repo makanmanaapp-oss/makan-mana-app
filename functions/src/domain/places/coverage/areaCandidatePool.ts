@@ -154,6 +154,33 @@ export function enumerateCellsForRadius(
   return [...cells];
 }
 
+/**
+ * Quota sumber discovery. Candidate yang mempunyai canonicalPlaceId ialah data
+ * MakanMana authoritative dan TIDAK dikira dalam quota supplement provider.
+ * Candidate bukan-canonical dihadkan [supplementalLimit]. Susunan dikekalkan.
+ */
+export function applySourceCandidateQuota(
+  candidates: readonly PlaceCandidate[],
+  supplementalLimit: number = 70,
+): PlaceCandidate[] {
+  const limit = Math.max(0, Math.floor(supplementalLimit));
+  const out: PlaceCandidate[] = [];
+  let supplementalCount = 0;
+  for (const candidate of candidates) {
+    const canonical = typeof candidate.canonicalPlaceId === "string" &&
+      candidate.canonicalPlaceId.trim().length > 0;
+    if (canonical) {
+      out.push(candidate);
+      continue;
+    }
+    if (supplementalCount < limit) {
+      out.push(candidate);
+      supplementalCount++;
+    }
+  }
+  return out;
+}
+
 /** Bucket lokasi deterministik (grid ~111m + radius dibucket) untuk id kolam. */
 export function areaLocationBucket(lat: number, lng: number, radiusMeters: number): string {
   const la = Number.isFinite(lat) ? lat.toFixed(3) : "0";
