@@ -218,7 +218,10 @@ export function mapAppleSubscriptionToEntitlement(
  * setiap medan lain sengaja sama, supaya satu pengguna yang bertukar platform
  * tidak menghasilkan bentuk dokumen yang berbeza.
  */
-export function appleEntitlementToUserFields(e: EntitlementResult): {
+export function appleEntitlementToUserFields(
+  e: EntitlementResult,
+  planSource: "app_store" | "app_store_testflight" = "app_store",
+): {
   plan: Plan;
   planStatus: PlanStatus;
   planSource: string;
@@ -229,7 +232,7 @@ export function appleEntitlementToUserFields(e: EntitlementResult): {
   return {
     plan: e.entitled ? e.plan : "free",
     planStatus: e.planStatus,
-    planSource: "app_store",
+    planSource,
     subscriptionProductId: e.productId,
     subscriptionExpiryMillis: e.expiryMillis,
     subscriptionAutoRenewing: e.autoRenewing,
