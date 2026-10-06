@@ -148,6 +148,11 @@ class PurchaseService {
     final response = await iap.queryProductDetails({productId});
 
     if (response.productDetails.isEmpty) {
+      debugPrint(
+        'MakanMana: store product unavailable. '
+        'requested=$productId notFound=${response.notFoundIDs.join(',')} '
+        'error=${response.error?.code ?? 'none'}',
+      );
       return PurchaseFlow.storeUnavailable;
     }
 
@@ -164,7 +169,7 @@ class PurchaseService {
       // iaitu medan yang App Store Server API pulangkan dan yang pelayan
       // gunakan untuk membuktikan pemilikan.
       purchaseParam: defaultTargetPlatform == TargetPlatform.iOS
-          ? AppStorePurchaseParam(
+          ? Sk2PurchaseParam(
               productDetails: product,
               applicationUserName: storeAccountId,
             )
