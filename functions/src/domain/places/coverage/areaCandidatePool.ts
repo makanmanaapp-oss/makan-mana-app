@@ -227,12 +227,17 @@ export function mergeAreaPlaces(
     const existing = byKey.get(key);
     if (existing) {
       duplicateCount++;
-      // Kekal identiti diketahui; isi calon/koordinat jika yang diketahui tiada.
+      // Kekalkan identiti/status diketahui, tetapi snapshot provider yang
+      // baru mesti boleh menyegarkan kandungan calon lama seperti rating,
+      // hours dan photoUrl. Candidate lama tidak boleh mengunci null selamanya.
+      const refreshedCandidate = existing.candidate && d.candidate
+        ? {...existing.candidate, ...d.candidate}
+        : (d.candidate ?? existing.candidate);
       byKey.set(key, {
         ...existing,
-        candidate: existing.candidate ?? d.candidate,
-        lat: Number.isFinite(existing.lat) ? existing.lat : d.lat,
-        lng: Number.isFinite(existing.lng) ? existing.lng : d.lng,
+        candidate: refreshedCandidate,
+        lat: Number.isFinite(d.lat) ? d.lat : existing.lat,
+        lng: Number.isFinite(d.lng) ? d.lng : existing.lng,
         // Status: jangan naik taraf closed→active secara senyap; ambil yang
         // diketahui kecuali ia 'unknown'.
         status: existing.status === "unknown" ? d.status : existing.status,
