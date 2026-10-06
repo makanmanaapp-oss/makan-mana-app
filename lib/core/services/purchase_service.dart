@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:in_app_purchase_android/in_app_purchase_android.dart';
 import 'package:in_app_purchase_storekit/in_app_purchase_storekit.dart';
@@ -35,6 +36,65 @@ class PurchaseResult {
   final String? plan;
   final String? planStatus;
   final String? message;
+}
+
+/// TEMP Build 5 diagnostic: kegagalan SEBELUM purchase sheet StoreKit muncul.
+/// Tidak membawa UID, appAccountToken, receipt atau transaction token.
+class PurchaseStartDiagnosticException implements Exception {
+  const PurchaseStartDiagnosticException({
+    required this.stage,
+    required this.code,
+    required this.productId,
+    this.message = '',
+  });
+
+  final String stage;
+  final String code;
+  final String productId;
+  final String message;
+
+  String get safeDisplay {
+    final suffix = message.isEmpty ? '' : ' · $message';
+    return '$stage/$code · $productId$suffix';
+  }
+
+  @override
+  String toString() => 'PurchaseStartDiagnosticException($safeDisplay)';
+}
+
+String _safePurchaseDiagnosticText(Object? value, {int maxLength = 180}) {
+  if (value == null) return '';
+  final normalized = value
+      .toString()
+      .replaceAll(RegExp(r'[\r\n\t]+'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  if (normalized.length <= maxLength) return normalized;
+  return '${normalized.substring(0, maxLength)}…';
+}
+
+String _platformPurchaseMessage(PlatformException error) {
+  final parts = <String>[];
+  final msg = _safePurchaseDiagnosticText(error.message);
+  if (msg.isNotEmpty) parts.add(msg);
+
+  final details = error.details;
+  if (details is Map) {
+    for (final key in const [
+      'domain',
+      'code',
+      'message',
+      'NSLocalizedDescription',
+      'NSLocalizedFailureReason',
+    ]) {
+      final value = _safePurchaseDiagnosticText(details[key]);
+      if (value.isNotEmpty && !parts.contains(value)) {
+        parts.add('$key=$value');
+      }
+    }
+  }
+
+  return _safePurchaseDiagnosticText(parts.join(' | '));
 }
 
 /// Google Play Billing dengan backend sebagai authority.
@@ -164,20 +224,58 @@ class PurchaseService {
 
     final product = response.productDetails.first;
 
-    await iap.buyNonConsumable(
-      // StoreKit 2 memetakan `applicationUserName` kepada `appAccountToken`,
-      // iaitu medan yang App Store Server API pulangkan dan yang pelayan
-      // gunakan untuk membuktikan pemilikan.
-      purchaseParam: defaultTargetPlatform == TargetPlatform.iOS
-          ? Sk2PurchaseParam(
-              productDetails: product,
-              applicationUserName: storeAccountId,
-            )
-          : GooglePlayPurchaseParam(
-              productDetails: product,
-              applicationUserName: storeAccountId,
-            ),
-    );
+    try {
+      final started = await iap.buyNonConsumable(
+        // StoreKit 2 memetakan `applicationUserName` kepada `appAccountToken`,
+        // iaitu medan yang App Store Server API pulangkan dan yang pelayan
+        // gunakan untuk membuktikan pemilikan.
+        purchaseParam: defaultTargetPlatform == TargetPlatform.iOS
+            ? Sk2PurchaseParam(
+                productDetails: product,
+                applicationUserName: storeAccountId,
+              )
+            : GooglePlayPurchaseParam(
+                productDetails: product,
+                applicationUserName: storeAccountId,
+              ),
+      );
+
+      // Plugin boleh memulangkan false jika permintaan tidak berjaya
+      // diserahkan kepada store walaupun tiada exception dilemparkan.
+      if (!started) {
+        throw PurchaseStartDiagnosticException(
+          stage: defaultTargetPlatform == TargetPlatform.iOS
+              ? 'IOS_START'
+              : 'PLAY_START',
+          code: 'RETURNED_FALSE',
+          productId: productId,
+        );
+      }
+    } on PurchaseStartDiagnosticException {
+      rethrow;
+    } on PlatformException catch (e, st) {
+      final diagnostic = PurchaseStartDiagnosticException(
+        stage: defaultTargetPlatform == TargetPlatform.iOS
+            ? 'IOS_START'
+            : 'PLAY_START',
+        code: _safePurchaseDiagnosticText(e.code, maxLength: 80),
+        productId: productId,
+        message: _platformPurchaseMessage(e),
+      );
+      debugPrint('MakanMana: purchase start failed: ${diagnostic.safeDisplay}');
+      Error.throwWithStackTrace(diagnostic, st);
+    } catch (e, st) {
+      final diagnostic = PurchaseStartDiagnosticException(
+        stage: defaultTargetPlatform == TargetPlatform.iOS
+            ? 'IOS_START'
+            : 'PLAY_START',
+        code: _safePurchaseDiagnosticText(e.runtimeType, maxLength: 80),
+        productId: productId,
+        message: _safePurchaseDiagnosticText(e),
+      );
+      debugPrint('MakanMana: purchase start failed: ${diagnostic.safeDisplay}');
+      Error.throwWithStackTrace(diagnostic, st);
+    }
 
     return PurchaseFlow.storeStarted;
   }
