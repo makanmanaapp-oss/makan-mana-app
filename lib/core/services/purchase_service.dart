@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:in_app_purchase_android/in_app_purchase_android.dart';
 import 'package:in_app_purchase_storekit/in_app_purchase_storekit.dart';
+import 'package:in_app_purchase_storekit/store_kit_wrappers.dart';
 
 import '../constants/app_constants.dart';
 import '../constants/plan_constants.dart';
@@ -187,6 +188,69 @@ class PurchaseService {
           ? _prepareAppleAccountToken(uid)
           : _prepareOpaqueAccountId(uid);
 
+
+  /// iOS recovery: transaksi StoreKit yang GAGAL/DI-BATALKAN mesti dibuang
+  /// daripada SKPaymentQueue. Jika tidak, plugin menolak cubaan baharu untuk
+  /// productId yang sama dengan `storekit_duplicate_product_object`.
+  ///
+  /// Keselamatan: hanya state `failed` dibersihkan. Jangan sekali-kali
+  /// finish `purchasing`, `deferred`, `purchased` atau `restored`
+  /// di sini kerana pembelian berjaya masih perlu disahkan backend dahulu.
+  Future<int> _finishFailedIosTransactions(String productId) async {
+    if (defaultTargetPlatform != TargetPlatform.iOS || productId.isEmpty) {
+      return 0;
+    }
+
+    try {
+      final queue = SKPaymentQueueWrapper();
+      final transactions = await queue.transactions();
+      var finished = 0;
+
+      for (final transaction in transactions) {
+        if (transaction.payment.productIdentifier != productId) continue;
+        if (transaction.transactionState !=
+            SKPaymentTransactionStateWrapper.failed) {
+          continue;
+        }
+
+        await queue.finishTransaction(transaction);
+        finished += 1;
+      }
+
+      if (finished > 0) {
+        debugPrint(
+          'MakanMana: cleared $finished failed StoreKit transaction(s) '
+          'for $productId before purchase.',
+        );
+      }
+      return finished;
+    } catch (_) {
+      // Best-effort recovery sahaja. Cubaan pembelian masih diteruskan supaya
+      // StoreKit boleh memberi diagnostic sebenar jika queue masih tersekat.
+      debugPrint('MakanMana: failed StoreKit queue cleanup unavailable.');
+      return 0;
+    }
+  }
+
+  Future<void> _completeFailedOrCancelledPurchase(
+    PurchaseDetails purchase,
+  ) async {
+    if (defaultTargetPlatform != TargetPlatform.iOS ||
+        !purchase.pendingCompletePurchase) {
+      return;
+    }
+
+    try {
+      await InAppPurchase.instance.completePurchase(purchase);
+      debugPrint(
+        'MakanMana: completed terminal StoreKit transaction '
+        'for ${purchase.productID}.',
+      );
+    } catch (_) {
+      debugPrint('MakanMana: terminal StoreKit completion failed.');
+    }
+  }
+
   Future<PurchaseFlow> buy({
     required String uid,
     required String plan,
@@ -223,6 +287,10 @@ class PurchaseService {
     }
 
     final product = response.productDetails.first;
+
+    // Clear only FAILED StoreKit transactions left by a cancelled/failed
+    // attempt. Successful/pending transactions are never finished here.
+    await _finishFailedIosTransactions(productId);
 
     try {
       final started = await iap.buyNonConsumable(
@@ -306,12 +374,19 @@ class PurchaseService {
           break;
 
         case PurchaseStatus.canceled:
+          // StoreKit menandakan transaksi batal sebagai terminal dan ia masih
+          // boleh pendingCompletePurchase. Finish supaya cubaan seterusnya
+          // untuk productId sama tidak tersekat sebagai duplicate.
+          await _completeFailedOrCancelledPurchase(purchase);
           _results.add(
             const PurchaseResult(PurchaseOutcome.cancelled),
           );
           break;
 
         case PurchaseStatus.error:
+          // Ralat terminal juga perlu dikeluarkan daripada queue. Ini TIDAK
+          // memberi entitlement dan TIDAK memintas verification backend.
+          await _completeFailedOrCancelledPurchase(purchase);
           _results.add(
             PurchaseResult(
               PurchaseOutcome.error,
