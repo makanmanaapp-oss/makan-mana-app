@@ -2,7 +2,7 @@
 // menghantar produk dan `originalTransactionId` legap; ia tidak pernah memberi
 // pelan kepada dirinya sendiri.
 import {HttpsError, onCall} from "firebase-functions/v2/https";
-import {defineSecret, defineString} from "firebase-functions/params";
+import {defineSecret} from "firebase-functions/params";
 
 import {db} from "../config/firebase";
 
@@ -23,9 +23,6 @@ export const appleRootCertificates = defineSecret("APPLE_ROOT_CERTIFICATES");
  * gagal-TERTUTUP. Dikongsi dengan laluan notifikasi.
  */
 export const appleAppAppleIdForVerify = defineSecret("APPLE_APP_APPLE_ID");
-/** appAppleId aplikasi QA (aplikasi ASC berasingan). Kosong sehingga ia wujud. */
-export const appleQaAppAppleId = defineString("APPLE_QA_APP_APPLE_ID", {default: ""});
-
 interface VerifyInput {
   productId?: string;
   originalTransactionId?: string;
@@ -117,7 +114,7 @@ export const verifyAppleSubscription = onCall(
       privateKeyPem: appleIapPrivateKey.value(),
       trustedRootsPem: appleRootCertificates.value(),
       appAppleId: appleAppAppleIdForVerify.value(),
-      qaAppAppleId: appleQaAppAppleId.value(),
+      qaAppAppleId: null,
     });
 
     const allowTestFlightSandbox = await testFlightSandboxAllowed(
