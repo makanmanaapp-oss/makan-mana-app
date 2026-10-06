@@ -11,10 +11,14 @@ import { db, FieldValue } from "../config/firebase";
 import { searchNearby } from "./placesService";
 import { PlaceCandidate } from "../types/place";
 import { mergeDedupe, planProviderQueries } from "../domain/algorithm2/sessionEngine";
+import { haversineMeters } from "../domain/places/dedup/geo";
 
 const C_POOL = "places_pool_v3";
 const POOL_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const TARGET_UNIQUE = 40;
+// Explore perlu bekalan lebih besar daripada satu page 12. Sasaran 60 memaksa
+// maksimum tiga query provider pada cold miss; warm cache kekal 0 query.
+const TARGET_UNIQUE = 60;
+const MIN_CACHE_UNIQUE = 36;
 
 export interface ExpandedPoolResult {
   candidates: PlaceCandidate[];
@@ -37,11 +41,13 @@ function cellId(lat: number, lng: number, radiusMeters: number): string {
 
 /** Pusat gelang bersebelahan (tidak-bertindih) berdasarkan radius. */
 function ringCenters(lat: number, lng: number, radiusMeters: number): Array<{ lat: number; lng: number }> {
-  const d = (radiusMeters / 111000) * 1.2; // ~offset satu radius
+  // 0.65 radius memberi liputan tepi tanpa membazir majoriti hasil di luar
+  // radius asal. Dua pusat diagonal bertentangan menambah kepelbagaian spatial.
+  const d = (radiusMeters / 111000) * 0.65;
   return [
-    { lat, lng }, // pusat
-    { lat: lat + d, lng }, // utara
-    { lat, lng: lng + d }, // timur
+    { lat, lng },
+    { lat: lat + d, lng: lng + d },
+    { lat: lat - d, lng: lng - d },
   ];
 }
 
@@ -57,7 +63,7 @@ export async function getExpandedPool(
     const d = snap.data() ?? {};
     const expiresAt = (d.expiresAt as number | undefined) ?? 0;
     const cached = (d.candidates as PlaceCandidate[] | undefined) ?? [];
-    if (expiresAt > opts.now && cached.length >= Math.min(TARGET_UNIQUE, 25)) {
+    if (expiresAt > opts.now && cached.length >= MIN_CACHE_UNIQUE) {
       return {
         candidates: cached,
         diagnostics: {
@@ -87,6 +93,23 @@ export async function getExpandedPool(
   const rawCount = batches.reduce((n, b) => n + b.length, 0);
   const merged = mergeDedupe(batches);
 
+  // Semua batch tambahan mesti dinilai semula dari pusat ASAL. searchNearby
+  // mengira distanceKm dari pusat query masing-masing, jadi tanpa langkah ini
+  // hasil ring boleh kelihatan "1 km" walaupun sebenarnya di luar radius user.
+  const inRadius = merged
+    .filter((p) =>
+      typeof p.lat === "number" &&
+      typeof p.lng === "number" &&
+      Number.isFinite(p.lat) &&
+      Number.isFinite(p.lng))
+    .map((p) => ({
+      ...p,
+      distanceKm: Math.round(
+        (haversineMeters(opts.lat, opts.lng, p.lat!, p.lng!) / 1000) * 10,
+      ) / 10,
+    }))
+    .filter((p) => p.distanceKm * 1000 <= opts.radiusMeters);
+
   await ref.set({
     schemaVersion: 3,
     cell: id,
@@ -95,17 +118,17 @@ export async function getExpandedPool(
     earlyRefreshAt: opts.now + POOL_TTL_MS / 7,
     providerQueryCount: providerCalls,
     rawCount,
-    uniqueCount: merged.length,
+    uniqueCount: inRadius.length,
     sourceBatches: batches.length,
-    candidates: merged,
-    placeIds: merged.map((p) => p.placeId),
+    candidates: inRadius,
+    placeIds: inRadius.map((p) => p.placeId),
     updatedAt: FieldValue.serverTimestamp(),
   });
 
   return {
-    candidates: merged,
+    candidates: inRadius,
     diagnostics: {
-      providerCalls, rawCount, uniqueCount: merged.length,
+      providerCalls, rawCount, uniqueCount: inRadius.length,
       duplicateCount: rawCount - merged.length, sourceBatchCount: batches.length,
       cacheHit: false, cacheAgeMs: null, schemaVersion: 3,
     },
