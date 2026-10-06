@@ -8,6 +8,7 @@ import { test } from "node:test";
 
 import {
   AreaPlace,
+  applySourceCandidateQuota,
   areaLocationBucket,
   buildAreaCandidatePool,
   coverageCellsForRadius,
@@ -192,6 +193,25 @@ test("area pool holds >100 fixture", () => {
     discoveryPerformed: false, discoveryReason: "db", newlyDiscoveredCount: 0, now: 1,
   });
   assert.ok(pool.candidates.length > 100, `got ${pool.candidates.length}`);
+});
+
+// ---- MakanMana + Google source quota ----
+test("source quota keeps ALL MakanMana canonical plus max 70 provider candidates", () => {
+  const makanMana = Array.from({ length: 45 }, (_, i) =>
+    cand(`mm${i}`, { canonicalPlaceId: `MM-${i}` }));
+  const google = Array.from({ length: 100 }, (_, i) => cand(`g${i}`));
+  const out = applySourceCandidateQuota([...makanMana, ...google], 70);
+  assert.equal(out.length, 115);
+  assert.equal(out.filter((p) => p.canonicalPlaceId).length, 45);
+  assert.equal(out.filter((p) => !p.canonicalPlaceId).length, 70);
+});
+
+test("source quota can exceed 70 when MakanMana database has its own supply", () => {
+  const makanMana = Array.from({ length: 83 }, (_, i) =>
+    cand(`mm${i}`, { canonicalPlaceId: `MM-${i}` }));
+  const google = Array.from({ length: 70 }, (_, i) => cand(`g${i}`));
+  const out = applySourceCandidateQuota([...makanMana, ...google], 70);
+  assert.equal(out.length, 153);
 });
 
 // ---- session chunk independent of area pool (Part 11/16) ----
