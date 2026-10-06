@@ -469,12 +469,6 @@ class _RestaurantDetailScreenState
           elevation: 0,
           scrolledUnderElevation: 0,
           foregroundColor: palette.text,
-          title: Text(
-            place.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontWeight: FontWeight.w700, color: palette.text),
-          ),
         ),
         body: SingleChildScrollView(
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 32),
@@ -491,31 +485,27 @@ class _RestaurantDetailScreenState
                 borderRadius: 26,
               ),
               const SizedBox(height: 16),
-              // 3–4. Nama + badge padanan autoritatif (jika ada).
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Text(
-                      place.name,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.3,
-                        color: palette.text,
-                      ),
-                    ),
-                  ),
-                  if (showMatch) ...[
-                    const SizedBox(width: 10),
-                    _MatchBadge(
-                      label: '${place.matchScore}% ${l.t('matchLabel')}',
-                    ),
-                  ],
-                ],
+              // 3–4. Nama penuh + badge padanan. Nama restoran ialah
+              // identiti utama dan tidak boleh dipotong hanya untuk memuatkan badge.
+              Text(
+                place.name,
+                softWrap: true,
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: -0.3,
+                  color: palette.text,
+                ),
               ),
+              if (showMatch) ...[
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: _MatchBadge(
+                    label: '${place.matchScore}% ${l.t('matchLabel')}',
+                  ),
+                ),
+              ],
               const SizedBox(height: 6),
               // 5. Baris kategori (masakan) — tidak diulang di tempat lain.
               Row(
