@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:makan_mana/core/location/location_display.dart';
 import 'package:makan_mana/app/localization/app_localizations.dart';
 
-/// Phase 2.8A — kejujuran paparan lokasi (fallback KL didedah).
+/// Phase 2.8A — kejujuran paparan lokasi (tiada fallback KL senyap).
 void main() {
   group('LocationDisplay.resolve', () {
     test('1. device coords -> deviceOrStored, "yourArea" allowed, no notice', () {
@@ -82,12 +82,14 @@ void main() {
       });
     }
 
-    test('English fallback strings are honest (no "around your location"; names KL)', () {
+    test('English fallback strings are honest and never pretend Kuala Lumpur', () {
       final en = AppLocalizations.valuesForTesting(const Locale('en'));
       expect(en['locDefaultArea']!.toLowerCase(),
           isNot(contains('around your location')));
-      expect(en['locFallbackNotice']!.toLowerCase(), contains('kuala lumpur'));
-      // the honest label must differ from the current-location label.
+      expect(en['locFallbackNotice']!.toLowerCase(),
+          isNot(contains('kuala lumpur')));
+      expect(en['locFallbackNotice']!.toLowerCase(), contains('location'));
+      // the honest unavailable label must differ from the current-location label.
       expect(en['locDefaultArea'], isNot(en['yourArea']));
     });
   });
