@@ -17,7 +17,7 @@ import '../../models/place_summary.dart';
 
 /// Phase 2.2B — pengecam binaan KELIHATAN untuk pengesahan peranti sebenar.
 /// Bump nilai ini setiap rebuild supaya pemilik boleh sahkan APK baharu.
-const String kAlgo2BuildId = 'A2-REGISTRY-SEARCH-20260912';
+const String kAlgo2BuildId = 'B5-DISCOVERY-20261007';
 
 @immutable
 class ExplorePaginationState {
