@@ -4,6 +4,8 @@
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 import {defineSecret, defineString} from "firebase-functions/params";
 
+import {db} from "../config/firebase";
+
 import {
   processAppleSubscription,
   readAppleConfig,
@@ -27,6 +29,59 @@ export const appleQaAppAppleId = defineString("APPLE_QA_APP_APPLE_ID", {default:
 interface VerifyInput {
   productId?: string;
   originalTransactionId?: string;
+}
+
+/**
+ * TestFlight IAP runs in Apple Sandbox even for the production bundle.
+ *
+ * The client cannot enable this. An owner must create
+ * billing_runtime/testflight_sandbox with:
+ *   enabled: true
+ *   expiresAt: Firestore Timestamp (future)
+ *   allowedUids: [uid, ...] and/or
+ *   allowedEmails: ["verified@example.com", ...]
+ *
+ * Missing, expired, or non-matching configuration fails closed.
+ */
+async function testFlightSandboxAllowed(
+  uid: string,
+  token: Record<string, unknown>,
+): Promise<boolean> {
+  const snap = await db
+    .collection("billing_runtime")
+    .doc("testflight_sandbox")
+    .get();
+  if (!snap.exists) return false;
+
+  const data = snap.data() ?? {};
+  if (data.enabled !== true) return false;
+
+  const rawExpiry = data.expiresAt;
+  const expiryMillis =
+    typeof rawExpiry === "number" ?
+      rawExpiry :
+      rawExpiry && typeof rawExpiry.toMillis === "function" ?
+        rawExpiry.toMillis() :
+        0;
+  if (!Number.isFinite(expiryMillis) || expiryMillis <= Date.now()) {
+    return false;
+  }
+
+  const allowedUids = Array.isArray(data.allowedUids) ?
+    data.allowedUids.filter((value): value is string => typeof value === "string") :
+    [];
+  if (allowedUids.includes(uid)) return true;
+
+  const email =
+    typeof token.email === "string" ? token.email.trim().toLowerCase() : "";
+  const emailVerified = token.email_verified === true;
+  const allowedEmails = Array.isArray(data.allowedEmails) ?
+    data.allowedEmails
+      .filter((value): value is string => typeof value === "string")
+      .map((value) => value.trim().toLowerCase()) :
+    [];
+
+  return emailVerified && email.length > 0 && allowedEmails.includes(email);
 }
 
 export const verifyAppleSubscription = onCall(
@@ -65,12 +120,18 @@ export const verifyAppleSubscription = onCall(
       qaAppAppleId: appleQaAppAppleId.value(),
     });
 
+    const allowTestFlightSandbox = await testFlightSandboxAllowed(
+      uid,
+      request.auth?.token ?? {},
+    );
+
     const result = await processAppleSubscription({
       uid,
       originalTransactionId,
       expectedProductId: productId,
       config,
       source: "verifyAppleSubscription",
+      allowTestFlightSandbox,
     });
 
     const e = result.entitlement;
