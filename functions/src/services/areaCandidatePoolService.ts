@@ -23,7 +23,10 @@ import {
 
 const C_AREA = "area_place_cache";
 const CELL_FRESH_MS = 24 * 60 * 60 * 1000;
-const MIN_DENSITY = 12;
+// Release discovery: 12 terlalu rendah dan menyebabkan kawasan dianggap
+// "cukup" selepas hanya satu page UI. Sasaran 36 memberi bekalan sekurang-
+// kurangnya tiga page Explore sebelum coverage dianggap sihat.
+const MIN_DENSITY = 36;
 const DISCOVERY_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 const MAX_CANDIDATES_PER_CELL = 400;
 const CURRENT_MEDIA_VERSION = 2;
