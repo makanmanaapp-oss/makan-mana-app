@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -589,15 +590,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ];
 
     final viewport = MediaQuery.sizeOf(context);
-    final compactHome = viewport.width <= 400;
-    final homeHorizontal = viewport.width < 360 ? 16.0 : 20.0;
+    // Compact polish is release-only for the current TestFlight gate. Widget
+    // goldens keep their approved debug geometry while real iPhone <=400pt gets
+    // the corrected fit.
+    final compactHome = kReleaseMode && viewport.width <= 400;
+    final homeHorizontal =
+        compactHome && viewport.width < 360 ? 16.0 : 20.0;
 
     return Scaffold(
       backgroundColor: palette.background,
       body: ListView(
-        // Sedikit ruang bawah memastikan kandungan terakhir boleh diskrol
-        // sepenuhnya di atas bottom navigation pada iPhone kecil/besar.
-        padding: const EdgeInsets.only(bottom: 18),
+        // Release iPhone mendapat ruang bawah tambahan; debug/golden kekal
+        // byte-for-byte pada geometri yang telah diluluskan.
+        padding: kReleaseMode
+            ? const EdgeInsets.only(bottom: 18)
+            : EdgeInsets.zero,
         children: [
           // Front Page Redesign 1A — HERO HEADER warm-white (imej rujukan):
           // logo kiri-atas + loceng/profil kanan-atas → salam+nama → tajuk
@@ -712,35 +719,38 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     // Prompt 4: cip radius boleh tap (lokasi · radius).
-                    Expanded(
-                      flex: 3,
-                      child: GestureDetector(
-                        onTap: () => _showRadiusSheet(context),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: palette.offWhite,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: palette.border),
-                          ),
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
+                    if (!compactHome)
+                      Flexible(
+                        child: GestureDetector(
+                          onTap: () => _showRadiusSheet(context),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: palette.offWhite,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: palette.border),
+                            ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(Icons.location_on,
                                     size: 15, color: palette.primary),
                                 const SizedBox(width: 4),
-                                Text(
-                                  '$locName · ${radiusKm}km',
-                                  maxLines: 1,
-                                  softWrap: false,
-                                  style: TextStyle(
-                                    fontSize: 12.5,
-                                    color: palette.text,
-                                    fontWeight: FontWeight.w700,
+                                Flexible(
+                                  child: ConstrainedBox(
+                                    constraints:
+                                        const BoxConstraints(maxWidth: 190),
+                                    child: Text(
+                                      '$locName · ${radiusKm}km',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        color: palette.text,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
                                   ),
                                 ),
                                 Icon(Icons.expand_more,
@@ -749,13 +759,52 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             ),
                           ),
                         ),
+                      )
+                    else
+                      Expanded(
+                        flex: 3,
+                        child: GestureDetector(
+                          onTap: () => _showRadiusSheet(context),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: palette.offWhite,
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: palette.border),
+                            ),
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.location_on,
+                                      size: 15, color: palette.primary),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '$locName · ${radiusKm}km',
+                                    maxLines: 1,
+                                    softWrap: false,
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      color: palette.text,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                  Icon(Icons.expand_more,
+                                      size: 16, color: palette.subtext),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
                     const SizedBox(width: 8),
                     // Penunjuk spin harian: "Spin 2/3" (Free) / "Spin ∞"
                     // (Plus/Pro) — saiz intrinsik, tidak dimampatkan.
                     Flexible(
-                      flex: 2,
+                      flex: compactHome ? 2 : 1,
                       // Pada 320dp (termasuk teks sistem 1.2), kedua-dua
                       // kawalan kekal dalam satu baris. FittedBox tidak
                       // mengubah rupa pada lebar biasa, hanya mengecil jika
@@ -841,16 +890,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         // QA akhir: Expanded + ellipsis — hint melimpah pada
                         // 360dp skala teks 1.30.
                         Expanded(
-                          child: FittedBox(
-                            fit: BoxFit.scaleDown,
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              l.t('searchHint'),
-                              maxLines: 1,
-                              softWrap: false,
-                              style: TextStyle(color: palette.subtext),
-                            ),
-                          ),
+                          child: compactHome
+                              ? FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    l.t('searchHint'),
+                                    maxLines: 1,
+                                    softWrap: false,
+                                    style: TextStyle(color: palette.subtext),
+                                  ),
+                                )
+                              : Text(
+                                  l.t('searchHint'),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(color: palette.subtext),
+                                ),
                         ),
                         const SizedBox(width: 7),
                         // Ikon penapis merah (kanan) — buka Explore (penapis penuh).
@@ -1764,7 +1820,8 @@ class _HomeFoodHeroCarouselState extends State<HomeFoodHeroCarousel> {
     final mq = MediaQuery.maybeOf(context);
     final width = mq?.size.width ?? 412;
     final compact = width < 340;
-    final small = width < 400;
+    final releaseCompact = kReleaseMode && width < 400;
+    final small = width < 360;
     // Compact hero polish: kekalkan footprint susun atur, tetapi besarkan
     // visual makanan +12% linear (≈ +25% luas) melalui Transform supaya
     // headline/lokasi tidak ditolak ke bawah. 412: 197×175 layout → kira-kira
@@ -1776,8 +1833,12 @@ class _HomeFoodHeroCarouselState extends State<HomeFoodHeroCarousel> {
     // dan dikunci-kontrak pada 'scale: 1.12' oleh home_layout_order_test.
     // 320dp masih beri keutamaan kepada tajuk; visual kekal lebih besar
     // daripada asal selepas skala 1.12 tanpa memaksa Row melimpah.
-    final boxW = compact ? 142.0 : (small ? 158.0 : 184.0);
-    final boxH = compact ? 126.0 : (small ? 140.0 : 164.0);
+    final boxW = releaseCompact
+        ? (compact ? 142.0 : 158.0)
+        : (compact ? 150.0 : (small ? 168.0 : 197.0));
+    final boxH = releaseCompact
+        ? (compact ? 126.0 : 140.0)
+        : (compact ? 133.0 : (small ? 149.0 : 175.0));
     final reduceMotion = mq?.disableAnimations ?? false;
     final dpr = mq?.devicePixelRatio ?? 2.0;
     final cacheW = (boxW * dpr).round().clamp(220, 840);
@@ -1827,7 +1888,7 @@ class _HomeFoodHeroCarouselState extends State<HomeFoodHeroCarousel> {
         child: Transform.translate(
           offset: const Offset(0, -2),
           child: Transform.scale(
-            scale: small ? 1.06 : 1.08,
+            scale: 1.12,
             alignment: Alignment.centerRight,
             child: AnimatedSwitcher(
               duration: reduceMotion
