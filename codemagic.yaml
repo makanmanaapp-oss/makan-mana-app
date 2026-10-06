@@ -10,7 +10,7 @@ workflows:
       ios_build_number:
         description: Unique iOS build number for App Store Connect
         type: number
-        default: 3
+        default: 4
       upload_to_testflight:
         description: Upload the signed IPA to App Store Connect/TestFlight after validation
         type: boolean
