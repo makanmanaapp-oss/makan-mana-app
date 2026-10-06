@@ -174,9 +174,16 @@ export const getNearbyPlaces = onCall(
             ? area.pool.candidates
             : await searchNearby({lat, lng, radiusMeters: radiusM, languageCode, apiKey});
           source = area.usedFallback ? "area_pool_fallback" : "area_pool";
+          const makanManaCount = area.pool.candidates.filter(
+            (p) => typeof p.canonicalPlaceId === "string" &&
+              p.canonicalPlaceId.trim().length > 0,
+          ).length;
+          const googleSupplementCount = area.pool.candidates.length - makanManaCount;
           logger.info("getNearbyPlaces.areaCoverage", {
             cohortId: rollout.cohortId,
             areaPoolTotal: area.pool.candidates.length,
+            makanManaCount,
+            googleSupplementCount,
             knownCanonicalCount: area.pool.knownCanonicalCount,
             exactRadiusCount: area.pool.exactRadiusCount,
             activePlaceCount: area.pool.activePlaceCount,
