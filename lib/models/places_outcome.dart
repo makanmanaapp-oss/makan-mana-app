@@ -25,6 +25,9 @@ enum PlacesUnavailableReason {
 
   /// Klien tidak dapat menghubungi pelayan langsung.
   network,
+
+  /// Lokasi peranti belum tersedia / belum dibenarkan.
+  location,
 }
 
 /// Hasil carian tempat. Tepat satu daripada tiga keadaan.
