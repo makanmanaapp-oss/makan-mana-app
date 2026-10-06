@@ -16,9 +16,11 @@ import {
   appleEntitlementToUserFields,
 } from "../domain/billing/appStoreSubscription";
 import {
+  APPLE_ENV_SANDBOX,
   buildAppStoreJwtClaims,
 } from "../domain/billing/appStoreJws";
 import {
+  APPLE_SANDBOX_HOST,
   resolveAppleAppIdentity,
   type AppleAppIdentity,
 } from "../domain/billing/appleAppIdentity";
@@ -190,25 +192,53 @@ export async function processAppleSubscription(input: {
   config: AppleVerificationConfig;
   nowMillis?: number;
   source: string;
+  /**
+   * TestFlight uses Apple Sandbox even for the production bundle. This flag is
+   * never trusted from the client; the callable derives it from a server-only
+   * allowlist with an expiry. Default false keeps production fail-closed.
+   */
+  allowTestFlightSandbox?: boolean;
   /** Offline test dependencies; never derived from request data. */
   verifier?: AppleSignedData;
 }): Promise<AppleVerificationResult> {
   const nowMillis = input.nowMillis ?? Date.now();
   const bearer = signAppStoreJwt({config: input.config, nowMillis});
 
-  // S-1 — SATU hos, ditentukan oleh identiti projek backend. Dahulu kod ini
-  // mencuba produksi lalu jatuh ke sandbox pada 404, dan menganggap hos yang
-  // menjawab sebagai persekitaran. Hos ialah pilihan KITA, bukan bukti; dan
-  // laluan jatuh itu bermakna transaksi Sandbox boleh disahkan terhadap
-  // produksi. Persekitaran kini datang daripada tuntutan BERTANDATANGAN,
-  // yang disahkan terhadap identiti yang dijangka di bawah.
-  const identity = input.config.identity;
-  const environment = identity.environment;
-  const result = await statusFetcher({
+  // Production App Store remains the first and default authority.
+  // TestFlight is the one deliberate exception: Apple serves its IAP
+  // transactions from Sandbox even though the binary uses the production
+  // bundle id. A server-only, expiring allowlist must opt the tester in before
+  // we are allowed to consult Sandbox.
+  let identity = input.config.identity;
+  let result = await statusFetcher({
     host: identity.host,
     originalTransactionId: input.originalTransactionId,
     bearer,
   });
+
+  if (result.status === 404 &&
+      input.allowTestFlightSandbox === true &&
+      identity.projectClass === "PRODUCTION") {
+    const sandboxIdentity: AppleAppIdentity = {
+      bundleId: identity.bundleId,
+      environment: APPLE_ENV_SANDBOX,
+      // App Store Server Library only requires appAppleId for Production.
+      appAppleId: undefined,
+      host: APPLE_SANDBOX_HOST,
+      projectClass: identity.projectClass,
+    };
+    const sandboxResult = await statusFetcher({
+      host: sandboxIdentity.host,
+      originalTransactionId: input.originalTransactionId,
+      bearer,
+    });
+    if (sandboxResult.status === 200) {
+      identity = sandboxIdentity;
+      result = sandboxResult;
+    }
+  }
+
+  const environment = identity.environment;
   if (result.status === 404) {
     throw new HttpsError("not-found", "Langganan tidak dijumpai.");
   }
@@ -239,7 +269,10 @@ export async function processAppleSubscription(input: {
   const idHash = hashId(originalTransactionId);
   const verificationRef = db.collection("subscription_verifications").doc(idHash);
   const userRef = db.collection("users").doc(input.uid);
-  const fields = appleEntitlementToUserFields(entitlement);
+  const fields = appleEntitlementToUserFields(
+    entitlement,
+    environment === APPLE_ENV_SANDBOX ? "app_store_testflight" : "app_store",
+  );
   const eventHash = hashId(JSON.stringify([
     environment, originalTransactionId, transaction.transactionId,
     transaction.signedDate, entitlement.planStatus, entitlement.expiryMillis,
