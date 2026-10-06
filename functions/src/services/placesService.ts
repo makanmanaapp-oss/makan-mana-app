@@ -223,27 +223,35 @@ async function resolvePhotoUrl(
   photoName: string,
   apiKey: string,
 ): Promise<string | null> {
-  try {
-    // Pagar egress — dinilai pada setiap panggilan, bebas daripada rahsia.
-    const egress = decideEgress({kind: "google_cloud_api"});
-    if (!egress.allowed) return null;
-    const res = await fetch(
-      `https://places.googleapis.com/v1/${photoName}/media` +
-        `?maxWidthPx=800&skipHttpRedirect=true&key=${apiKey}`,
-    );
-    if (!res.ok) return null;
-    const data = (await res.json()) as {photoUri?: string};
-    return data.photoUri ?? null;
-  } catch (e) {
-    console.error("resolvePhotoUrl gagal:", e);
-    return null;
+  // Photo media resolution can fail transiently. Retry once before recording
+  // the venue as image-less; otherwise one network/provider blip can poison
+  // a long-lived area cache.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const egress = decideEgress({kind: "google_cloud_api"});
+      if (!egress.allowed) return null;
+      const res = await fetch(
+        `https://places.googleapis.com/v1/${photoName}/media` +
+          `?maxWidthPx=800&skipHttpRedirect=true&key=${apiKey}`,
+      );
+      if (res.ok) {
+        const data = (await res.json()) as {photoUri?: string};
+        if (data.photoUri) return data.photoUri;
+      }
+    } catch (e) {
+      console.error("resolvePhotoUrl gagal:", e);
+    }
+    if (attempt === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
   }
+  return null;
 }
 
 function cacheId(lat: number, lng: number, radiusMeters: number): string {
-  // v2: skema cache dengan photoUrl - id baharu supaya cache lama
-  // (tanpa foto) tidak dipakai sementara menunggu luput.
-  return `v2_${lat.toFixed(3)}_${lng.toFixed(3)}_${radiusMeters}`;
+  // v3: invalidate area caches created while photo resolution was unhealthy.
+  // The client already understands photoUrl, so this is backend-only.
+  return `v3_${lat.toFixed(3)}_${lng.toFixed(3)}_${radiusMeters}`;
 }
 
 /** Cari tempat makan berdekatan: cache 7 hari dahulu, API jika perlu. */
@@ -257,8 +265,14 @@ export async function searchNearby(
   if (cached.exists) {
     const data = cached.data();
     const expiresAt = data?.expiresAt?.toDate?.() as Date | undefined;
-    if (expiresAt && expiresAt.getTime() > Date.now()) {
-      // Kawasan pernah dilawati: 0 panggilan API, kira buka/tutup semula.
+    const createdAt = data?.createdAt?.toDate?.() as Date | undefined;
+    const photoResolutionFailed = data?.photoResolutionFailed === true;
+    const retryAfterMs = 30 * 60 * 1000;
+    const photoRetryDue = photoResolutionFailed &&
+      (!createdAt || Date.now() - createdAt.getTime() >= retryAfterMs);
+    if (expiresAt && expiresAt.getTime() > Date.now() && !photoRetryDue) {
+      // Valid cache. If a real photo reference failed to resolve, retry the
+      // provider after a short backoff instead of persisting the null for 7d.
       return applyOpenStatus((data?.places as PlaceCandidate[]) ?? []);
     }
   }
@@ -295,15 +309,17 @@ export async function searchNearby(
     toCandidate(p, opts.lat, opts.lng),
   );
 
-  // Selesaikan foto secara selari - sekali sahaja per isi cache.
+  // Selesaikan foto secara selari. Bezakan "venue memang tiada photo
+  // reference" daripada "Google beri reference tetapi media resolution gagal".
+  // Hanya kes kedua perlu retry cache kemudian.
+  let photoResolutionFailed = false;
   await Promise.all(
     rawPlaces.map(async (raw, i) => {
       const photoName = raw.photos?.[0]?.name;
       if (photoName) {
-        candidates[i].photoUrl = await resolvePhotoUrl(
-          photoName,
-          opts.apiKey,
-        );
+        const resolved = await resolvePhotoUrl(photoName, opts.apiKey);
+        candidates[i].photoUrl = resolved;
+        if (resolved == null) photoResolutionFailed = true;
       }
     }),
   );
@@ -316,6 +332,7 @@ export async function searchNearby(
     radiusMeters: opts.radiusMeters,
     createdAt: FieldValue.serverTimestamp(),
     expiresAt,
+    photoResolutionFailed,
     places: candidates,
   });
   for (const c of candidates) {
