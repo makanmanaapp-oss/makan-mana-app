@@ -29,7 +29,7 @@ class GeolocatorBackend implements LocationBackend {
   Future<Position> getCurrentPosition() => Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.medium,
-          timeLimit: Duration(seconds: 6),
+          timeLimit: Duration(seconds: 12),
         ),
       );
   @override
