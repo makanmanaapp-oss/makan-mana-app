@@ -26,12 +26,14 @@ const CELL_FRESH_MS = 24 * 60 * 60 * 1000;
 const MIN_DENSITY = 12;
 const DISCOVERY_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 const MAX_CANDIDATES_PER_CELL = 400;
+const CURRENT_MEDIA_VERSION = 2;
 
 interface CellDoc {
   cellId: string;
   candidates: PlaceCandidate[];
   lastDiscoveryAt?: number;
   updatedAt?: number;
+  mediaVersion?: number;
 }
 
 function toAreaPlace(c: PlaceCandidate, origin: "registry" | "discovery"): AreaPlace | null {
@@ -135,7 +137,15 @@ export async function getAreaCandidatePool(req: AreaPoolRequest): Promise<AreaPo
     });
 
     const { status, cooldownActive } = coverageStatusOf(cellIds, cellDocs, req.now);
-    const decision = decideAreaDiscovery({
+
+    // MEDIA BACKFILL v2: sel lama boleh mengandungi candidate dengan
+    // photoUrl=null yang sebelum ini tidak pernah boleh disegarkan. Paksa satu
+    // discovery untuk dokumen lama, kemudian cap mediaVersion supaya ia tidak
+    // mengulang provider call pada setiap request.
+    const mediaUpgradeRequired = [...cellDocs.values()].some(
+      (doc) => (doc.mediaVersion ?? 0) < CURRENT_MEDIA_VERSION,
+    );
+    const baseDecision = decideAreaDiscovery({
       knownActiveCount: knownPoolPre.activePlaceCount,
       coverageStatus: status,
       minDensity: MIN_DENSITY,
@@ -143,6 +153,9 @@ export async function getAreaCandidatePool(req: AreaPoolRequest): Promise<AreaPo
       cooldownActive,
       forced: req.forced === true,
     });
+    const decision = mediaUpgradeRequired
+      ? {discover: true, reason: "media_backfill_v2"}
+      : baseDecision;
 
     let merged = known;
     let newlyDiscovered = 0;
@@ -161,7 +174,9 @@ export async function getAreaCandidatePool(req: AreaPoolRequest): Promise<AreaPo
       merged = res.merged;
       newlyDiscovered = res.newCount;
 
-      if (newlyDiscovered > 0 || known.length === 0) {
+      // Persist juga duplicate yang disegarkan. Kalau tidak, foto/rating
+      // baharu hanya hidup untuk satu response dan request seterusnya baca lama.
+      if (discovered.length > 0 || known.length === 0) {
         await persistDiscovered(merged, req.now);
       } else {
         await touchCells(cellIds, req.now);
@@ -216,7 +231,13 @@ async function persistDiscovered(merged: readonly AreaPlace[], now: number): Pro
     const list = dedupeCanonicalCandidates(cands).slice(0, MAX_CANDIDATES_PER_CELL);
     batch.set(
       db.collection(C_AREA).doc(cellId),
-      { cellId, candidates: list, lastDiscoveryAt: now, updatedAt: now },
+      {
+        cellId,
+        candidates: list,
+        lastDiscoveryAt: now,
+        updatedAt: now,
+        mediaVersion: CURRENT_MEDIA_VERSION,
+      },
       { merge: true },
     );
   }
