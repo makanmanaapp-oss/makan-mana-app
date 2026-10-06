@@ -15,6 +15,7 @@ import {
   AreaCandidatePool,
   AreaCoverageStatus,
   AreaPlace,
+  applySourceCandidateQuota,
   buildAreaCandidatePool,
   decideAreaDiscovery,
   enumerateCellsForRadius,
@@ -125,19 +126,10 @@ function isMakanManaCanonical(c: PlaceCandidate): boolean {
  */
 function dedupePool(pool: AreaCandidatePool): AreaCandidatePool {
   const deduped = dedupeCanonicalCandidates(pool.candidates);
-  const candidates: PlaceCandidate[] = [];
-  let providerCount = 0;
-
-  for (const candidate of deduped) {
-    if (isMakanManaCanonical(candidate)) {
-      candidates.push(candidate);
-      continue;
-    }
-    if (providerCount < GOOGLE_SUPPLEMENT_LIMIT) {
-      candidates.push(candidate);
-      providerCount++;
-    }
-  }
+  const candidates = applySourceCandidateQuota(
+    deduped,
+    GOOGLE_SUPPLEMENT_LIMIT,
+  );
 
   return {
     ...pool,
