@@ -588,10 +588,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       ('moodHealthy', MmIconType.healthy),
     ];
 
+    final viewport = MediaQuery.sizeOf(context);
+    final compactHome = viewport.width <= 400;
+    final homeHorizontal = viewport.width < 360 ? 16.0 : 20.0;
+
     return Scaffold(
       backgroundColor: palette.background,
       body: ListView(
-        padding: EdgeInsets.zero,
+        // Sedikit ruang bawah memastikan kandungan terakhir boleh diskrol
+        // sepenuhnya di atas bottom navigation pada iPhone kecil/besar.
+        padding: const EdgeInsets.only(bottom: 18),
         children: [
           // Front Page Redesign 1A — HERO HEADER warm-white (imej rujukan):
           // logo kiri-atas + loceng/profil kanan-atas → salam+nama → tajuk
@@ -600,7 +606,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           Container(
             width: double.infinity,
             padding: EdgeInsets.fromLTRB(
-                20, MediaQuery.paddingOf(context).top + 4, 16, 8),
+                homeHorizontal,
+                MediaQuery.paddingOf(context).top + (compactHome ? 2 : 4),
+                homeHorizontal,
+                compactHome ? 4 : 8),
             color: palette.background,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -621,7 +630,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     _ThreadsButton(palette: palette),
                   ],
                 ),
-                const SizedBox(height: 6),
+                SizedBox(height: compactHome ? 3 : 6),
                 // PRE-AAB: salam PREMIUM dua-lapis — frasa masa ringan (subtext)
                 // di baris atas, NAMA sebenar pengguna disorot kuat (w800, teks
                 // gelap, lebih besar) di baris bawah. Localization dikekalkan
@@ -655,8 +664,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                            fontSize: 20,
-                            height: 1.05,
+                            fontSize: compactHome ? 18 : 20,
+                            height: 1.04,
                             color: palette.text,
                             fontWeight: FontWeight.w800,
                           ),
@@ -665,7 +674,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ],
                   );
                 }),
-                const SizedBox(height: 4),
+                SizedBox(height: compactHome ? 2 : 4),
                 // 4 + 5. Tajuk besar (satu perkataan disorot) + visual hero.
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
@@ -683,19 +692,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         // Polished compact hero: 29 → 27 (-6.9%) while
                         // retaining the existing hierarchy and wrapping.
                         style: TextStyle(
-                          fontSize: 27,
+                          fontSize: compactHome ? 24 : 27,
                           fontWeight: FontWeight.w800,
-                          height: 1.12,
+                          height: 1.08,
                           color: palette.text,
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    SizedBox(width: compactHome ? 4 : 8),
                     // Carousel makanan (ganti grafik bulatan-merah/ikon lama).
                     HomeFoodHeroCarousel(palette: palette),
                   ],
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: compactHome ? 5 : 8),
                 // UI-01b: chip spin ambil saiz intrinsik (sentiasa boleh
                 // dibaca); chip radius pula yang mengecil dahulu — Spacer
                 // lama memampatkan chip spin kepada "S…" pada 360dp.
@@ -703,7 +712,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     // Prompt 4: cip radius boleh tap (lokasi · radius).
-                    Flexible(
+                    Expanded(
+                      flex: 3,
                       child: GestureDetector(
                         onTap: () => _showRadiusSheet(context),
                         child: Container(
@@ -714,33 +724,29 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             borderRadius: BorderRadius.circular(20),
                             border: Border.all(color: palette.border),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.location_on,
-                                  size: 15, color: palette.primary),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                child: ConstrainedBox(
-                                  // Inter sedikit lebih lebar — beri ruang
-                                  // supaya "· 3km" tidak dielipsiskan.
-                                  constraints:
-                                      const BoxConstraints(maxWidth: 190),
-                                  child: Text(
-                                    '$locName · ${radiusKm}km',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 12.5,
-                                      color: palette.text,
-                                      fontWeight: FontWeight.w700,
-                                    ),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.location_on,
+                                    size: 15, color: palette.primary),
+                                const SizedBox(width: 4),
+                                Text(
+                                  '$locName · ${radiusKm}km',
+                                  maxLines: 1,
+                                  softWrap: false,
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    color: palette.text,
+                                    fontWeight: FontWeight.w700,
                                   ),
                                 ),
-                              ),
-                              Icon(Icons.expand_more,
-                                  size: 16, color: palette.subtext),
-                            ],
+                                Icon(Icons.expand_more,
+                                    size: 16, color: palette.subtext),
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -749,6 +755,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     // Penunjuk spin harian: "Spin 2/3" (Free) / "Spin ∞"
                     // (Plus/Pro) — saiz intrinsik, tidak dimampatkan.
                     Flexible(
+                      flex: 2,
                       // Pada 320dp (termasuk teks sistem 1.2), kedua-dua
                       // kawalan kekal dalam satu baris. FittedBox tidak
                       // mengubah rupa pada lebar biasa, hanya mengecil jika
@@ -799,7 +806,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+            padding: EdgeInsets.fromLTRB(
+                homeHorizontal, compactHome ? 10 : 14, homeHorizontal, 20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -833,11 +841,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         // QA akhir: Expanded + ellipsis — hint melimpah pada
                         // 360dp skala teks 1.30.
                         Expanded(
-                          child: Text(
-                            l.t('searchHint'),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(color: palette.subtext),
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              l.t('searchHint'),
+                              maxLines: 1,
+                              softWrap: false,
+                              style: TextStyle(color: palette.subtext),
+                            ),
                           ),
                         ),
                         const SizedBox(width: 7),
@@ -1752,7 +1764,7 @@ class _HomeFoodHeroCarouselState extends State<HomeFoodHeroCarousel> {
     final mq = MediaQuery.maybeOf(context);
     final width = mq?.size.width ?? 412;
     final compact = width < 340;
-    final small = width < 360;
+    final small = width < 400;
     // Compact hero polish: kekalkan footprint susun atur, tetapi besarkan
     // visual makanan +12% linear (≈ +25% luas) melalui Transform supaya
     // headline/lokasi tidak ditolak ke bawah. 412: 197×175 layout → kira-kira
@@ -1764,8 +1776,8 @@ class _HomeFoodHeroCarouselState extends State<HomeFoodHeroCarousel> {
     // dan dikunci-kontrak pada 'scale: 1.12' oleh home_layout_order_test.
     // 320dp masih beri keutamaan kepada tajuk; visual kekal lebih besar
     // daripada asal selepas skala 1.12 tanpa memaksa Row melimpah.
-    final boxW = compact ? 150.0 : (small ? 168.0 : 197.0);
-    final boxH = compact ? 133.0 : (small ? 149.0 : 175.0);
+    final boxW = compact ? 142.0 : (small ? 158.0 : 184.0);
+    final boxH = compact ? 126.0 : (small ? 140.0 : 164.0);
     final reduceMotion = mq?.disableAnimations ?? false;
     final dpr = mq?.devicePixelRatio ?? 2.0;
     final cacheW = (boxW * dpr).round().clamp(220, 840);
@@ -1815,7 +1827,7 @@ class _HomeFoodHeroCarouselState extends State<HomeFoodHeroCarousel> {
         child: Transform.translate(
           offset: const Offset(0, -2),
           child: Transform.scale(
-            scale: 1.12,
+            scale: small ? 1.06 : 1.08,
             alignment: Alignment.centerRight,
             child: AnimatedSwitcher(
               duration: reduceMotion
