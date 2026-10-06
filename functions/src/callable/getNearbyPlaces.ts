@@ -7,7 +7,7 @@ import {rankUnified} from "../domain/algorithm2/unifiedRanking";
 import {buildRecCtxFromHydration} from "../services/recommendationContextBuilder";
 import {ADMIN_UIDS} from "../config/constants";
 import {db} from "../config/firebase";
-import {paginateRanked} from "../domain/algorithm2/sessionEngine";
+import {applyCuisineDiversity, paginateRanked} from "../domain/algorithm2/sessionEngine";
 import {resolveCohortAuthorization} from "../domain/places/canonical/canonicalReadResolver";
 import {
   dedupeCanonicalCandidates,
@@ -18,7 +18,7 @@ import {algorithm2LiveEligible as isAlgorithm2LiveEligible, ownerDiagnosticsAllo
 import {applyCanonicalOverlay} from "../services/canonicalReadService";
 import {getAreaCandidatePool} from "../services/areaCandidatePoolService";
 import {getExpandedPool} from "../services/expandedPoolService";
-import {searchNearby} from "../services/placesService";
+import {searchNearby, searchTextRestaurants} from "../services/placesService";
 import {
   PLACES_STATUS_OK,
   PLACES_STATUS_UNAVAILABLE,
@@ -72,6 +72,7 @@ export const getNearbyPlaces = onCall(
     const query = typeof input.query === "string"
       ? input.query.trim().slice(0, MAX_SEARCH_QUERY)
       : "";
+    const isExploreRequest = input.cursor !== undefined;
     // LOCATION CONSISTENCY — echo lokasi yang PELAYAN benar-benar guna (untuk
     // silang-sah Home/Explore) + telemetri bila klien TIDAK hantar koordinat.
     const requestLocation = {
@@ -82,7 +83,27 @@ export const getNearbyPlaces = onCall(
       usedDefaultKL: !hasClientCoords,
     };
     if (!hasClientCoords) {
-      logger.warn("getNearbyPlaces.noClientCoords", {radiusM, cursor: input.cursor ?? null});
+      logger.warn("getNearbyPlaces.noClientCoords", {
+        radiusM,
+        cursor: input.cursor ?? null,
+        searchActive: Boolean(query),
+      });
+    }
+
+    // RELEASE FIX: jangan lagi memaparkan restoran KL seolah-olah ia fallback
+    // yang berguna bila lokasi pengguna gagal. Tanpa koordinat, browse biasa
+    // mesti berhenti secara jujur. Carian teks masih dibenarkan kerana query
+    // eksplisit seperti "Puncak Alam" boleh menentukan kawasan sendiri.
+    if (!hasClientCoords && !query) {
+      return {
+        status: "PLACES_UNAVAILABLE",
+        reason: "location_unavailable",
+        retryable: true,
+        source: "location_unavailable",
+        nextCursor: null,
+        endOfResults: true,
+        poolSize: 0,
+      };
     }
 
     let candidates: PlaceCandidate[] = [];
@@ -103,16 +124,38 @@ export const getNearbyPlaces = onCall(
     const algorithm2LiveEligible = isAlgorithm2LiveEligible(rollout);
     const diagnosticsAllowed = ownerDiagnosticsAllowed(rollout);
     const forceLegacy = input.forceLegacy === true;
+    // Explore ialah permukaan browse teras, bukan eksperimen cohort. Ia perlu
+    // pool besar + pagination untuk SEMUA pengguna. Algorithm 2 masih mengawal
+    // scoring/session khusus, tetapi retrieval Explore tidak lagi dikunci 12.
     const useExpandedPool = !forceLegacy &&
-      algorithm2FlagActive("expandedPool", algorithm2LiveEligible);
+      (isExploreRequest ||
+        algorithm2FlagActive("expandedPool", algorithm2LiveEligible));
     const areaCoverageOn = process.env.AREA_COVERAGE_POOL_ENABLED === "true" &&
-      !forceLegacy && algorithm2LiveEligible;
+      !forceLegacy && (isExploreRequest || algorithm2LiveEligible);
 
     // WAVE 3E — data tempat SINTETIK untuk QA Explore. Aktif HANYA dengan
     // MM_QA_SYNTHETIC_PLACES=enabled DAN runtime QA; produksi tidak pernah
     // diaktifkan walaupun bendera ditetapkan. Tiada panggilan Places.
     const synthetic = decideSyntheticPlaces({env: process.env});
-    if (synthetic.active) {
+    if (!hasClientCoords && query && apiKey) {
+      // Carian kawasan/nama global. Jangan bias kepada KL apabila GPS tiada.
+      try {
+        candidates = await searchTextRestaurants({
+          query,
+          languageCode,
+          apiKey,
+          radiusMeters: radiusM,
+        });
+        source = "places_text_search";
+      } catch (e) {
+        logger.error("getNearbyPlaces.textSearchError", {
+          error: e instanceof Error ? e.message : "unknown",
+          queryLength: query.length,
+        });
+        providerError = true;
+        candidates = [];
+      }
+    } else if (synthetic.active) {
       candidates = buildSyntheticPlaces({lat, lng});
       source = "qa_synthetic";
       logger.info("getNearbyPlaces.qaSynthetic", {reason: synthetic.reason});
@@ -164,6 +207,33 @@ export const getNearbyPlaces = onCall(
         });
         providerError = true;
         candidates = [];
+      }
+    }
+
+    // Explore Search: jika full retrieval pool semasa tidak mempunyai padanan,
+    // naik taraf kepada Places Text Search. Ini menjadikan query seperti nama
+    // restoran ATAU kawasan ("Puncak Alam") benar-benar mencari di provider,
+    // bukan sekadar menapis kad yang kebetulan telah dimuatkan.
+    if (query && hasClientCoords && apiKey && !providerError &&
+        searchCanonicalCandidates(candidates, query).length === 0) {
+      try {
+        const textMatches = await searchTextRestaurants({
+          query,
+          lat,
+          lng,
+          radiusMeters: radiusM,
+          languageCode,
+          apiKey,
+        });
+        if (textMatches.length > 0) {
+          candidates = textMatches;
+          source = "places_text_search";
+        }
+      } catch (e) {
+        logger.warn("getNearbyPlaces.textSearchFallbackFailed", {
+          error: e instanceof Error ? e.message : "unknown",
+          queryLength: query.length,
+        });
       }
     }
 
@@ -249,17 +319,19 @@ export const getNearbyPlaces = onCall(
       });
     }
 
-    // Explore Search MUST run over the full ranked pool before slicing to 12.
-    // Exact canonical-name matches are deterministic and come first, but every
-    // candidate has already passed the normal retrieval/radius/ranking pipeline.
+    // Browse mesti pelbagai walaupun pengguna bukan dalam cohort Algorithm 2.
+    // Max dua cuisine yang sama dalam 24 kedudukan pertama; lebihan ditolak ke
+    // belakang, bukan dibuang.
+    ranked = applyCuisineDiversity(ranked, {cuisineCap: 2, window: 24});
+
+    // Explore Search MUST run over the full ranked pool before pagination.
     if (query) {
       ranked = searchCanonicalCandidates(ranked, query);
     }
 
-    const paginate =
-      input.cursor !== undefined &&
-      !forceLegacy &&
-      algorithm2FlagActive("explorePagination", algorithm2LiveEligible);
+    // Klien Explore sentiasa menghantar cursor. Pagination ialah kontrak browse
+    // asas dan tidak lagi bergantung pada rollout Algorithm 2.
+    const paginate = input.cursor !== undefined;
 
     if (paginate) {
       const page = paginateRanked(ranked, Math.max(0, input.cursor ?? 0), 12);
