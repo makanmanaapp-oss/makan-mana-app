@@ -120,6 +120,21 @@ export const getSuggestions = onCall(
     };
     if (!hasClientCoords) {
       logger.warn("getSuggestions.noClientCoords", {mode: input.mode ?? "spin", radiusM});
+      // LOCATION AUTHORITY: jangan sekali-kali cadangkan KL apabila GPS sebenar
+      // tidak sampai. Caller mesti pulihkan lokasi dahulu.
+      return {
+        status: PLACES_STATUS_UNAVAILABLE,
+        mode,
+        source: "location_unavailable",
+        selectedMood: mood,
+        radiusMeters: radiusM,
+        primary: null,
+        alternatives: [],
+        candidates: [],
+        retryable: true,
+        reason: "location_unavailable",
+        algorithmVersion: "places_v1",
+      };
     }
 
     // Pelan dari users/{uid}; JANGAN percaya pelan dari client.
