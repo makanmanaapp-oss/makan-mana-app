@@ -105,6 +105,22 @@ class _PaywallScreenState extends ConsumerState<PaywallScreen> {
           ),
         );
       }
+    } on PurchaseStartDiagnosticException catch (e) {
+      // TEMP Build 5 TestFlight diagnostic. Papar hanya data selamat:
+      // stage + kod store + product id + mesej store yang ditapis.
+      // Tiada UID, appAccountToken, receipt atau transaction token.
+      debugPrint('MakanMana: purchase diagnostic: ${e.safeDisplay}');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            duration: const Duration(seconds: 12),
+            content: Text(
+              '${l.t('purchaseUnavailable')}\n'
+              'Kod diagnostik: ${e.safeDisplay}',
+            ),
+          ),
+        );
+      }
     } catch (e) {
       // Kegagalan sebenar (rangkaian/Play/pengesahan) — beritahu pengguna
       // dengan jujur supaya mereka boleh cuba semula, bukan memberitahu
