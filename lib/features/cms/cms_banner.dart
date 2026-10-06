@@ -136,6 +136,7 @@ class CmsBannerCard extends ConsumerWidget {
 
     final mm = context.mm;
     final media = content.media;
+    final compactHome = content.placement == CmsPlacement.homeTop;
 
     return Container(
       key: Key('cms-banner-${content.contentId}'),
@@ -187,7 +188,8 @@ class CmsBannerCard extends ConsumerWidget {
                   ),
                 ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                padding: EdgeInsets.fromLTRB(
+                    14, compactHome ? 10 : 12, 14, compactHome ? 10 : 12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -217,9 +219,12 @@ class CmsBannerCard extends ConsumerWidget {
                       ),
                     Text(
                       content.title,
+                      maxLines: compactHome ? 2 : null,
+                      overflow:
+                          compactHome ? TextOverflow.ellipsis : TextOverflow.clip,
                       style: TextStyle(
                         fontWeight: FontWeight.w800,
-                        fontSize: 15.5,
+                        fontSize: compactHome ? 15 : 15.5,
                         color: mm.onCard,
                       ),
                     ),
@@ -228,8 +233,13 @@ class CmsBannerCard extends ConsumerWidget {
                         padding: const EdgeInsets.only(top: 4),
                         child: Text(
                           content.subtitle,
+                          maxLines: compactHome ? 2 : null,
+                          overflow:
+                              compactHome ? TextOverflow.ellipsis : TextOverflow.clip,
                           style: TextStyle(
-                              color: mm.onCardMuted, fontSize: 13, height: 1.3),
+                              color: mm.onCardMuted,
+                              fontSize: compactHome ? 12.5 : 13,
+                              height: 1.28),
                         ),
                       ),
                     if (content.body.isNotEmpty)
@@ -237,8 +247,13 @@ class CmsBannerCard extends ConsumerWidget {
                         padding: const EdgeInsets.only(top: 6),
                         child: Text(
                           content.body,
+                          maxLines: compactHome ? 2 : null,
+                          overflow:
+                              compactHome ? TextOverflow.ellipsis : TextOverflow.clip,
                           style: TextStyle(
-                              color: mm.onCardMuted, fontSize: 12.5, height: 1.35),
+                              color: mm.onCardMuted,
+                              fontSize: compactHome ? 12 : 12.5,
+                              height: 1.3),
                         ),
                       ),
                     if (content.hasCta)
