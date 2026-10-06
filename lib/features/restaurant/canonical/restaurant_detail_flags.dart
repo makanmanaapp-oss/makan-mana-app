@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 /// PART 1 Phase 1.10 — feature flag Butiran Kedai kanonikal.
 ///
 /// Default OFF: skrin Butiran Kedai LEGASI kekal & selamat. TIADA suis produksi
@@ -6,9 +8,10 @@
 class RestaurantDetailFlags {
   RestaurantDetailFlags._();
 
-  /// true = render skrin Butiran KANONIKAL; false = kekal skrin legasi (default).
-  /// Boleh ditimpa dalam debug/ujian sahaja.
-  static bool canonicalRestaurantDetailEnabled = false;
+  /// Release iOS/Android menggunakan Butiran Kedai V2 yang sudah mempunyai
+  /// Profil, Ulasan dan Menu. Debug/ujian kekal opt-in supaya fixture lama tidak
+  /// berubah secara senyap dan rollback QA masih mudah.
+  static bool canonicalRestaurantDetailEnabled = kReleaseMode;
 
   /// Kebolehlihatan tindanan diagnostik kohort. Default OFF supaya paparan
   /// biasa (walau dalam debug) BERSIH dan tidak menutup kandungan pengguna;
