@@ -130,8 +130,10 @@ export const getNearbyPlaces = onCall(
     const useExpandedPool = !forceLegacy &&
       (isExploreRequest ||
         algorithm2FlagActive("expandedPool", algorithm2LiveEligible));
-    const areaCoverageOn = process.env.AREA_COVERAGE_POOL_ENABLED === "true" &&
-      !forceLegacy && (isExploreRequest || algorithm2LiveEligible);
+    // Core retrieval default: MakanMana database first + Google supplement.
+    // Env "false" ialah emergency kill switch sahaja; unset/true = ON.
+    const areaCoverageOn = process.env.AREA_COVERAGE_POOL_ENABLED !== "false" &&
+      !forceLegacy && hasClientCoords;
 
     // WAVE 3E — data tempat SINTETIK untuk QA Explore. Aktif HANYA dengan
     // MM_QA_SYNTHETIC_PLACES=enabled DAN runtime QA; produksi tidak pernah
