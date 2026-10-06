@@ -1,7 +1,7 @@
-// Front Page Redesign 1 — pengawal susunan Home + pemeliharaan fungsi.
+// Front Page Redesign 1 â€” pengawal susunan Home + pemeliharaan fungsi.
 //
 // Ujian struktur sumber (bukan Firebase): membuktikan susunan WAJIB
-// Mood → AI Pick → Nearby → Fit Coach, kehadiran loceng + butang profil,
+// Mood â†’ AI Pick â†’ Nearby â†’ Fit Coach, kehadiran loceng + butang profil,
 // dan bahawa penyedia/callback teras Home KEKAL (tiada regresi fungsi).
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
@@ -15,7 +15,7 @@ void main() {
     return i;
   }
 
-  group('Susunan Home: Mood → AI Pick → Nearby → Fit Coach', () {
+  group('Susunan Home: Mood â†’ AI Pick â†’ Nearby â†’ Fit Coach', () {
     test('AI Pick sebelum Nearby sebelum Fit Coach', () {
       final aiPick = idx("l.t('aiPickTitle')");
       final nearby = idx("l.t('nearbyTitle')");
@@ -37,7 +37,7 @@ void main() {
       expect(src, contains('RoutePaths.notifications'));
     });
 
-    test('butang Threads (api) di header → feed sosial', () {
+    test('butang Threads (api) di header â†’ feed sosial', () {
       expect(src, contains('_ThreadsButton'));
       expect(src, contains('Icons.local_fire_department_rounded'));
       expect(src, contains('RoutePaths.social'));
@@ -72,7 +72,7 @@ void main() {
     });
   });
 
-  group('Redesign 1A — penanda visual hadir', () {
+  group('Redesign 1A â€” penanda visual hadir', () {
     test('palet skop-Home digunakan (bukan ubah token global)', () {
       expect(src, contains('HomePalette.of(context)'));
     });
@@ -98,7 +98,7 @@ void main() {
     });
 
     test('ukuran polish kekal pada sasaran padat', () {
-      expect(src, contains('fontSize: 27'));
+      expect(src, contains('fontSize: compactHome ? 24 : 27'));
       expect(src, contains('scale: 1.12'));
       expect(src, contains('BoxConstraints(minHeight: 72)'));
       expect(src, contains('height: 166'));
