@@ -293,12 +293,12 @@ export const getSuggestions = onCall(
     // ≤3 kueri. Guna kelayakan rollout server-authoritative (bukan owner-only).
     const useExpandedPool = input.forceLegacy !== true &&
       algorithm2FlagActive("expandedPool", algorithm2LiveEligible);
-    // FULL RADIUS COVERAGE — kolam kawasan KEKAL (database-first + tumbuh).
-    // OFF secara lalai; hidup HANYA bila AREA_COVERAGE_POOL_ENABLED="true" DAN
-    // kohort layak. Session chunk (storeCount) kekal; kolam kawasan TIDAK terhad
-    // 30. Fallback selamat ke expandedPool dalam perkhidmatan (tiada dummy).
-    const areaCoverageOn = process.env.AREA_COVERAGE_POOL_ENABLED === "true" &&
-      input.forceLegacy !== true && algorithm2LiveEligible;
+    // FULL RADIUS COVERAGE kini ialah retrieval default produksi:
+    // SEMUA MakanMana canonical dalam radius + sehingga 70 Google supplement.
+    // Env "false" kekal sebagai emergency kill switch. Scoring/Algorithm 2
+    // rollout masih berasingan dan TIDAK dipaksa ON oleh perubahan retrieval ini.
+    const areaCoverageOn = process.env.AREA_COVERAGE_POOL_ENABLED !== "false" &&
+      input.forceLegacy !== true && hasClientCoords;
     // WAVE 4A — data tempat SINTETIK QA untuk Home (preview) dan Spin. Aktif
     // HANYA dengan MM_QA_SYNTHETIC_PLACES=enabled DAN runtime QA; produksi
     // tidak pernah diaktifkan walaupun bendera ditetapkan. Cabang ini berada
@@ -320,9 +320,16 @@ export const getSuggestions = onCall(
           candidatesSource = area.pool.candidates.length > 0
             ? area.pool.candidates
             : await searchNearby({lat, lng, radiusMeters: radiusM, languageCode, apiKey});
+          const makanManaCount = area.pool.candidates.filter(
+            (p) => typeof p.canonicalPlaceId === "string" &&
+              p.canonicalPlaceId.trim().length > 0,
+          ).length;
+          const googleSupplementCount = area.pool.candidates.length - makanManaCount;
           logger.info("getSuggestions.areaCoverage", {
             cohortId: rollout.cohortId,
             areaPoolTotal: area.pool.candidates.length,
+            makanManaCount,
+            googleSupplementCount,
             knownCanonicalCount: area.pool.knownCanonicalCount,
             exactRadiusCount: area.pool.exactRadiusCount,
             activePlaceCount: area.pool.activePlaceCount,
