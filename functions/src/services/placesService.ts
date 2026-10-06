@@ -18,6 +18,8 @@ import {decideEgress} from "../domain/security/egressGuard";
 const CACHE_TTL_DAYS = 7;
 const PLACES_ENDPOINT =
   "https://places.googleapis.com/v1/places:searchNearby";
+const TEXT_SEARCH_ENDPOINT =
+  "https://places.googleapis.com/v1/places:searchText";
 const FIELD_MASK = [
   "places.id",
   "places.displayName",
@@ -37,6 +39,15 @@ interface SearchOptions {
   lat: number;
   lng: number;
   radiusMeters: number;
+  languageCode: string;
+  apiKey: string;
+}
+
+interface TextSearchOptions {
+  query: string;
+  lat?: number;
+  lng?: number;
+  radiusMeters?: number;
   languageCode: string;
   apiKey: string;
 }
@@ -351,6 +362,86 @@ export async function searchNearby(
     );
   }
   await batch.commit();
+
+  return candidates;
+}
+
+
+/**
+ * Explore Search global menggunakan Places Text Search (New).
+ *
+ * Ini BUKAN penapis 12 kad yang telah dimuatkan. Ia membolehkan carian nama
+ * restoran, cuisine dan kawasan eksplisit seperti "Puncak Alam". Jika lokasi
+ * peranti tersedia, ia hanya menjadi bias; nama kawasan eksplisit dalam query
+ * masih boleh mengatasi bias tersebut di pihak Google.
+ */
+export async function searchTextRestaurants(
+  opts: TextSearchOptions,
+): Promise<PlaceCandidate[]> {
+  const query = opts.query.trim().slice(0, 160);
+  if (!query) return [];
+
+  const egress = decideEgress({kind: "google_cloud_api"});
+  if (!egress.allowed) throw new Error(egress.reason);
+
+  const hasOrigin =
+    typeof opts.lat === "number" &&
+    typeof opts.lng === "number" &&
+    Number.isFinite(opts.lat) &&
+    Number.isFinite(opts.lng);
+
+  const body: Record<string, unknown> = {
+    // "restaurant" menjadikan query kawasan seperti "Puncak Alam" suatu
+    // carian restoran di kawasan itu, bukan carian satu entiti geografi sahaja.
+    textQuery: `${query} restaurant`,
+    pageSize: 20,
+    includedType: "restaurant",
+    strictTypeFiltering: true,
+    languageCode: opts.languageCode,
+    regionCode: "MY",
+    rankPreference: "RELEVANCE",
+  };
+
+  if (hasOrigin) {
+    body.locationBias = {
+      circle: {
+        center: {latitude: opts.lat, longitude: opts.lng},
+        radius: Math.min(Math.max(opts.radiusMeters ?? 3000, 500), 50000),
+      },
+    };
+  }
+
+  const res = await fetch(TEXT_SEARCH_ENDPOINT, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": opts.apiKey,
+      "X-Goog-FieldMask": FIELD_MASK,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new Error(`Places Text Search API ${res.status}: ${await res.text()}`);
+  }
+
+  const payload = (await res.json()) as {places?: RawPlace[]};
+  const rawPlaces = (payload.places ?? []).filter((p) => (p.id ?? "") !== "");
+
+  const candidates = rawPlaces.map((p) => {
+    // Tanpa GPS sebenar jangan reka jarak dari KL. Asal = koordinat restoran
+    // sendiri menghasilkan 0 km, dan UI sedia ada menyembunyikan jarak 0.
+    const originLat = hasOrigin ? opts.lat! : (p.location?.latitude ?? 0);
+    const originLng = hasOrigin ? opts.lng! : (p.location?.longitude ?? 0);
+    return toCandidate(p, originLat, originLng);
+  });
+
+  await Promise.all(
+    rawPlaces.map(async (raw, i) => {
+      const photoName = raw.photos?.[0]?.name;
+      if (!photoName) return;
+      candidates[i].photoUrl = await resolvePhotoUrl(photoName, opts.apiKey);
+    }),
+  );
 
   return candidates;
 }
