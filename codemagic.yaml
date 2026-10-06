@@ -124,3 +124,43 @@ workflows:
       - build/ios/ipa/*.ipa
       - build/ios/archive/*.xcarchive
       - ios/Podfile.lock
+
+
+  refresh-home-goldens-macos:
+    name: Refresh Home goldens on macOS (temporary)
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    environment:
+      flutter: 3.44.4
+    scripts:
+      - name: Resolve locked Flutter dependencies
+        script: |
+          set -eu
+          flutter pub get --enforce-lockfile
+      - name: Refresh Home goldens on Codemagic macOS
+        script: |
+          set -eu
+          mkdir -p .buildlog/home-goldens
+          git rev-parse HEAD > .buildlog/source-head.txt
+          flutter --version --machine > .buildlog/flutter-version.json
+          sw_vers > .buildlog/macos-version.txt
+
+          flutter test --no-pub --update-goldens test/home_redesign_viewport_test.dart
+
+          git diff --name-only -- test/goldens > .buildlog/home-goldens-changed.txt
+          while IFS= read -r file; do
+            case "$file" in
+              test/goldens/home_*.png)
+                cp "$file" .buildlog/home-goldens/
+                ;;
+            esac
+          done < .buildlog/home-goldens-changed.txt
+
+          test -s .buildlog/home-goldens-changed.txt
+          flutter test --no-pub test/home_redesign_viewport_test.dart
+    artifacts:
+      - .buildlog/home-goldens/*.png
+      - .buildlog/home-goldens-changed.txt
+      - .buildlog/source-head.txt
+      - .buildlog/flutter-version.json
+      - .buildlog/macos-version.txt
