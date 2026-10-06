@@ -1,4 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -136,7 +137,8 @@ class CmsBannerCard extends ConsumerWidget {
 
     final mm = context.mm;
     final media = content.media;
-    final compactHome = content.placement == CmsPlacement.homeTop;
+    final compactHome =
+        kReleaseMode && content.placement == CmsPlacement.homeTop;
 
     return Container(
       key: Key('cms-banner-${content.contentId}'),
