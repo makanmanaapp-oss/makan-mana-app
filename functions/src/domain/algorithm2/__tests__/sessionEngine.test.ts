@@ -100,9 +100,10 @@ test("planProviderQueries=0 when cache already sufficient", () => {
   assert.equal(planProviderQueries(40, 40), 0);
   assert.equal(planProviderQueries(50, 40), 0);
 });
-test("planProviderQueries capped at 3", () => {
+test("planProviderQueries capped at 4", () => {
+  assert.equal(MAX_COLD_PROVIDER_QUERIES, 4);
   assert.equal(planProviderQueries(0, 200), MAX_COLD_PROVIDER_QUERIES);
-  assert.ok(planProviderQueries(0, 40) >= 1 && planProviderQueries(0, 40) <= 3);
+  assert.ok(planProviderQueries(0, 40) >= 1 && planProviderQueries(0, 40) <= 4);
 });
 
 // dedupe
