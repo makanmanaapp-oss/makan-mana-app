@@ -77,8 +77,8 @@ void main() {
       // iOS WAVE 2: ID akaun kini betul-untuk-platform. Yang penting kekal
       // sama — ia datang daripada PELAYAN, bukan dicipta klien.
       expect(purchase.contains('applicationUserName: storeAccountId'), isTrue);
-      expect(purchase.contains('AppStorePurchaseParam'), isTrue,
-          reason: 'iOS mesti ada laluan beliannya sendiri');
+      expect(purchase.contains('Sk2PurchaseParam'), isTrue,
+          reason: 'iOS 15+ mesti guna laluan StoreKit 2 yang eksplisit');
       expect(purchase.contains('_prepareAppleAccountToken'), isTrue,
           reason: 'appAccountToken Apple mesti diterbitkan pelayan');
     });
