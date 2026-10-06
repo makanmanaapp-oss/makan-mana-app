@@ -259,12 +259,17 @@ test("laluan pembelian menggunakan pengesah berskop-aplikasi, bukan yang telanja
   );
 });
 
-test("laluan pembelian TIDAK LAGI jatuh produksi->sandbox pada 404", () => {
+test("fallback TestFlight Sandbox hanya wujud di belakang gate server", () => {
   const text = source("src/services/appleSubscriptionService.ts");
-  // Hos tunggal, dipilih oleh identiti.
+  // Production masih sentiasa dicuba dahulu.
   assert.ok(/host: identity\.host/.test(text));
-  assert.equal(/SANDBOX_HOST/.test(text), false, "hos sandbox masih dipilih sendiri");
-  assert.equal(/environment = "Sandbox"/.test(text), false, "persekitaran masih diterbitkan daripada hos");
+  // Sandbox tidak boleh dicuba tanpa allowlist yang diterbitkan callable.
+  assert.ok(/input\.allowTestFlightSandbox === true/.test(text));
+  assert.ok(/identity\.projectClass === "PRODUCTION"/.test(text));
+  assert.ok(/APPLE_SANDBOX_HOST/.test(text));
+  // Persekitaran masih datang daripada identity yang kita bina dan kemudian
+  // disemak terhadap payload bertandatangan, bukan daripada klien.
+  assert.ok(/environment: APPLE_ENV_SANDBOX/.test(text));
 });
 
 test("pagar kelayakan dipanggil SEBELUM sebarang tulisan", () => {
