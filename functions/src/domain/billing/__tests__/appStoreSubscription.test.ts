@@ -173,6 +173,14 @@ test("bundle id disemak sisi pelayan", () => {
   assert.equal(appleBundleMatches(null), false);
 });
 
+test("TestFlight sandbox source ditanda berasingan daripada bayaran production", () => {
+  const entitled = mapAppleSubscriptionToEntitlement(sub(), NOW);
+  const f = appleEntitlementToUserFields(entitled, "app_store_testflight");
+  assert.equal(f.planSource, "app_store_testflight");
+  assert.equal(f.plan, "pro");
+  assert.equal(f.planStatus, "active");
+});
+
 test("medan pengguna menggunakan planSource app_store dan turun ke free", () => {
   const entitled = mapAppleSubscriptionToEntitlement(sub(), NOW);
   const f = appleEntitlementToUserFields(entitled);
