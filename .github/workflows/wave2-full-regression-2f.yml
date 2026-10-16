@@ -23,6 +23,8 @@ env:
 jobs:
   source-safety:
     name: Source safety locks
+    outputs:
+      flutter_changed: ${{ steps.safety.outputs.flutter_changed }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout full history
@@ -30,6 +32,7 @@ jobs:
         with:
           fetch-depth: 0
       - name: Verify Wave 2 safety contract
+        id: safety
         shell: bash
         run: |
           set -euo pipefail
@@ -44,12 +47,20 @@ jobs:
           changed="$(git diff --name-only "$base_ref"...HEAD)"
           printf '%s\n' "$changed"
 
+          if grep -Eq '^(lib/|test/|android/|pubspec\.(yaml|lock)$)' <<<"$changed"; then
+            echo "flutter_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "flutter_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
           if grep -Eq '^(firestore\.rules|firestore\.indexes\.json)$' <<<"$changed"; then
             echo "Wave 2 must not modify Firestore rules/indexes."
             exit 1
           fi
 
-          grep -q 'static bool canonicalRestaurantDetailEnabled = false;' \
+          # Preserve the actual base flag configuration. The iOS candidate uses
+          # kReleaseMode; backend menu integration must not flip it.
+          git diff --exit-code "$base_ref"...HEAD -- \
             lib/features/restaurant/canonical/restaurant_detail_flags.dart
           grep -q "httpsCallable('getRestaurantProfileV2')" \
             lib/core/services/restaurant_profile_v2_service.dart
@@ -70,6 +81,8 @@ jobs:
           echo "Wave 2 source safety locks PASS"
 
   flutter-wave2-critical:
+    needs: source-safety
+    if: needs.source-safety.outputs.flutter_changed == 'true'
     name: Flutter Wave 2 boundary + analyze + Android QA debug build
     runs-on: ubuntu-latest
     timeout-minutes: 50
@@ -91,6 +104,8 @@ jobs:
         run: flutter build apk --debug --flavor qa
 
   flutter-differential:
+    needs: source-safety
+    if: needs.source-safety.outputs.flutter_changed == 'true'
     name: Full Flutter differential regression vs current base
     runs-on: ubuntu-latest
     timeout-minutes: 50
