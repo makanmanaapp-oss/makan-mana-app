@@ -1,4 +1,6 @@
 import {db} from "../config/firebase";
+import {readApprovedNativeMenu} from "./native-menu-client";
+import {decideEgress} from "../domain/security/egressGuard";
 import {
   projectPublicRestaurantProfileV2,
   PublicRestaurantProfileV2,
@@ -85,5 +87,20 @@ export async function readPublishedRestaurantProfileV2(
   const publication = await db.collection(C_PUB).doc(activePublicationId).get();
   if (!publication.exists) return null;
 
-  return projectPublicRestaurantProfileV2(publication.data(), canonicalPlaceId);
+  const profile = projectPublicRestaurantProfileV2(publication.data(), canonicalPlaceId);
+  if (!profile || process.env.MERCHANT_NATIVE_MENU_ENABLED !== "true") return profile;
+  try {
+    const menuItems = await readApprovedNativeMenu(canonicalPlaceId, {
+      enabled: true,
+      url: process.env.MERCHANT_NATIVE_SUPABASE_URL ?? "",
+      key: process.env.MERCHANT_NATIVE_PUBLISHABLE_KEY ?? "",
+      allowDestination: (destination) => decideEgress({kind: "control_center_api", destination}).allowed,
+    });
+    return menuItems === null ? profile : {...profile, menuItems};
+  } catch {
+    // Enabled native menus are authoritative. An outage must not resurrect an
+    // older curated price or an item withdrawn by the merchant/admin.
+    return {...profile, menuItems: []};
+  }
 }
+
