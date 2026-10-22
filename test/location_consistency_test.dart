@@ -80,6 +80,7 @@ class _RecordingService extends CloudSuggestionService {
   Future<CloudSpinResult?> getSuggestions({
     required Map<String, dynamic> payload,
     String mode = 'spin',
+    String? requestId,
   }) async {
     previewLat = (payload['lat'] as num?)?.toDouble();
     previewLng = (payload['lng'] as num?)?.toDouble();

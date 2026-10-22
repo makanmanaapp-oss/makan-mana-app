@@ -27,20 +27,21 @@ void main() {
     expect(clearIndex, greaterThan(guardIndex));
   });
 
-  test('authoritative reject preserves reason event before brain recalc', () {
-    final source = File(
-      'lib/features/suggestions/suggestion_action_controller.dart',
-    ).readAsStringSync();
-
-    final rejectEventIndex = source.indexOf('EventType.suggestionReject');
-    final reasonIndex = source.indexOf("'reason': reasonId", rejectEventIndex);
-    final recalcIndex = source.indexOf(
-      '_ref.read(userBrainServiceProvider).recalculate();',
-      rejectEventIndex,
-    );
-
-    expect(rejectEventIndex, greaterThanOrEqualTo(0));
-    expect(reasonIndex, greaterThan(rejectEventIndex));
-    expect(recalcIndex, greaterThan(reasonIndex));
+  test('authoritative reject commits its reason on the server before recalc', () {
+    final next = File('functions/src/callable/nextSuggestion.ts').readAsStringSync();
+    final delivery = File('functions/src/services/recommendationDeliveryService.ts').readAsStringSync();
+    final controller = File('lib/features/suggestions/suggestion_action_controller.dart').readAsStringSync();
+    final reject = next.indexOf('await recordRecommendationReject(');
+    final consume = next.indexOf('await consumeRecommendationQueue(', reject);
+    expect(reject, greaterThanOrEqualTo(0));
+    expect(consume, greaterThan(reject));
+    expect(delivery, contains('eventType: "suggestion_reject"'));
+    expect(delivery, contains('metadata: {reason, policyVersion:'));
+    // The callable response now acknowledges a durable, idempotent event.
+    // The client must not log a second reject event for the same action.
+    expect(controller, isNot(contains('EventType.suggestionReject')));
+    final call = controller.indexOf('.nextSuggestion(');
+    final recalc = controller.indexOf('_ref.read(userBrainServiceProvider).recalculate();', call);
+    expect(recalc, greaterThan(call));
   });
 }

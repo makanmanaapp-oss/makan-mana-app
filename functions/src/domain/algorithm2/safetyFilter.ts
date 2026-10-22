@@ -38,6 +38,7 @@ export type SafetyFilterReason =
   | "invalid"
   | "closed"
   | "allergy_conflict"
+  | "diet_unverified"
   | "non_halal"
   | "suppressed_session"
   | "reject_memory"
@@ -73,12 +74,19 @@ export function hasAllergyConflict(
 ): boolean {
   if (allergies.length === 0) return false;
   const text = textOf(p);
+  const canonicalAllergen = (value: string): string => {
+    const normalized = value.trim().toLowerCase();
+    return ({kacang: "peanut", susu: "dairy", telur: "egg", udang: "shellfish"} as Record<string, string>)[normalized] ?? normalized;
+  };
+  const reported = (p.allergenReported ?? []).map(canonicalAllergen);
+  if (allergies.some((allergy) => reported.includes(canonicalAllergen(allergy)))) return true;
   return allergies.some((a) =>
     (ALLERGY_CONFLICT_TOKENS[a] ?? []).some((t) => text.includes(t)));
 }
 
 /** Adakah bukti bukan-halal yang JELAS? */
 export function hasExplicitNonHalal(p: PlaceCandidate): boolean {
+  if (["non_halal", "not_halal", "non-halal"].includes(p.halalStatus ?? "")) return true;
   const text = textOf(p);
   return NON_HALAL_TOKENS.some((t) => text.includes(t));
 }
@@ -100,7 +108,7 @@ export function applyHardSafety(
   const eligible: PlaceCandidate[] = [];
   const filtered: FilteredPlace[] = [];
   const counts: Record<SafetyFilterReason, number> = {
-    invalid: 0, closed: 0, allergy_conflict: 0, non_halal: 0,
+    invalid: 0, closed: 0, allergy_conflict: 0, diet_unverified: 0, non_halal: 0,
     suppressed_session: 0, reject_memory: 0, duplicate: 0,
   };
   const seen = new Set<string>();
@@ -135,6 +143,16 @@ export function applyHardSafety(
 
     // 3. Konflik alahan JELAS → KELUARKAN (keselamatan tidak boleh dilemahkan).
     if (hasAllergyConflict(p, ctx.allergies)) { drop(p, "allergy_conflict"); continue; }
+
+    // An explicit vegetarian/vegan diet is a requirement, not a positive score
+    // that meat/unknown restaurants can overcome. Positive evidence comes from
+    // an approved dietary tag or an explicit cuisine category, never "healthy".
+    const diet = ctx.dietTypes.map((value) => value.toLowerCase());
+    const evidence = [...(p.dietaryReported ?? []), p.cuisine].join(" ").toLowerCase();
+    if ((diet.includes("vegan") && !/\bvegan\b/.test(evidence)) ||
+        (diet.includes("vegetarian") && !/\b(vegetarian|vegan)\b/.test(evidence))) {
+      drop(p, "diet_unverified"); continue;
+    }
 
     // 5. Bukti bukan-halal JELAS bila pengguna perlu halal → KELUARKAN.
     if (ctx.halalPreference && hasExplicitNonHalal(p)) { drop(p, "non_halal"); continue; }

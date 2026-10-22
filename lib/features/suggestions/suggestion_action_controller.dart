@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/events/event_types.dart';
 import '../../core/providers.dart';
+import '../../core/services/cloud_suggestion_service.dart';
 import '../../core/providers/makanmana_user_context_provider.dart';
 import '../../core/utils/time_slot_utils.dart';
 import '../../models/meal.dart';
@@ -177,6 +178,8 @@ class SuggestionActionController extends StateNotifier<SuggestionActionState> {
     List<PlaceSummary> alternatives = const [],
     String? source,
     String? sessionId,
+    String? suggestionId,
+    String? contextHash,
     bool isSample = false,
     String? mood,
     int? radiusMeters,
@@ -190,6 +193,8 @@ class SuggestionActionController extends StateNotifier<SuggestionActionState> {
       isSample: sample,
       alternatives: alternatives,
       sessionId: sessionId,
+      suggestionId: suggestionId,
+      contextHash: contextHash,
       shownPlaceIds: [place.placeId],
       mood: mood ?? ctx.selectedMood,
       radiusMeters: radiusMeters ?? ctx.effectiveRadiusMeters,
@@ -228,14 +233,6 @@ class SuggestionActionController extends StateNotifier<SuggestionActionState> {
     if (s.isSample) return false; // dikendali secara manual sahaja
     state = s.copyWith(processing: true);
     try {
-      if (s.isSpin) {
-        // Laluan spin sedia ada (teruji): submitFeedback accept ->
-        // meal + status accepted + feed, atau fallback tempatan.
-        await _ref.read(spinControllerProvider).accept(place);
-      } else {
-        // Preview / nearby (tempat sebenar): accept sebenar TANPA had spin
-        // (submitFeedback tidak sentuh kuota). Pelayan cipta meal + feed;
-        // status hanya dikemas kini jika suggestionId wujud.
         final ok = await _ref.read(cloudSuggestionServiceProvider).submitFeedback(
               action: 'accept',
               suggestionId: s.suggestionId,
@@ -257,18 +254,9 @@ class SuggestionActionController extends StateNotifier<SuggestionActionState> {
               },
             );
         if (!ok) {
-          // Firebase belum sedia: rekod meal tempatan supaya History
-          // tetap dikemas kini (sekali sahaja).
-          await _addLocalMeal(place, source: 'preview_accept');
-          _ref.read(eventLoggerProvider).logMealLogged(
-                source: 'preview_accept',
-                placeId: place.placeId,
-                placeNameSnapshot: place.name,
-                sourceMode: SourceMode.preview,
-                fromSuggestion: true,
-              );
+          state = s.copyWith(processing: false);
+          return false;
         }
-      }
       state = state.copyWith(
         processing: false,
         accepted: true,
@@ -334,7 +322,7 @@ class SuggestionActionController extends StateNotifier<SuggestionActionState> {
   Future<void> rejectWithReason(String reasonId) async {
     final s = state;
     final place = s.place;
-    if (place == null) return;
+    if (place == null || s.processing || s.accepted || s.noMore) return;
 
     // Phase 2.2D — jejak runtime (debug sahaja) untuk bukti peranti sebenar:
     // dedah SAMA ADA laluan authoritative pelayan atau fallback tempatan diambil.
@@ -345,19 +333,21 @@ class SuggestionActionController extends StateNotifier<SuggestionActionState> {
     // Phase 2.2D — Reject/Next AUTHORITATIF (kohort): server consume alternatif
     // seterusnya (TIADA search/rank/provider). Guard double-tap; fallback tempatan
     // bila offline / bukan kohort / gagal. Klien TIDAK hantar array authoritative.
-    if (s.isSpin && s.contextHash != null) {
+    if (!s.isSample && s.contextHash != null) {
       if (s.processing) return; // guard double-tap (advance sekali sahaja)
       state = s.copyWith(processing: true);
       final actionId =
-          '${DateTime.now().microsecondsSinceEpoch}_${place.placeId}';
+          CloudSuggestionService.newRequestId();
       final res = await _ref.read(cloudSuggestionServiceProvider).nextSuggestion(
             action: 'reject',
             contextHash: s.contextHash!,
             actionId: actionId,
             sessionId: s.sessionId,
+            suggestionId: s.suggestionId,
             placeId: place.placeId,
             reason: reasonId,
           );
+      if (!mounted || state.place?.placeId != place.placeId || state.contextHash != s.contextHash) return;
       debugPrint('MM-A2 reject.server: actionId=$actionId '
           'responseSource=${res?['responseSource']} '
           'providerQueryCount=${res?['providerQueryCount']} '
@@ -365,28 +355,6 @@ class SuggestionActionController extends StateNotifier<SuggestionActionState> {
           'alternativesRemaining=${res?['alternativesRemaining']} '
           'poolExhausted=${res?['poolExhausted']} '
           'nextPlace=${(res?['nextPlace'] is Map) ? (res!['nextPlace'] as Map)['placeId'] : null}');
-      // Phase 2.4A — log suggestion_reject event supaya AI Brain BELAJAR sebab
-      // reject (too_far→jarak, too_expensive→bajet). Sebelum ini laluan reject
-      // AUTHORITATIF hanya tulis reject-memory pelayan, TIADA event → brain tak
-      // belajar sebab reject. Defek wiring diperbaiki.
-      if (res != null && res['actionAccepted'] == true) {
-        _ref.read(eventLoggerProvider).logEvent(
-              EventType.suggestionReject,
-              placeId: place.placeId,
-              placeNameSnapshot: place.name,
-              sessionId: s.sessionId,
-              suggestionId: s.suggestionId,
-              sourceScreen: SourceScreen.suggestion,
-              sourceMode: SourceMode.spin,
-              matchScore: place.matchScore.toDouble(),
-              metadata: {
-                'reason': reasonId,
-                'distanceKm': place.distanceKm,
-                'origin': s.origin.name,
-                'authoritative': true,
-              },
-            );
-      }
       final nextMap = res?['nextPlace'];
       if (res != null && res['actionAccepted'] == true && nextMap is Map) {
         final next =
@@ -394,7 +362,7 @@ class SuggestionActionController extends StateNotifier<SuggestionActionState> {
         state = s.copyWith(
           place: next,
           processing: false,
-          suggestionId: null,
+          suggestionId: res['suggestionId'] as String?,
           rejectedPlaceIds: [...s.rejectedPlaceIds, place.placeId],
           shownPlaceIds: [...s.shownPlaceIds, next.placeId],
           accepted: false,
@@ -425,37 +393,17 @@ class SuggestionActionController extends StateNotifier<SuggestionActionState> {
       return;
     }
 
-    if (s.isSpin) {
-      // LEGASI sahaja (contextHash == null): fallback tempatan teruji (offline-safe).
-      debugPrint('MM-A2 reject: FALLBACK TEMPATAN (spinController.reject) '
-          '— sesi legasi (contextHash null)');
-      // Laluan spin sedia ada (teruji): submitFeedback reject + calon Google
-      // seterusnya dalam sesi sama. spinController kemas kini currentSuggestion.
-      final next = await _ref.read(spinControllerProvider).reject(place, reasonId);
-      if (next == null) {
-        // WAVE 4A — tiada calon SEBENAR yang tinggal. Dahulu laluan ini
-        // beralih kepada restoran rekaan; kini ia melaporkan kehabisan.
-        state = s.copyWith(
-          processing: false,
-          rejectedPlaceIds: [...s.rejectedPlaceIds, place.placeId],
-          noMore: true,
-        );
-        _ref.read(eventLoggerProvider).logNoMoreSuggestions(
-              sessionId: s.sessionId,
-              sourceMode: SourceMode.spin,
-            );
-        return;
-      }
-      state = s.copyWith(
-        place: next,
-        suggestionId: null, // calon seterusnya belum ada id pelayan sendiri
-        rejectedPlaceIds: [...s.rejectedPlaceIds, place.placeId],
-        shownPlaceIds: [...s.shownPlaceIds, next.placeId],
-        accepted: false,
-        noMore: false,
+    // Real legacy/manual cards cannot advance through a local shortlist.
+    // Persist the reject and end this selection; a new request uses the server.
+    if (!s.isSample) {
+      state = s.copyWith(processing: true);
+      final ok = await _ref.read(cloudSuggestionServiceProvider).submitFeedback(
+        action: 'reject', suggestionId: s.suggestionId,
+        placeId: place.placeId, reason: reasonId,
       );
-      // Prompt 9: reject sebenar = isyarat kuat -> kemas kini Food Memory.
-      _ref.read(userBrainServiceProvider).recalculate();
+      if (!mounted || state.place?.placeId != place.placeId) return;
+      state = s.copyWith(processing: false, noMore: ok, rejectError: !ok,
+        rejectedPlaceIds: ok ? [...s.rejectedPlaceIds, place.placeId] : s.rejectedPlaceIds);
       return;
     }
 
@@ -508,10 +456,6 @@ class SuggestionActionController extends StateNotifier<SuggestionActionState> {
       if (!rejected.contains(p.placeId) && !shown.contains(p.placeId)) {
         return p;
       }
-    }
-    // Jika semua sudah dipapar tapi belum ditolak, benarkan ulang.
-    for (final p in state.alternatives) {
-      if (!rejected.contains(p.placeId)) return p;
     }
     return null;
   }

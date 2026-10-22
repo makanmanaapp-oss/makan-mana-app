@@ -1,172 +1,57 @@
-/**
- * Algorithm 2 / Phase 2.2D — callable Reject/Next AUTHORITATIF (server queue).
- *
- * Menggantikan pop-alternatif-tempatan klien. Pada Reject/Next: rekod reject
- * (memori 24h), kemudian GUNA alternatif tersimpan seterusnya secara LANGSUNG
- * (TIADA searchNearby / scoreAndRank / panggilan provider). Idempoten mengikut
- * (uid, actionId) — retry mengembalikan tempat yang SAMA; double-tap memajukan
- * baris SEKALI (kunci create()). TIDAK menggunakan kuota spin.
- *
- * Klien TIDAK menghantar shown/rejected/remaining/rotationSeed authoritative —
- * server menyimpannya. Klien hanya menghantar niat + contextHash opaque + actionId.
- *
- * KELAYAKAN (Master pre-launch fix): guna kontrak rollout BERSATU yang SAMA seperti
- * getSuggestions (`resolveAlgorithm2EligibilityForRequest` → `algorithm2LiveEligible`).
- * owner_internal + beta_allowlist + percentage_live LAYAK. Sebelum ini laluan ini
- * tersilap berpagar owner-sahaja (canonicalCohortEligible/isTrustedOwner) → beta
- * jatuh ke legacy_local (defek). Pagar owner-sahaja KEKAL untuk tulisan admin/kanonikal,
- * BUKAN untuk operasi sesi Algorithm 2 peringkat-pengguna ini.
- */
+import {createHash} from "node:crypto";
 import {HttpsError, onCall} from "firebase-functions/v2/https";
-import {logger} from "firebase-functions/v2";
-
-import {algorithm2FlagActive} from "../config/algorithm2Flags";
-import {db, FieldValue} from "../config/firebase";
-import {applyCanonicalOverlay} from "../services/canonicalReadService";
-import {resolveAlgorithm2EligibilityForRequest} from "../services/algorithm2EligibilityService";
-import {consumeStoredAlternative, writeRejectMemory} from "../services/algorithm2SessionService";
+import {db} from "../config/firebase";
+import {consumeRecommendationQueue, recordRecommendationReject, runRecommendationRequest} from "../services/recommendationDeliveryService";
+import {RECOMMENDATION_POLICY_VERSION} from "../domain/algorithm2/recommendationPolicy";
 
 interface NextInput {
-  action?: string; // "reject" | "next"
-  sessionId?: string;
-  placeId?: string; // current place (for reject)
-  contextHash?: string;
-  actionId?: string;
-  reason?: string;
+  action?: string; placeId?: string; contextHash?: string;
+  actionId?: string; reason?: string; suggestionId?: string; sessionId?: string;
 }
-
+/** Server queue for EVERY account. No legacy-local/rollout fallback. */
 export const nextSuggestion = onCall(async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "Sila log masuk dahulu.");
   const input = (request.data ?? {}) as NextInput;
-  const action = input.action === "reject" ? "reject" : "next";
-  const actionId = typeof input.actionId === "string" && input.actionId.trim() ? input.actionId : null;
-  const contextHash = typeof input.contextHash === "string" && input.contextHash.trim() ? input.contextHash : null;
-  if (!actionId || !contextHash) {
-    throw new HttpsError("invalid-argument", "actionId dan contextHash diperlukan.");
-  }
-
-  // KELAYAKAN BERSATU — sama seperti getSuggestions (owner + beta + percentage_live).
-  const {eligibility} = await resolveAlgorithm2EligibilityForRequest(
-    uid, request.auth?.token as Record<string, unknown> | undefined,
-  );
-  logger.info("nextSuggestion.request", {action, contextHash});
-  logger.info("nextSuggestion.eligibility", {
-    eligible: eligibility.eligible, mode: eligibility.mode, cohortId: eligibility.cohortId,
-    emergencyLegacy: eligibility.emergencyLegacy, reasonCode: eligibility.reasonCode,
-  });
-
-  if (!algorithm2FlagActive("alternativeReuse", eligibility.eligible)) {
-    // Bukan kohort LIVE / bendera OFF / kecemasan → laluan legasi tempatan (offline-safe).
-    logger.info("nextSuggestion.legacyExpected", {
-      cohortId: eligibility.cohortId, mode: eligibility.mode, reasonCode: eligibility.reasonCode,
-    });
-    return {
-      actionAccepted: false,
-      responseSource: "legacy_local",
-      reasonCode: eligibility.reasonCode,
-      nextPlace: null,
-    };
-  }
-
-  const now = Date.now();
-  const flags = {
-    sessionSuppression: true,
-    rejectMemory: algorithm2FlagActive("rejectMemory", eligibility.eligible),
-    sessionRotation: algorithm2FlagActive("sessionRotation", eligibility.eligible),
-  };
-
-  // Idempotensi + kunci double-tap: create() bertindak sebagai kunci.
-  const actionRef = db.collection("users").doc(uid).collection("algo2_actions").doc(actionId);
-  try {
-    await actionRef.create({actionId, action, status: "processing", createdAt: now});
-  } catch {
-    // Loser (retry / double-tap): kembalikan hasil pemenang jika sedia.
-    const snap = await actionRef.get();
-    const d = snap.data() ?? {};
-    if (d.result) {
-      logger.info("nextSuggestion.idempotentReplay", {actionId, contextHash, replayed: true});
-      return d.result;
-    }
-    logger.info("nextSuggestion.idempotentPending", {actionId, contextHash});
-    return {actionId, actionAccepted: true, responseSource: "idempotent_pending", nextPlace: null};
-  }
-
-  // Pemenang: rekod reject (memori ber-sebab + sesi) SEBELUM memilih calon seterusnya.
-  if (action === "reject" && input.placeId) {
-    if (flags.rejectMemory) {
-      // FINAL REPAIR — jambatan kanonikal: cari canonicalPlaceId tempat yang
-      // ditolak dari calon sesi tersimpan supaya identiti alias setara turut
-      // ditindas (menutup CANONICAL_ALIAS_BYPASS).
-      let canonicalPlaceId: string | null = null;
-      try {
-        const sessSnap = await db.collection("users").doc(uid)
-          .collection("algo2_sessions").doc(contextHash).get();
-        const stored = (sessSnap.data()?.candidates as Array<{placeId: string; canonicalPlaceId?: string | null}> | undefined) ?? [];
-        const match = stored.find((c) => c.placeId === input.placeId);
-        canonicalPlaceId = match?.canonicalPlaceId ?? null;
-      } catch {
-        canonicalPlaceId = null;
+  const contextHash = input.contextHash;
+  if (typeof contextHash !== "string" || !/^[a-f0-9]{24}$/.test(contextHash)) throw new HttpsError("invalid-argument", "contextHash_required");
+  if (input.action !== "reject" && input.action !== "next") throw new HttpsError("invalid-argument", "invalid_action");
+  const fingerprint = createHash("sha256").update(JSON.stringify({contextHash, action: input.action, placeId: input.placeId ?? null, reason: input.reason ?? null})).digest("hex");
+  return runRecommendationRequest(uid, input.actionId, fingerprint, async () => {
+    const queue = await db.collection("users").doc(uid).collection("recommendation_queues").doc(contextHash).get();
+    // Queue ownership is established by its user-scoped path. No arbitrary
+    // caller-supplied suggestion_sessions document is ever updated.
+    if (!queue.exists) {
+      // An old app can still hold a pre-upgrade Algorithm 2 card. Preserve its
+      // reject, but never advance the legacy local list or resurrect its pool.
+      const legacy = await db.collection("users").doc(uid).collection("algo2_sessions").doc(contextHash).get();
+      const candidates = (legacy.data()?.candidates ?? []) as Array<{placeId: string}>;
+      if (input.action === "reject" && input.placeId && candidates.some((p) => p.placeId === input.placeId)) {
+        await recordRecommendationReject(uid, input.placeId, `reject:${input.actionId}`, input.reason);
+        return {actionAccepted: true, nextPlace: null, responseSource: "session_expired", poolExhausted: true};
       }
-      await writeRejectMemory(uid, input.placeId, now, {reason: input.reason ?? null, canonicalPlaceId});
+      return {actionAccepted: false, nextPlace: null, responseSource: "session_expired", poolExhausted: true};
     }
-    if (input.sessionId) {
-      await db.collection("suggestion_sessions").doc(input.sessionId)
-        .set({rejectedPlaceIds: FieldValue.arrayUnion(input.placeId)}, {merge: true});
+    if (input.action === "reject") {
+      const candidates = queue.data()?.candidates as Array<{placeId: string; canonicalPlaceId?: string}>;
+      if (!input.placeId || !candidates.some((p) => p.placeId === input.placeId || p.canonicalPlaceId === input.placeId)) {
+        throw new HttpsError("permission-denied", "place_not_in_owned_queue");
+      }
+      const suggestionId = input.suggestionId ?? queue.data()?.lastSuggestionId;
+      if (typeof suggestionId !== "string" || suggestionId.includes("/")) throw new HttpsError("invalid-argument", "suggestionId_required");
+      const shown = await db.collection("users").doc(uid).collection("suggestions").doc(suggestionId).get();
+      if (!shown.exists || shown.data()?.placeId !== input.placeId || shown.data()?.sessionId !== contextHash) {
+        throw new HttpsError("permission-denied", "suggestion_not_owned_or_mismatched");
+      }
+      await recordRecommendationReject(uid, input.placeId, `reject:${input.actionId}`, input.reason);
     }
-    // Tandakan juga dalam sesi algo2 (supaya buildExcludeIds menindasnya).
-    await db.collection("users").doc(uid).collection("algo2_sessions").doc(contextHash)
-      .set({rejectedPlaceIds: FieldValue.arrayUnion(input.placeId)}, {merge: true});
-    logger.info("nextSuggestion.suppressionWritten", {
-      cohortId: eligibility.cohortId, rejectMemory: flags.rejectMemory, hasSessionId: !!input.sessionId,
-    });
-  }
-
-  const consumed = await consumeStoredAlternative(uid, contextHash, now, flags);
-  let nextPlace = consumed?.candidate ?? null;
-  if (nextPlace) {
-    const ov = await applyCanonicalOverlay([nextPlace], {cohortEligible: true, forceLegacy: false, includeDebug: true});
-    nextPlace = ov.results[0].candidate;
-  }
-
-  const result = {
-    actionId,
-    actionAccepted: true,
-    nextPlace,
-    responseSource: consumed ? consumed.diagnostics.responseSource : "alternatives_exhausted",
-    reasonCode: consumed ? "authoritative" : "alternatives_exhausted",
-    providerQueryCount: consumed ? consumed.diagnostics.providerQueryCount : 0,
-    rankingExecuted: consumed ? consumed.diagnostics.rankingExecuted : false,
-    alternativesRemaining: consumed ? consumed.diagnostics.alternativesAfter : 0,
-    // MULTI-CHUNK (Part 10/11) — kolam autoritatif melangkaui 30; exhausted HANYA
-    // bila tiada lagi calon autoritatif sah (bukan sekadar 30 pertama habis).
-    hasMoreAuthoritative: consumed ? consumed.diagnostics.hasMoreAuthoritative : false,
-    authoritativeRemaining: consumed ? consumed.diagnostics.alternativesAfter : 0,
-    totalAuthoritative: consumed ? consumed.diagnostics.totalAuthoritative : 0,
-    sessionStatus: "active",
-    poolExhausted: !consumed,
-  };
-  await actionRef.set({status: "done", result, doneAt: now}, {merge: true});
-  // Observability (Phase 2.2D + Master fix) — jejak authoritative Reject/Next untuk
-  // bukti peranti sebenar. TIADA data peribadi penuh: hanya diagnostik queue + hash.
-  if (consumed) {
-    logger.info("nextSuggestion.authoritative", {
-      action, actionId, contextHash,
-      cohortId: eligibility.cohortId,
-      responseSource: result.responseSource,
-      providerQueryCount: result.providerQueryCount,
-      nearbySearchCalled: false,
-      rankingExecuted: result.rankingExecuted,
-      alternativesRemaining: result.alternativesRemaining,
-      poolExhausted: result.poolExhausted,
-      hasNextPlace: !!nextPlace,
-      dummy: false,
-      legacyLocal: false,
-    });
-  } else {
-    logger.info("nextSuggestion.exhausted", {
-      action, actionId, contextHash, cohortId: eligibility.cohortId, alternativesRemaining: 0,
-    });
-  }
-  return result;
+    const delivery = await consumeRecommendationQueue(uid, contextHash);
+    return {actionId: input.actionId, actionAccepted: true, nextPlace: delivery?.primary ?? null,
+      suggestionId: delivery?.suggestionId ?? null, sessionId: contextHash, contextHash,
+      responseSource: delivery ? "session_alternative" : "alternatives_exhausted",
+      reasonCode: delivery ? "authoritative_26h" : "no_eligible_new_recommendations",
+      poolExhausted: !delivery, hasMoreAuthoritative: (delivery?.remainingCount ?? 0) > 0,
+      alternativesRemaining: delivery?.remainingCount ?? 0, authoritativeRemaining: delivery?.remainingCount ?? 0,
+      providerQueryCount: 0, rankingExecuted: true, policyVersion: RECOMMENDATION_POLICY_VERSION};
+  });
 });

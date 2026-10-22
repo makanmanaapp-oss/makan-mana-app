@@ -101,6 +101,7 @@ export {setNotificationPreferences} from "./callable/notificationPreferences";
 // Phase 1.14A — callable pembetulan dipercayai (BELUM DI-DEPLOY; berpagar-pemilik).
 export {submitPlaceCorrection} from "./callable/submitPlaceCorrection";
 export {nextSuggestion} from "./callable/nextSuggestion";
+export {onLegacyRecommendationSkipped} from "./triggers/onLegacyRecommendationSkipped";
 // Notification V2 - trusted Control Center test bridge.
 export {controlCenterNotificationAdminBridge} from "./triggers/controlCenterNotificationAdminBridge";
 

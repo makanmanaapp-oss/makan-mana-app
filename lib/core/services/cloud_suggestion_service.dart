@@ -1,3 +1,6 @@
+import 'dart:math';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
@@ -5,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/place_summary.dart';
 import '../../models/places_outcome.dart';
 import '../constants/app_constants.dart';
+import 'recommendation_reject_outbox.dart';
 
 /// Phase 2.2A — satu halaman Explore (pagination server-mediated).
 class PlacesPage {
@@ -107,6 +111,29 @@ class CloudSuggestionService {
 
   final bool firebaseReady;
 
+  static String newRequestId() =>
+      '${DateTime.now().microsecondsSinceEpoch}_${Random.secure().nextInt(1 << 30)}';
+
+  Future<RecommendationRejectOutbox?> _outbox() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return null;
+    return RecommendationRejectOutbox(await SharedPreferences.getInstance(), uid);
+  }
+
+  Future<bool> _flushPendingReject() async {
+    final outbox = await _outbox();
+    if (outbox == null) return false;
+    final pending = outbox.pending;
+    if (pending == null) return true;
+    final ok = await submitFeedback(
+      action: 'reject', placeId: pending['placeId'] as String?,
+      reason: pending['reason'] as String?,
+      eventId: 'reject:${pending['actionId']}',
+    );
+    if (ok) return outbox.clearIfAction(pending['actionId'] as String);
+    return false;
+  }
+
   FirebaseFunctions get _functions =>
       FirebaseFunctions.instanceFor(region: AppConstants.functionsRegion);
 
@@ -115,9 +142,11 @@ class CloudSuggestionService {
   Future<CloudSpinResult?> getSuggestions({
     required Map<String, dynamic> payload,
     String mode = 'spin',
+    String? requestId,
   }) async {
     if (!firebaseReady) return null;
     try {
+      if (!await _flushPendingReject()) return null;
       final callable = _functions.httpsCallable(
         'getSuggestions',
         options: HttpsCallableOptions(timeout: const Duration(seconds: 15)),
@@ -125,6 +154,7 @@ class CloudSuggestionService {
       final res = await callable.call<Map<Object?, Object?>>({
         ...sanitizeCallablePayload(payload),
         'mode': mode,
+        'requestId': requestId ?? newRequestId(),
       });
       final data = Map<String, dynamic>.from(res.data);
       // QA-DEV3 diagnostik (debug/QA sahaja — di-strip dalam release). Guna
@@ -174,6 +204,7 @@ class CloudSuggestionService {
           source: data['source'] as String?,
         );
       }
+      if (data['policyVersion'] != 'outlet_26h_v1') return null;
       final primary = data['primary'];
       if (primary == null) return null;
       final source = data['source'] as String?;
@@ -195,9 +226,9 @@ class CloudSuggestionService {
         spinLimit: (data['spinLimit'] as num?)?.toInt(),
         candidates: candidates,
         source: source,
-        contextHash: (data['canonicalDiagnostics'] is Map)
+        contextHash: data['contextHash'] as String? ?? ((data['canonicalDiagnostics'] is Map)
             ? (data['canonicalDiagnostics'] as Map)['contextHash'] as String?
-            : null,
+            : null),
       );
     } catch (e) {
       debugPrint('MakanMana: getSuggestions cloud gagal, guna lokal: $e');
@@ -213,11 +244,27 @@ class CloudSuggestionService {
     required String contextHash,
     required String actionId,
     String? sessionId,
+    String? suggestionId,
     String? placeId,
     String? reason,
   }) async {
     if (!firebaseReady) return null;
     try {
+      final outbox = await _outbox();
+      Map<String, dynamic>? pending;
+      if (action == 'reject') {
+        if (outbox == null) return null;
+        pending = outbox.pending;
+        if (pending != null) {
+          if (pending['placeId'] != placeId || pending['contextHash'] != contextHash) {
+            if (!await _flushPendingReject()) return null;
+            pending = null;
+          }
+        }
+        pending ??= {'actionId': actionId, 'placeId': placeId,
+          'contextHash': contextHash, 'reason': reason};
+        if (!await outbox.save(pending)) return null;
+      }
       final callable = _functions.httpsCallable(
         'nextSuggestion',
         options: HttpsCallableOptions(timeout: const Duration(seconds: 15)),
@@ -225,12 +272,16 @@ class CloudSuggestionService {
       final res = await callable.call<Map<Object?, Object?>>({
         'action': action,
         'contextHash': contextHash,
-        'actionId': actionId,
+        'actionId': pending?['actionId'] ?? actionId,
         if (sessionId != null) 'sessionId': sessionId,
+        if (suggestionId != null) 'suggestionId': suggestionId,
         if (placeId != null) 'placeId': placeId,
-        if (reason != null) 'reason': reason,
+        if (reason != null) 'reason': pending?['reason'] ?? reason,
       });
       final data = Map<String, dynamic>.from(res.data);
+      if (outbox != null && pending != null && data['actionAccepted'] == true) {
+        await outbox.clearIfAction(pending['actionId'] as String);
+      }
       assert(() {
         debugPrint('MM NEXT[$action]: keys=${data.keys.toList()} '
             'exhausted=${data['exhausted']} '
@@ -330,6 +381,7 @@ class CloudSuggestionService {
   /// [place] ialah snapshot tempat (perlu untuk rekod meal tempat sebenar).
   Future<bool> submitFeedback({
     required String action,
+    String? eventId,
     String? suggestionId,
     String? placeId,
     String? sessionId,
@@ -344,6 +396,18 @@ class CloudSuggestionService {
   }) async {
     if (!firebaseReady) return false;
     try {
+      RecommendationRejectOutbox? rejectOutbox;
+      String? rejectActionId;
+      if (action == 'reject' && eventId == null) {
+        rejectOutbox = await _outbox();
+        if (rejectOutbox == null) return false;
+        final existing = rejectOutbox.pending;
+        if (existing != null && existing['placeId'] != placeId) return false;
+        rejectActionId = existing?['actionId'] as String? ?? newRequestId();
+        if (!await rejectOutbox.save({'actionId': rejectActionId,
+          'placeId': placeId, 'reason': existing?['reason'] ?? reason})) return false;
+        eventId = 'reject:$rejectActionId';
+      }
       final callable = _functions.httpsCallable(
         'submitFeedback',
         options: HttpsCallableOptions(timeout: const Duration(seconds: 12)),
@@ -352,6 +416,7 @@ class CloudSuggestionService {
       // lama abaikan tanpa pecah; pelayan baharu log ke event AI Brain.
       await callable.call<Map<Object?, Object?>>({
         'action': action,
+        if (eventId != null) 'eventId': eventId,
         'suggestionId': suggestionId,
         'placeId': placeId,
         'sessionId': sessionId,
@@ -373,6 +438,9 @@ class CloudSuggestionService {
             'matchScore': place.matchScore,
           },
       });
+      if (rejectOutbox != null && rejectActionId != null) {
+        await rejectOutbox.clearIfAction(rejectActionId);
+      }
       return true;
     } catch (e) {
       debugPrint('MakanMana: submitFeedback cloud gagal, guna lokal: $e');

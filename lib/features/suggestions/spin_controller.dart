@@ -284,11 +284,10 @@ class SpinController {
             !_rejectedPlaceIds.contains(p.placeId) &&
             !_shownPlaceIds.contains(p.placeId))
         .toList();
-    final pool = fresh.isNotEmpty
-        ? fresh
-        : all.where((p) => !_rejectedPlaceIds.contains(p.placeId)).toList();
-    final safePool = pool.isNotEmpty ? pool : all;
-    return safePool[_random.nextInt(safePool.length)];
+    if (fresh.isEmpty) return null;
+    final next = fresh[_random.nextInt(fresh.length)];
+    _shownPlaceIds.add(next.placeId);
+    return next;
   }
 
   Future<void> _recordShown(PlaceSummary place, {String? mood}) async {

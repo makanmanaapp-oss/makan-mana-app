@@ -1,682 +1,130 @@
-import {planForSubscriptionUser} from "../domain/billing/appleAccess";
+import {createHash, randomUUID} from "node:crypto";
 import {defineSecret} from "firebase-functions/params";
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 import {logger} from "firebase-functions/v2";
-
-import {algorithm2FlagActive, scoringSubFlags, unifiedScoringActive} from "../config/algorithm2Flags";
-import {buildRecCtxFromHydration} from "../services/recommendationContextBuilder";
-import {maskForLog} from "../domain/algorithm2/recommendationContext";
-import {resolveRolloutForRequest} from "../services/rolloutService";
-import {algorithm2LiveEligible as isAlgorithm2LiveEligible} from "../domain/rollout/liveEligibility";
-import {ADMIN_UIDS} from "../config/constants";
-import {db, FieldValue} from "../config/firebase";
-import {computeContextHash, computeSafetyKey} from "../domain/algorithm2/sessionEngine";
-import {resolveCohortAuthorization} from "../domain/places/canonical/canonicalReadResolver";
-import {applyCanonicalOverlay} from "../services/canonicalReadService";
-import {consumeStoredAlternative, rankWithAlgorithm2} from "../services/algorithm2SessionService";
-import {getExpandedPool} from "../services/expandedPoolService";
+import {db} from "../config/firebase";
+import {planForSubscriptionUser} from "../domain/billing/appleAccess";
+import {computeContextHash} from "../domain/algorithm2/sessionEngine";
+import {RECOMMENDATION_POLICY_VERSION} from "../domain/algorithm2/recommendationPolicy";
 import {getAreaCandidatePool} from "../services/areaCandidatePoolService";
-import {logEvent} from "../services/eventService";
 import {searchNearby} from "../services/placesService";
-import {ScoringContext, scoreAndRank} from "../services/scoringService";
-import {runAlgorithm2ShadowComparison, permissionsForMode} from "../domain/algorithm2/shadowComparison";
-import {
-  incrementPaywallShown,
-  releaseSpin,
-  reserveSpin,
-  spinLimitForPlan,
-} from "../services/usageService";
-import {
-  PLACES_STATUS_OK,
-  PLACES_STATUS_UNAVAILABLE,
-  placesOutcomeWireFields,
-  truthfulPlacesOutcome,
-} from "../domain/places/truthfulPlacesOutcome";
-import {
-  QA_SYNTHETIC_ALGORITHM_VERSION,
-  SYNTHETIC_PLACE_SOURCE,
-  buildSyntheticPlaces,
-  decideSyntheticPlaces,
-} from "../domain/security/qaSurfaces";
-import {PlaceCandidate} from "../types/place";
+import {prepareRecommendationSource} from "../services/recommendationSourceService";
+import {consumeRecommendationQueue, deliverRecommendation, runRecommendationRequest, type RecommendationDelivery} from "../services/recommendationDeliveryService";
+import {reserveSpin, releaseSpin, incrementPaywallShown, spinLimitForPlan} from "../services/usageService";
+import {logEvent} from "../services/eventService";
 import {currentTimeSlot} from "../utils/timeSlot";
+import {buildSyntheticPlaces, decideSyntheticPlaces, QA_SYNTHETIC_ALGORITHM_VERSION, SYNTHETIC_PLACE_SOURCE} from "../domain/security/qaSurfaces";
+import {PlaceCandidate} from "../types/place";
+import {truthfulPlacesOutcome, PLACES_STATUS_OK} from "../domain/places/truthfulPlacesOutcome";
 
 const mapsApiKey = defineSecret("GOOGLE_MAPS_API_KEY");
+interface Input {
+  lat?: number; lng?: number; radius?: number; radiusMeters?: number;
+  mood?: string; selectedMood?: string; languageCode?: string;
+  mode?: string; requestId?: string; forceLegacy?: boolean;
+}
 
-// Lalai: pusat Kuala Lumpur (jika lokasi peranti tidak diberikan).
-const DEFAULT_LAT = 3.1478;
-const DEFAULT_LNG = 101.6953;
-const DEFAULT_RADIUS_M = 3000;
-
-// Master pre-launch fix — saiz kolam sesi AUTHORITATIF maksimum yang selamat.
-// Kolam diperluas menyediakan hingga ~40 calon unik; kita simpan sehingga 30
-// (primary + 29 alternatif) — jauh melebihi had lama 8. 30 × ~2KB ≈ 60KB,
-// SELAMAT di bawah had dokumen Firestore 1MB & respons callable. Ini memisahkan
-// saiz kolam sesi daripada prefetch UI (kad pertama tetap pantas).
-const SESSION_POOL_MAX = 30;
-
-/**
- * 16.1 blocker fix: user_brain_profiles menyimpan topCuisines /
- * avoidedCuisines / commonRejectReasons sebagai MAP {nama: kiraan}
- * (Prompt 9). Kod lama anggap array -> ".map is not a function" ->
- * fungsi crash & klien jatuh ke fallback tempatan. Normalkan kedua-dua
- * bentuk kepada senarai kunci diisih kiraan menurun (sama seperti klien).
- */
-function keysByValueDesc(v: unknown): string[] {
-  if (Array.isArray(v)) return v.filter((x) => typeof x === "string");
-  if (v && typeof v === "object") {
-    return Object.entries(v as Record<string, unknown>)
-      .sort((a, b) => ((b[1] as number) ?? 0) - ((a[1] as number) ?? 0))
-      .map(([k]) => k);
+/** One delivery boundary for Home and Spin, regardless of ranking rollout.
+ * Only the primary is delivered. The server owns the entire Next queue; a client
+ * can no longer resurrect a locally prefetched/rejected outlet. */
+export const getSuggestions = onCall({secrets: [mapsApiKey]}, async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) throw new HttpsError("unauthenticated", "Sila log masuk dahulu.");
+  const input = (request.data ?? {}) as Input;
+  const mode = input.mode === "preview" ? "preview" : "spin";
+  const lat = input.lat;
+  const lng = input.lng;
+  const radiusMeters = input.radiusMeters ?? input.radius ?? 3000;
+  if (typeof lat !== "number" || !Number.isFinite(lat) || lat < -90 || lat > 90 ||
+      typeof lng !== "number" || !Number.isFinite(lng) || lng < -180 || lng > 180 ||
+      !Number.isFinite(radiusMeters) || radiusMeters < 100 || radiusMeters > 50000) {
+    return {status: "PLACES_UNAVAILABLE", mode, source: "location_unavailable", reason: "location_unavailable", primary: null, alternatives: [], candidates: [], retryable: true};
   }
-  return [];
-}
-
-interface GetSuggestionsInput {
-  lat?: number;
-  lng?: number;
-  radius?: number;
-  radiusMeters?: number;
-  mood?: string;
-  selectedMood?: string;
-  languageCode?: string;
-  /** spin = kira had & tulis sesi; preview = pratonton Home (tiada had). */
-  mode?: string;
-  /** Phase 1.14G — override kecemasan: paksa legasi (hanya turun, tidak naik). */
-  forceLegacy?: boolean;
-}
-
-/**
- * Spin utama MakanMana (Milestone 4):
- * Google Places API (New) + cache + skor pemberat penuh.
- * WAVE 4A: tiada sandaran restoran rekaan — kunci hilang atau gangguan
- * pembekal memulangkan PLACES_UNAVAILABLE, kawasan kosong memulangkan
- * OK_EMPTY, dan spin yang tidak berhasil memulangkan kuotanya.
- */
-export const getSuggestions = onCall(
-  {secrets: [mapsApiKey]},
-  async (request) => {
-    const uid = request.auth?.uid;
-    if (!uid) {
-      throw new HttpsError("unauthenticated", "Sila log masuk dahulu.");
-    }
-    const input = (request.data ?? {}) as GetSuggestionsInput;
-    // Prompt 6: mode preview (Home) tidak mengira/menghadkan spin.
-    const mode = input.mode === "preview" ? "preview" : "spin";
-    const mood = input.selectedMood ?? input.mood ?? null;
-    const languageCode = input.languageCode ?? "ms";
-    const hasClientCoords = typeof input.lat === "number" && typeof input.lng === "number";
-    const lat = input.lat ?? DEFAULT_LAT;
-    const lng = input.lng ?? DEFAULT_LNG;
-    const radiusM = input.radiusMeters ?? input.radius ?? DEFAULT_RADIUS_M;
-    // LOCATION CONSISTENCY — echo lokasi yang PELAYAN guna (silang-sah dgn
-    // Home/Explore) + telemetri bila klien tak hantar koordinat (fallback KL).
-    const requestLocation = {
-      latGrid: Number(lat.toFixed(3)),
-      lngGrid: Number(lng.toFixed(3)),
-      radiusM,
-      hasClientCoords,
-      usedDefaultKL: !hasClientCoords,
-    };
-    if (!hasClientCoords) {
-      logger.warn("getSuggestions.noClientCoords", {mode: input.mode ?? "spin", radiusM});
-      // LOCATION AUTHORITY: jangan sekali-kali cadangkan KL apabila GPS sebenar
-      // tidak sampai. Caller mesti pulihkan lokasi dahulu.
-      return {
-        status: PLACES_STATUS_UNAVAILABLE,
-        mode,
-        source: "location_unavailable",
-        selectedMood: mood,
-        radiusMeters: radiusM,
-        primary: null,
-        alternatives: [],
-        candidates: [],
-        retryable: true,
-        reason: "location_unavailable",
-        algorithmVersion: "places_v1",
-      };
-    }
-
-    // Pelan dari users/{uid}; JANGAN percaya pelan dari client.
-    const userSnap = await db.collection("users").doc(uid).get();
-    const plan = planForSubscriptionUser(userSnap.data());
-
-    // Phase 2.4 — versi brain dibaca AWAL supaya contextHash (sesi) berubah bila
-    // brain berubah → sesi BAHARU guna brain terkini; sesi aktif lama kekal.
-    // Master Mood/Diet/Fit fix — profil + fitness juga dibaca AWAL supaya
-    // safetyKey (allergy/halal/diet/fitGoal/sport/training) masuk contextHash.
-    // Perubahan mana-mana isyarat keselamatan → contextHash BAHARU → sesi di-rank
-    // semula (penapis keras terkini) → tiada calon LAMA bercanggah disajikan.
-    const [brainVersionSnap, profileSnapEarly, fitnessSnapEarly] = await Promise.all([
-      db.collection("user_brain_profiles").doc(uid).get(),
-      db.collection("user_profiles").doc(uid).get(),
-      db.collection("fitness_profiles").doc(uid).get(),
-    ]);
-    const brainVersion = (brainVersionSnap.data()?.brainVersion as number | undefined) ?? 0;
-    const profileEarly = profileSnapEarly.data() ?? {};
-    const fitnessEarly = fitnessSnapEarly.data() ?? {};
-    const safetyKey = computeSafetyKey({
-      allergies: profileEarly.allergies as string[] | undefined,
-      halalPreference: profileEarly.halalPreference as boolean | undefined,
-      dietTypes: profileEarly.dietTypes as string[] | undefined,
-      dietType: profileEarly.dietType as string | undefined,
-      fitGoal: fitnessEarly.mainGoal as string | undefined,
-      sportMood: (fitnessEarly.sportMood as string | undefined) ?? (profileEarly.sportMood as string | undefined),
-      trainingDay: fitnessEarly.trainingDay as boolean | undefined,
-    });
-
+  const rawMood = input.selectedMood ?? input.mood;
+  const mood = typeof rawMood === "string" ? rawMood.slice(0, 80) : null;
+  const languageCode = typeof input.languageCode === "string" ? input.languageCode.slice(0, 10) : "ms";
+  // Old clients get a server-generated logical id; upgraded clients retain their
+  // request id on network retry. Neither path bypasses the outlet cooldown.
+  const requestId = input.requestId ?? randomUUID();
+  const fingerprint = createHash("sha256").update(JSON.stringify({mode, lat, lng, radiusMeters, mood, languageCode})).digest("hex");
+  return runRecommendationRequest(uid, requestId, fingerprint, async () => {
+    const user = await db.collection("users").doc(uid).get();
+    const plan = planForSubscriptionUser(user.data());
+    const contextHash = computeContextHash({uid, lat, lng, radiusMeters, mood, plan, timeSegment: currentTimeSlot()});
+    const context = {lat, lng, radiusMeters, mood, languageCode, contextHash, source: "makanmana_pool"};
+    let spinUsed = 0;
+    let spinLimit = spinLimitForPlan(plan);
+    let reserved = false;
+    let delivered = false;
     const base = {userId: uid, mood, languageCode, plan};
-
-    // QUOTA-01: had spin harian — HANYA mod spin (pelayan = penguat kuasa).
-    // Tempahan atomik (transaction) SEBELUM kerja: kalis race/double-tap,
-    // tiada panggilan Places, tiada sesi, tiada suggestion_shown bila blok.
-    // Mod preview (Home AI Pick / preview mood terkunci) TIDAK dikira.
-    let spinUsedNow = 0;
-    let spinLimitNow = spinLimitForPlan(plan);
     if (mode === "spin") {
-      await logEvent({...base, eventType: "spin_started"});
-      const reserved = await reserveSpin(uid, plan);
-      spinUsedNow = reserved.spinUsed;
-      spinLimitNow = reserved.spinLimit;
-      if (!reserved.allowed) {
-        await logEvent({
-          ...base,
-          eventType: "paywall_viewed",
-          metadata: {
-            trigger: "spin_limit",
-            featureId: "unlimited_spin",
-            requiredPlan: "plus",
-          },
-        });
+      const usage = await reserveSpin(uid, plan);
+      spinUsed = usage.spinUsed; spinLimit = usage.spinLimit;
+      if (!usage.allowed) {
         await incrementPaywallShown(uid);
-        return {
-          status: "PAYWALL_REQUIRED",
-          requiredPlan: "plus",
-          featureId: "unlimited_spin",
-          currentUsage: reserved.spinUsed,
-          limit: reserved.spinLimit,
-          spinUsed: reserved.spinUsed,
-          spinLimit: reserved.spinLimit,
-        };
+        return {status: "PAYWALL_REQUIRED", spinUsed, spinLimit, requiredPlan: "plus", featureId: "unlimited_spin"};
       }
+      reserved = true;
     }
-
-    // Phase 2.6B — kohort + keputusan rollout AUTHORITATIF dikira AWAL supaya SEMUA
-    // modul Algorithm 2 (expanded pool, early alt-reuse, scoring, overlay) guna
-    // kelayakan LIVE yang SAMA (owner_internal + beta_allowlist + percentage_live).
-    // Diagnostik & debug kekal owner-only (rollout.diagnosticsAllowed).
-    const cohort = resolveCohortAuthorization(
-      {uid, token: request.auth?.token as Record<string, unknown> | undefined},
-      {ownerAllowlist: ADMIN_UIDS},
-    );
-    const {decision: rollout} = await resolveRolloutForRequest(
-      uid, request.auth?.token as Record<string, unknown> | undefined,
-    );
-    // Kelayakan LIVE tunggal & server-authoritative. BUKAN shadow, BUKAN kecemasan,
-    // BUKAN legasi. Klien TIDAK boleh mempengaruhi (isOwner/keahlian dari server).
-    const algorithm2LiveEligible = isAlgorithm2LiveEligible(rollout);
-    const eligible = algorithm2LiveEligible;
-    // Phase 2.5 — telemetri kohort per-permintaan (privasi-selamat). cohortId anon.
-    logger.info("getSuggestions.rollout", {
-      mode: rollout.mode, cohortId: rollout.cohortId, enabled: eligible,
-      emergencyLegacy: rollout.emergencyLegacy, rolloutVersion: rollout.rolloutVersion,
-    });
-
-    // Phase 2.2A/2.6B — TRUE alternative queue: pulangkan alternatif tersimpan
-    // LANGSUNG (TIADA searchNearby / scoreAndRank / panggilan provider) bila
-    // sesi aktif masih ada alternatif sah. Guna kelayakan LIVE (owner + beta).
-    {
-      if (input.forceLegacy !== true &&
-          algorithm2FlagActive("alternativeReuse", algorithm2LiveEligible) &&
-          algorithm2FlagActive("sessionSuppression", algorithm2LiveEligible)) {
-        const ctxHashEarly = computeContextHash({
-          uid, lat, lng, radiusMeters: radiusM, mood, timeSegment: currentTimeSlot(), plan, brainVersion, safetyKey,
-        });
-        const consumed = await consumeStoredAlternative(uid, ctxHashEarly, Date.now(), {
-          sessionSuppression: true,
-          rejectMemory: algorithm2FlagActive("rejectMemory", algorithm2LiveEligible),
-          sessionRotation: algorithm2FlagActive("sessionRotation", algorithm2LiveEligible),
-        });
-        if (consumed) {
-          const ovC = await applyCanonicalOverlay([consumed.candidate], {
-            cohortEligible: true, forceLegacy: false, includeDebug: rollout.diagnosticsAllowed,
-          });
-          const primaryOut = ovC.results[0].candidate;
-          return {
-            status: "OK",
-            mode,
-            source: "google_places",
-            selectedMood: mood,
-            radiusMeters: radiusM,
-            primary: primaryOut,
-            alternatives: [],
-            candidates: [primaryOut],
-            ...(mode === "spin" ? {spinUsed: spinUsedNow, spinLimit: spinLimitNow} : {}),
-            algorithmVersion: "algo2_session_alternative",
-            canonicalDiagnostics: {
-              cohort: cohort.maskedIdentity,
-              algorithm2: consumed.diagnostics,
-              // Phase 2.2D FIX — laluan reuse-awal MESTI pulangkan contextHash
-              // (opaque) supaya klien boleh guna Reject/Next AUTHORITATIF. Tanpa
-              // ini, spin ke-2+ (yang consume alternatif tersimpan) hantar
-              // contextHash NULL → klien jatuh ke alternatif tempatan (defek).
-              contextHash: ctxHashEarly,
-              requestLocation,
-            },
-          };
+    const success = (delivery: RecommendationDelivery, algorithmVersion: string) => {
+      delivered = true;
+      return {status: "OK", mode, ...delivery, candidates: [delivery.primary],
+        selectedMood: mood, radiusMeters, algorithmVersion,
+        ...(mode === "spin" ? {spinUsed, spinLimit} : {}),
+        canonicalDiagnostics: {contextHash, policyVersion: RECOMMENDATION_POLICY_VERSION}};
+    };
+    try {
+      const queued = await consumeRecommendationQueue(uid, contextHash);
+      if (queued) return success(queued, "profile_memory_26h_queue_v1");
+      let candidates: PlaceCandidate[] = [];
+      let providerError = false;
+      const synthetic = decideSyntheticPlaces({env: process.env});
+      const apiKey = mapsApiKey.value();
+      if (synthetic.active) {
+        candidates = buildSyntheticPlaces({lat, lng, count: 20});
+        context.source = SYNTHETIC_PLACE_SOURCE;
+      } else if (apiKey) {
+        try {
+          if (process.env.AREA_COVERAGE_POOL_ENABLED !== "false" && input.forceLegacy !== true) {
+            const area = await getAreaCandidatePool({lat, lng, radiusMeters, languageCode, apiKey, now: Date.now()});
+            candidates = area.pool.candidates;
+          } else {
+            candidates = await searchNearby({lat, lng, radiusMeters, languageCode, apiKey});
+          }
+        } catch {
+          providerError = true;
+          logger.warn("getSuggestions.providerUnavailable");
         }
       }
-    }
-
-    // Konteks skor: profil + sejarah makan + food memory + fit + wallet (hidrat
-    // server). Part E — wallet DIBACA DARI REKOD PELAYAN DIPERCAYAI sahaja
-    // (users/{uid}/meal_wallet/current); TIDAK PERNAH dari payload klien.
-    // Master fix — guna semula snap AWAL (profile/fitness/brain) untuk elak baca
-    // berganda; hanya meals + wallet perlu dibaca di sini.
-    const [mealsSnap, walletSnap] =
-      await Promise.all([
-        db
-          .collection("users")
-          .doc(uid)
-          .collection("meals")
-          .orderBy("mealTime", "desc")
-          .limit(5)
-          .get(),
-        db.collection("users").doc(uid).collection("meal_wallet").doc("current").get(),
-      ]);
-    const profile = profileEarly;
-    const brain = brainVersionSnap.data() ?? {};
-    const fitness = fitnessEarly;
-    const wallet = walletSnap.exists ? (walletSnap.data() ?? {}) : {};
-    const lastCuisines: string[] = [];
-    const recentPlaceIds: string[] = [];
-    for (const doc of mealsSnap.docs) {
-      const d = doc.data();
-      recentPlaceIds.push((d.placeId as string) ?? "");
-      const singular = d.cuisine as string | undefined;
-      if (singular) lastCuisines.push(singular);
-      for (const c of (d.cuisineTags as string[] | undefined) ?? []) {
-        lastCuisines.push(c);
+      if (!synthetic.active) {
+        const provider = truthfulPlacesOutcome({apiKeyPresent: true, providerError, candidates});
+        candidates = provider.status === PLACES_STATUS_OK ? provider.places : [];
       }
-    }
-
-    // Calon: Google Places (cache-first) atau dummy fallback.
-    let candidatesSource: PlaceCandidate[];
-    let algorithmVersion: string;
-    const apiKey = mapsApiKey.value();
-    // Phase 2.2A/2.6B — pool DIPERLUAS untuk kohort LIVE (owner + beta) — cache-first,
-    // ≤3 kueri. Guna kelayakan rollout server-authoritative (bukan owner-only).
-    const useExpandedPool = input.forceLegacy !== true &&
-      algorithm2FlagActive("expandedPool", algorithm2LiveEligible);
-    // FULL RADIUS COVERAGE kini ialah retrieval default produksi:
-    // SEMUA MakanMana canonical dalam radius + sehingga 70 Google supplement.
-    // Env "false" kekal sebagai emergency kill switch. Scoring/Algorithm 2
-    // rollout masih berasingan dan TIDAK dipaksa ON oleh perubahan retrieval ini.
-    const areaCoverageOn = process.env.AREA_COVERAGE_POOL_ENABLED !== "false" &&
-      input.forceLegacy !== true && hasClientCoords;
-    // WAVE 4A — data tempat SINTETIK QA untuk Home (preview) dan Spin. Aktif
-    // HANYA dengan MM_QA_SYNTHETIC_PLACES=enabled DAN runtime QA; produksi
-    // tidak pernah diaktifkan walaupun bendera ditetapkan. Cabang ini berada
-    // di ATAS setiap laluan Places, jadi tiada panggilan pembekal berlaku.
-    // Ia menggantikan SUMBER CALON sahaja — pemarkahan, penapis, sesi dan
-    // personalisasi di hilir kekal talian paip yang sama (tiada algoritma kedua).
-    const synthetic = decideSyntheticPlaces({env: process.env});
-    let providerError = false;
-    if (synthetic.active) {
-      candidatesSource = buildSyntheticPlaces({lat, lng, count: 20});
-      algorithmVersion = QA_SYNTHETIC_ALGORITHM_VERSION;
-      logger.info("getSuggestions.qaSynthetic", {reason: synthetic.reason, mode});
-    } else if (apiKey) {
-      try {
-        if (areaCoverageOn) {
-          const area = await getAreaCandidatePool({
-            lat, lng, radiusMeters: radiusM, languageCode, apiKey, now: Date.now(),
-          });
-          candidatesSource = area.pool.candidates.length > 0
-            ? area.pool.candidates
-            : await searchNearby({lat, lng, radiusMeters: radiusM, languageCode, apiKey});
-          const makanManaCount = area.pool.candidates.filter(
-            (p) => typeof p.canonicalPlaceId === "string" &&
-              p.canonicalPlaceId.trim().length > 0,
-          ).length;
-          const googleSupplementCount = area.pool.candidates.length - makanManaCount;
-          logger.info("getSuggestions.areaCoverage", {
-            cohortId: rollout.cohortId,
-            areaPoolTotal: area.pool.candidates.length,
-            makanManaCount,
-            googleSupplementCount,
-            knownCanonicalCount: area.pool.knownCanonicalCount,
-            exactRadiusCount: area.pool.exactRadiusCount,
-            activePlaceCount: area.pool.activePlaceCount,
-            newlyDiscoveredCount: area.pool.newlyDiscoveredCount,
-            discoveryPerformed: area.pool.discoveryPerformed,
-            discoveryReason: area.pool.discoveryReason,
-            freshnessStatus: area.pool.freshnessStatus,
-            providerQueryCount: area.providerQueryCount,
-            usedFallback: area.usedFallback,
-            fallbackReason: area.fallbackReason,
-            coverageCells: area.pool.coverageCellIds.length,
-          });
-        } else if (useExpandedPool) {
-          const pool = await getExpandedPool({
-            lat, lng, radiusMeters: radiusM, languageCode, apiKey, now: Date.now(),
-          });
-          candidatesSource = pool.candidates.length > 0 ? pool.candidates : await searchNearby({lat, lng, radiusMeters: radiusM, languageCode, apiKey});
-        } else {
-          candidatesSource = await searchNearby({
-            lat,
-            lng,
-            radiusMeters: radiusM,
-            languageCode,
-            apiKey,
-          });
-        }
-        algorithmVersion = "places_v1";
-      } catch (e) {
-        // Gangguan pembekal (termasuk had masa) BUKAN "tiada hasil".
-        logger.error("getSuggestions.providerError", {
-          error: e instanceof Error ? e.message : "unknown",
-        });
-        providerError = true;
-        candidatesSource = [];
-        algorithmVersion = "places_v1";
+      // Supabase approved publications are a source in their own right. A missing
+      // Google key must not suppress otherwise valid merchant publications.
+      const source = await prepareRecommendationSource(candidates, context, Date.now(), !synthetic.active);
+      const delivery = await deliverRecommendation(uid, source, context);
+      if (delivery) {
+        // Learning telemetry is best-effort after the authoritative transaction.
+        try {
+          await logEvent({...base, eventType: "suggestion_shown", placeId: delivery.primary.placeId,
+            sessionId: delivery.sessionId, suggestionId: delivery.suggestionId,
+            metadata: {mode, source: context.source, policyVersion: RECOMMENDATION_POLICY_VERSION}});
+        } catch { logger.warn("getSuggestions.telemetryDeferred"); }
+        return success(delivery, synthetic.active ? QA_SYNTHETIC_ALGORITHM_VERSION : "profile_memory_26h_v1");
       }
-    } else {
-      candidatesSource = [];
-      algorithmVersion = "places_v1";
+      if (reserved) { spinUsed = await releaseSpin(uid); reserved = false; }
+      const unavailable = source.candidates.length === 0 && (providerError || !apiKey);
+      logger.info("getSuggestions.noPlaces", {mode, spinRefunded: mode === "spin",
+        status: unavailable ? "PLACES_UNAVAILABLE" : "OK_EMPTY"});
+      return {status: unavailable ? "PLACES_UNAVAILABLE" : "OK_EMPTY", mode,
+        source: unavailable ? "unavailable" : "makanmana_pool",
+        reason: unavailable ? "provider_unavailable" : "no_eligible_new_recommendations",
+        primary: null, alternatives: [], candidates: [], retryable: unavailable,
+        policyVersion: RECOMMENDATION_POLICY_VERSION,
+        ...(mode === "spin" ? {spinUsed, spinLimit, spinRefunded: true} : {})};
+    } finally {
+      if (reserved && !delivered) await releaseSpin(uid);
     }
-
-    // WAVE 4A — hasil JUJUR. Tiada restoran rekaan dalam Home mahupun Spin.
-    // Spin yang tidak menghasilkan cadangan MESTI memulangkan kuota yang
-    // ditempah sebelum pengambilan.
-    if (!synthetic.active) {
-      const outcome = truthfulPlacesOutcome({
-        apiKeyPresent: Boolean(apiKey),
-        providerError,
-        candidates: candidatesSource,
-      });
-      if (outcome.status !== PLACES_STATUS_OK) {
-        const wire = placesOutcomeWireFields(outcome);
-        let spinRefunded = false;
-        if (mode === "spin") {
-          spinUsedNow = await releaseSpin(uid);
-          spinRefunded = true;
-        }
-        logger.info("getSuggestions.noPlaces", {
-          mode,
-          status: wire.status,
-          reason: wire.reason ?? null,
-          retryable: wire.retryable ?? null,
-          spinRefunded,
-        });
-        return {
-          status: wire.status,
-          mode,
-          source: outcome.status === PLACES_STATUS_UNAVAILABLE ? "unavailable" : "google_places",
-          selectedMood: mood,
-          radiusMeters: radiusM,
-          primary: null,
-          alternatives: [],
-          candidates: [],
-          ...(wire.retryable !== undefined ? {retryable: wire.retryable} : {}),
-          ...(wire.reason ? {reason: wire.reason} : {}),
-          ...(mode === "spin" ? {spinUsed: spinUsedNow, spinLimit: spinLimitNow, spinRefunded} : {}),
-          algorithmVersion: "places_v1",
-        };
-      }
-      candidatesSource = outcome.places;
-    }
-
-    const ctx: ScoringContext = {
-      budgetMax: (profile.budgetMax as number | undefined) ?? null,
-      favoriteCuisines:
-        (profile.favoriteCuisines as string[] | undefined) ??
-        (profile.favouriteCuisines as string[] | undefined) ??
-        [],
-      lastCuisines,
-      recentPlaceIds,
-      mood,
-      radiusKm: radiusM / 1000,
-      // Diet Goal (Pro): pengaruh berterusan pada semua cadangan.
-      dietGoal: plan === "pro" ?
-        ((profile.dietGoal as string | undefined) ?? null) :
-        null,
-      // Prompt 6: isyarat keselamatan + peribadi (dihidrat dari Firestore).
-      allergies: (profile.allergies as string[] | undefined) ?? [],
-      dietType: (profile.dietType as string | undefined) ?? null,
-      halalPreference:
-        (profile.halalPreference as boolean | undefined) ?? false,
-      spicyPreference: (profile.spicyPreference as number | undefined) ?? null,
-      topCuisines: keysByValueDesc(brain.topCuisines),
-      avoidedCuisines: keysByValueDesc(brain.avoidedCuisines),
-      commonRejectReasons: keysByValueDesc(brain.commonRejectReasons),
-      fitGoal: (fitness.mainGoal as string | undefined) ?? null,
-    };
-    const forceLegacy = input.forceLegacy === true;
-    const algo2 = {
-      sessionSuppression: algorithm2FlagActive("sessionSuppression", eligible),
-      rejectMemory: algorithm2FlagActive("rejectMemory", eligible),
-      sessionRotation: algorithm2FlagActive("sessionRotation", eligible),
-    };
-    // Master pre-launch fix — kolam sesi AUTHORITATIF BESAR (bukan lagi terhad 8).
-    // Simpan sebanyak calon sebenar yang selamat (dari kolam diperluas ~40) supaya
-    // Reject boleh melangkah jauh melebihi 8 tanpa carian provider baharu. Terbatas
-    // oleh SESSION_POOL_MAX (had saiz dokumen Firestore + respons callable). Legasi
-    // kekal 5 (tidak berubah). UI prefetch = subset; kolam sesi = penuh.
-    const storeCount = algo2.sessionSuppression && !forceLegacy ? SESSION_POOL_MAX : 5;
-    // Phase 2.2D — contextHash dikira sekali; dipulangkan (opaque) supaya klien
-    // boleh menghantarnya semula pada Reject/Next (nextSuggestion authoritative).
-    const contextHash = computeContextHash({
-      uid, lat, lng, radiusMeters: radiusM, mood, timeSegment: currentTimeSlot(), plan, brainVersion, safetyKey,
-    });
-
-    // Phase 2.3 — konteks pengesyoran ternormal (Home AI Pick + Spin sama) +
-    // bendera pemarkahan bersatu (owner cohort ON, awam OFF).
-    const localHour = (new Date().getUTCHours() + 8) % 24; // MYT
-    const recCtx = buildRecCtxFromHydration({
-      uid, plan, language: languageCode, lat: input.lat ?? null, lng: input.lng ?? null,
-      radiusMeters: radiusM, mood, localHour,
-      profile, brain, fitness, wallet, meals: mealsSnap.docs.map((d) => d.data()),
-    });
-    const useUnified = !forceLegacy && unifiedScoringActive(eligible);
-    const subFlags = scoringSubFlags(eligible);
-
-    let ranked: PlaceCandidate[];
-    let algo2Diagnostics: unknown;
-    let scoringVersionOut = "legacy_scoreAndRank_v1";
-    const legacyRankStart = Date.now();
-    if (algo2.sessionSuppression && !forceLegacy) {
-      // Penindasan (excludePlaceIds) + putaran + kepelbagaian SELEPAS skor.
-      // Phase 2.3: bila unifiedScoring ON → markah V2 (keselamatan keras dahulu);
-      // jika tidak → legasi scoreAndRank (rollback-capable).
-      const res = await rankWithAlgorithm2(candidatesSource, ctx, {
-        uid, contextHash, now: Date.now(), flags: algo2, storeCount,
-        recCtx, subFlags, useUnified,
-      });
-      ranked = res.ranked;
-      algo2Diagnostics = res.diagnostics;
-      scoringVersionOut = res.diagnostics.scoringVersion;
-    } else {
-      ranked = scoreAndRank(candidatesSource, ctx);
-    }
-    const legacyRankLatencyMs = Date.now() - legacyRankStart;
-    const candidates = ranked.slice(0, storeCount);
-    const primary = candidates[0];
-    if (!primary) {
-      throw new HttpsError("not-found", "Tiada calon tersedia.");
-    }
-
-    // Phase 2.5C — SHADOW comparison (HANYA percentage_shadow). READ-ONLY:
-    // guna semula pool legasi yang SUDAH diambil, kira Algorithm 2 dalam-memori
-    // (rankUnified tulen), log metrik AGREGAT sahaja. TIDAK mengubah `outCandidates`
-    // (output pengguna), TIADA panggilan provider/kuota/sesi/brain/Food Memory.
-    // Kegagalan shadow DITANGKAP — tidak pernah menjejaskan respons legasi.
-    if (rollout.shadowEnabled && !forceLegacy) {
-      try {
-        // mod shadow_read_only: SEMUA penulisan dilarang (guard masa-jalan).
-        const shadowPerms = permissionsForMode("shadow_read_only");
-        const shadow = runAlgorithm2ShadowComparison({
-          candidatePool: candidatesSource,
-          legacyRankedIds: ranked.map((p) => p.placeId),
-          recCtx,
-          subFlags: scoringSubFlags(true), // sub-bendera Algorithm 2 penuh
-          poolIsFallback: algorithmVersion !== "places_v1",
-          candidatePoolVersion: algorithmVersion,
-          rolloutVersion: rollout.rolloutVersion,
-          legacyLatencyMs: legacyRankLatencyMs,
-          clock: () => Date.now(),
-        });
-        logger.info("getSuggestions.shadowComparison", {
-          cohortId: rollout.cohortId,
-          rolloutVersion: rollout.rolloutVersion,
-          scoringVersion: shadow.scoringVersion,
-          mode: rollout.mode,
-          shadowSuccess: shadow.success,
-          shadowSkipped: shadow.skipped,
-          shadowSkippedReason: shadow.skipReason,
-          shadowErrorCode: shadow.errorCode,
-          shadowScoringLatencyMs: shadow.scoringLatencyMs,
-          legacyLatencyMs: legacyRankLatencyMs,
-          totalLatencyDeltaMs: shadow.totalLatencyDeltaMs,
-          algorithm2TopScore: shadow.algorithm2TopScore,
-          candidatePoolVersion: shadow.candidatePoolVersion,
-          readOnly: shadowPerms.sessionWriteAllowed === false,
-          ...(shadow.metrics ?? {}),
-        });
-      } catch (e) {
-        // Invarian: shadow TIDAK BOLEH menjejaskan output pengguna.
-        logger.warn("getSuggestions.shadowComparison.error", {
-          cohortId: rollout.cohortId, code: "shadow_uncaught",
-        });
-      }
-    }
-
-    // Phase 1.14G — overlay kanonikal HANYA untuk payload DIPULANGKAN kepada kohort.
-    const overlay = await applyCanonicalOverlay(candidates, {
-      cohortEligible: eligible,
-      forceLegacy,
-      includeDebug: rollout.diagnosticsAllowed,
-    });
-    const outCandidates = overlay.results.map((r) => r.candidate);
-    const outPrimary = outCandidates[0];
-    const outAlternatives = outCandidates.slice(1);
-    const canonicalDiagnostics = eligible
-      ? {
-        cohort: cohort.maskedIdentity,
-        source: cohort.source,
-        canonicalCount: overlay.canonicalCount,
-        legacyCount: overlay.legacyCount,
-        forceLegacy,
-        algorithm2: algo2Diagnostics ?? {enabled: false},
-        flags: algo2,
-        contextHash, // opaque — untuk Reject/Next authoritative
-        requestLocation,
-        scoringVersion: scoringVersionOut,
-        scoringSubFlags: subFlags,
-        brainVersion,
-        // Phase 2.5 — telemetri rollout (privasi-selamat: cohortId anon, BUKAN uid).
-        rollout: {mode: rollout.mode, cohortId: rollout.cohortId, rolloutVersion: rollout.rolloutVersion, decisionHash: rollout.decisionHash},
-      }
-      : undefined;
-
-    // Phase 2.3 — observability (TIADA data alahan/kesihatan mentah).
-    if (eligible && useUnified) {
-      logger.info("getSuggestions.unifiedScoring", {
-        mode,
-        scoringVersion: scoringVersionOut,
-        rolloutMode: rollout.mode,
-        cohortId: rollout.cohortId,
-        context: maskForLog(recCtx),
-        diagnostics: (algo2Diagnostics as {unified?: unknown})?.unified ?? null,
-      });
-    }
-
-    // Sumber jujur: Places sebenar vs fallback dummy (untuk label sample UI).
-    const source =
-      algorithmVersion === "places_v1" ? "google_places" :
-        algorithmVersion === QA_SYNTHETIC_ALGORITHM_VERSION ? SYNTHETIC_PLACE_SOURCE :
-          "mock_fallback";
-
-    // Mod PREVIEW (Home AI Pick): tiada had, tiada tulisan sesi/suggestion,
-    // tiada increment. Hanya pulangkan hasil untuk paparan.
-    if (mode === "preview") {
-      return {
-        status: "OK",
-        mode: "preview",
-        source,
-        selectedMood: mood,
-        radiusMeters: radiusM,
-        primary: outPrimary,
-        alternatives: outAlternatives,
-        candidates: outCandidates,
-        algorithmVersion,
-        ...(canonicalDiagnostics ? {canonicalDiagnostics} : {}),
-      };
-    }
-
-    // Sesi cadangan baharu.
-    const sessionRef = db.collection("suggestion_sessions").doc();
-    await sessionRef.set({
-      userId: uid,
-      startedAt: FieldValue.serverTimestamp(),
-      lat,
-      lng,
-      radius: radiusM,
-      mood,
-      timeSlot: currentTimeSlot(),
-      candidatePlaceIds: candidates.map((p) => p.placeId),
-      shownPlaceIds: [primary.placeId],
-      rejectedPlaceIds: [],
-      finalAction: null,
-      source: "cloud_function",
-      algorithmVersion,
-    });
-
-    // Rekod cadangan utama.
-    const suggestionRef = db
-      .collection("users")
-      .doc(uid)
-      .collection("suggestions")
-      .doc();
-    await suggestionRef.set({
-      placeId: primary.placeId,
-      sessionId: sessionRef.id,
-      status: "shown",
-      matchScore: primary.matchScore,
-      timeSlot: currentTimeSlot(),
-      rankPosition: 1,
-      algorithmVersion,
-      distanceKm: primary.distanceKm,
-      priceEstimate: primary.priceEstimate,
-      matchReasons: primary.matchReasonKeys,
-      createdAt: FieldValue.serverTimestamp(),
-    });
-
-    await logEvent({
-      ...base,
-      eventType: "suggestion_shown",
-      placeId: primary.placeId,
-      suggestionId: suggestionRef.id,
-      sessionId: sessionRef.id,
-      metadata: {source, mode, radiusMeters: radiusM},
-    });
-    // QUOTA-01: increment sudah berlaku secara atomik dalam reserveSpin.
-
-    return {
-      status: "OK",
-      mode: "spin",
-      source,
-      selectedMood: mood,
-      radiusMeters: radiusM,
-      sessionId: sessionRef.id,
-      suggestionId: suggestionRef.id,
-      primary: outPrimary,
-      alternatives: outAlternatives,
-      candidates: outCandidates,
-      spinUsed: spinUsedNow,
-      spinLimit: spinLimitNow,
-      algorithmVersion,
-      ...(canonicalDiagnostics ? {canonicalDiagnostics} : {}),
-    };
-  },
-);
+  });
+});
