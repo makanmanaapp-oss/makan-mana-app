@@ -42,13 +42,13 @@ Recorded local verification before publishing the review branch:
 
 | Check | Evidence/status |
 | --- | --- |
-| Production TypeScript build | Pass; rerun on final source before closing review |
-| Full Functions domain regression | 1,796/1,796 pass at the recorded intermediate checkpoint; final rerun required after subsequent compatibility changes |
+| Production TypeScript build | PASS locally and on Node 22 GitHub CI |
+| Full Functions domain regression | PASS: 1,796/1,796 on final implementation source, zero skipped; also passed Node 22 CI |
 | New pure policy tests | 17/17 pass: rolling boundary, midnight, longer TTL, permanent avoid, canonical dedupe, twenty unique choices then exhaustion, expired-reject tier |
 | Initial actual Firestore emulator suite | 12/12 pass, zero skipped, on project `demo-makanmana-qa` |
-| Expanded emulator suite | Adds actual Home -> Reject -> Spin/refund and legacy-preview event ingestion; final result recorded in the PR/checks |
+| Expanded emulator suite | PASS: 14/14, zero skipped, including actual Home -> Reject -> Spin/refund, stale replay and legacy-preview event ingestion |
 | Flutter local execution | Blocked by automatic approval review after SDK startup contacted the instance-metadata endpoint; not retried through another local execution route |
-| Flutter CI | Fresh GitHub-hosted runner, `contents: read`, no cloud secrets/OIDC. Analyze and outbox/location/learning-order tests defined in `recommendation-26h.yml` |
+| Flutter CI | PASS: analyze plus 15/15 relevant tests on a fresh GitHub-hosted runner, `contents: read`, no cloud secrets/OIDC. Initial run: https://github.com/makanmanaapp-oss/makan-mana-app/actions/runs/39812585303 |
 | Device UI/E2E | Not performed; no connected Android/iOS device in this environment |
 | Supabase integration | Existing production schema/publication lifecycle inspected read-only; no schema/data writes. Emulator tests use isolated publication fixtures, not real merchants |
 
@@ -58,6 +58,12 @@ real Firestore transactions. It covers simultaneous requests, user separation,
 publication version races, withdrawal, private-field projection, idempotent
 feedback, request replay, full-pool exhaustion and quota refund. It does not
 constitute native-device or live provider end-to-end verification.
+
+The existing Wave 2 workflow initially failed an obsolete literal-false flag
+assertion. The reviewed base already uses `kReleaseMode`. The check now requires
+that the flag file remain identical to the PR base; application flags are not
+changed to satisfy CI. The updated check was locally exercised against both the
+reviewed base and a deliberately altered flag fixture.
 
 ## Operational bounds and release gates
 
