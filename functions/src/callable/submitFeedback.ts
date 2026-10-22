@@ -1,12 +1,10 @@
 import {HttpsError, onCall} from "firebase-functions/v2/https";
 import {logger} from "firebase-functions/v2";
 
-import {algorithm2FlagActive} from "../config/algorithm2Flags";
-import {ADMIN_UIDS} from "../config/constants";
 import {db, FieldValue} from "../config/firebase";
-import {resolveCohortAuthorization} from "../domain/places/canonical/canonicalReadResolver";
 import {isRealPlaceId} from "../domain/places/realPlaceIdentity";
-import {writeRejectMemory} from "../services/algorithm2SessionService";
+import {recordRecommendationReject} from "../services/recommendationDeliveryService";
+import {randomUUID} from "node:crypto";
 import {logEvent} from "../services/eventService";
 import {currentTimeSlot} from "../utils/timeSlot";
 
@@ -22,6 +20,7 @@ interface PlaceSnapshot {
 }
 
 interface SubmitFeedbackInput {
+  eventId?: string;
   suggestionId?: string;
   placeId?: string;
   sessionId?: string;
@@ -112,7 +111,11 @@ export const submitFeedback = onCall(async (request) => {
     const sessionRef = db
       .collection("suggestion_sessions")
       .doc(input.sessionId);
-    if (action === "accept") {
+    const session = await sessionRef.get();
+    if (session.exists && session.data()?.userId !== uid) {
+      throw new HttpsError("permission-denied", "session_not_owned");
+    }
+    if (session.exists && action === "accept") {
       await sessionRef.set(
         {
           acceptedPlaceId: placeId,
@@ -121,7 +124,7 @@ export const submitFeedback = onCall(async (request) => {
         },
         {merge: true},
       );
-    } else if (action === "reject" && placeId) {
+    } else if (session.exists && action === "reject" && placeId) {
       await sessionRef.set(
         {rejectedPlaceIds: FieldValue.arrayUnion(placeId)},
         {merge: true},
@@ -129,15 +132,10 @@ export const submitFeedback = onCall(async (request) => {
     }
   }
 
-  // Phase 2.2 — reject-memory 24 jam (kohort + bendera sahaja; awam tidak terjejas).
+  // Product policy applies to every account and survives session/profile changes.
   if (action === "reject" && placeId) {
-    const cohort = resolveCohortAuthorization(
-      {uid, token: request.auth?.token as Record<string, unknown> | undefined},
-      {ownerAllowlist: ADMIN_UIDS},
-    );
-    if (algorithm2FlagActive("rejectMemory", cohort.canonicalCohortEligible)) {
-      await writeRejectMemory(uid, placeId, Date.now(), {reason: input.reason ?? null});
-    }
+    const eventId = input.eventId ?? (input.suggestionId ? `reject:${input.suggestionId}` : `reject:${randomUUID()}`);
+    await recordRecommendationReject(uid, placeId, eventId, input.reason);
   }
 
   // Accept => rekod makan + siaran Feed Makan komuniti.
@@ -192,7 +190,7 @@ export const submitFeedback = onCall(async (request) => {
         "suggestion_reject" :
         action;
 
-  await logEvent({
+  if (action !== "reject") await logEvent({
     userId: uid,
     eventType: canonicalType,
     placeId,

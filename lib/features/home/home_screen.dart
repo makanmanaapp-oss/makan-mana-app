@@ -179,18 +179,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   /// Buka dari AI Pick (Home preview): bawa alternatif + sumber + label sample
   /// supaya Accept/Reject di skrin cadangan berkelakuan betul (Prompt 7).
-  void _openSuggestionFromHome(HomeSuggestion s) {
+  Future<void> _openSuggestionFromHome(HomeSuggestion s) async {
     final ctx = ref.read(makanManaUserContextProvider);
     ref.read(suggestionActionControllerProvider.notifier).beginFromPreview(
           s.primary!,
           alternatives: s.alternatives,
           source: s.source,
           sessionId: s.sessionId,
+          suggestionId: s.suggestionId,
+          contextHash: s.contextHash,
           isSample: s.isSample,
           mood: ctx.selectedMood,
           radiusMeters: ctx.effectiveRadiusMeters,
         );
-    context.push(RoutePaths.suggestion);
+    await context.push(RoutePaths.suggestion);
+    if (mounted) ref.invalidate(homeSuggestionProvider);
   }
 
   /// Prompt 4: pemilih radius carian (KM). Guna = sesi; Jadikan lalai =

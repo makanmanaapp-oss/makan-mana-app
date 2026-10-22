@@ -44,4 +44,9 @@ export interface PlaceCandidate {
    */
   lat?: number;
   lng?: number;
+  /** Approved public publication evidence, never inferred from merchant identity. */
+  halalStatus?: string;
+  dietaryReported?: string[];
+  allergenReported?: string[];
+  menuItems?: Array<{name: string; price: number; available: boolean; section: "makanan" | "minuman"}>;
 }

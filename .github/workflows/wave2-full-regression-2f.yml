@@ -49,8 +49,14 @@ jobs:
             exit 1
           fi
 
-          grep -q 'static bool canonicalRestaurantDetailEnabled = false;' \
-            lib/features/restaurant/canonical/restaurant_detail_flags.dart
+          # Preserve the reviewed base flag. The current iOS base intentionally
+          # uses kReleaseMode; requiring the historical literal false makes an
+          # unrelated PR fail and encourages reverting shipped behavior.
+          flag_path="lib/features/restaurant/canonical/restaurant_detail_flags.dart"
+          if ! git diff --quiet "$base_ref" -- "$flag_path"; then
+            echo "This change must preserve the canonical detail flag from its reviewed base."
+            exit 1
+          fi
           grep -q "httpsCallable('getRestaurantProfileV2')" \
             lib/core/services/restaurant_profile_v2_service.dart
           grep -q 'export {getRestaurantProfileV2}' functions/src/index.ts

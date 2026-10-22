@@ -1,0 +1,54 @@
+name: Recommendation 26h regression
+
+on:
+  push:
+    branches: [fix/recommendation-26h-merchant-pool]
+  pull_request:
+    paths:
+      - 'functions/**'
+      - 'lib/**'
+      - 'test/**'
+      - '.github/workflows/recommendation-26h.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+        working-directory: functions
+      - run: npm run build && npm test
+        working-directory: functions
+      - run: npm install --global firebase-tools@14
+      - run: npm run test:emulator:recommendation
+        working-directory: functions
+        env:
+          GCLOUD_PROJECT: demo-makanmana-qa
+          GOOGLE_CLOUD_PROJECT: demo-makanmana-qa
+          FIREBASE_CONFIG: '{"projectId":"demo-makanmana-qa"}'
+  flutter:
+    # Fresh hosted runner: no user cloud credentials, secrets or OIDC grant.
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - run: flutter test test/recommendation_reject_outbox_test.dart test/location_consistency_test.dart test/user_brain_recalc_ordering_test.dart

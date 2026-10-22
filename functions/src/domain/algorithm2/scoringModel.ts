@@ -76,7 +76,7 @@ const HEALTHY_TOKENS = ["vegetarian", "vegan", "salad", "healthy", "juice", "pok
 const HEAVY_TOKENS = ["fried", "goreng", "burger", "pizza", "fast", "bbq", "barbecue", "buffet"];
 const LATE_TOKENS = ["mamak", "24", "supper", "street", "burger", "fast", "roti canai"];
 const PROTEIN_TOKENS = ["chicken", "ayam", "beef", "daging", "steak", "grill", "seafood", "fish", "egg", "protein", "bbq"];
-const HALAL_POSITIVE_TOKENS = ["malay", "melayu", "mamak", "nasi", "muslim", "halal"];
+const VERIFIED_HALAL_STATES = ["halal_certified", "halal_verified", "verified_halal", "certified"];
 
 function textOf(p: PlaceCandidate): string {
   return `${p.cuisine} ${p.name}`.toLowerCase();
@@ -157,6 +157,11 @@ function placeQualityScore(p: PlaceCandidate): number {
 }
 
 function budgetScore(p: PlaceCandidate, ctx: RecommendationUserContext): number {
+  const mealPrices = (p.menuItems ?? []).filter((item) => item.available && item.section === "makanan").map((item) => item.price);
+  if (ctx.budgetMax != null && mealPrices.length > 0) {
+    const minimum = Math.min(...mealPrices);
+    return minimum <= ctx.budgetMax ? 1 : Math.max(0, 1 - (minimum - ctx.budgetMax) / Math.max(1, ctx.budgetMax));
+  }
   if (p.priceLevel <= 0) return 0.6; // harga tidak diketahui → neutral (jangan jadi "percuma")
   const allowed = ctx.preferredPriceLevel ?? allowedPriceLevel(ctx.budgetMax);
   if (p.priceLevel <= allowed) return 1;
@@ -192,9 +197,9 @@ function dietCompatibilityScore(text: string, ctx: RecommendationUserContext): n
 }
 
 /** Keyakinan halal: JANGAN dakwa halal. positif → naik; tidak diketahui → 0.5. */
-function halalConfidenceScore(text: string, ctx: RecommendationUserContext): number {
+function halalConfidenceScore(p: PlaceCandidate, ctx: RecommendationUserContext): number {
   if (!ctx.halalPreference) return 0.6; // bukan faktor
-  if (anyIncludes(text, HALAL_POSITIVE_TOKENS)) return 1;
+  if (VERIFIED_HALAL_STATES.includes(p.halalStatus ?? "")) return 1;
   return 0.5; // tidak disahkan → neutral (isyarat halal_status_unknown ditambah)
 }
 
@@ -393,7 +398,7 @@ export function scoreCandidateV2(
     cuisinePreference: cuisinePreferenceScore(cuisine, ctx),
     moodFit: moodFitScore(p, ctx),
     dietCompatibility: dietCompatibilityScore(text, ctx),
-    halalConfidence: halalConfidenceScore(text, ctx),
+    halalConfidence: halalConfidenceScore(p, ctx),
     foodMemory: foodMemoryScore(cuisine, ctx),
     variety: varietyScore(cuisine, ctx),
     exploration: explorationScore(cuisine, ctx),
@@ -468,7 +473,6 @@ function explain(
   sportLevel: EvidenceLevel,
 ): { reasons: string[]; negativeSignals: string[] } {
   const cuisine = p.cuisine.toLowerCase();
-  const text = textOf(p);
   // Calon sebab (kunci, kekuatan) — pilih 3 terkuat yang benar.
   const cand: Array<{ key: string; strength: number }> = [];
   if (c.distance >= 0.75) cand.push({ key: "nearLocation", strength: c.distance });
@@ -482,14 +486,14 @@ function explain(
   // Part H — suitsFitGoal HANYA dengan bukti tag (level ≥ 1), tiada dakwaan makro.
   if (ctx.fitGoal && fitLevel >= 1 && c.fitContext >= 0.8) cand.push({ key: "suitsFitGoal", strength: 0.75 });
   if (ctx.overspendState === "over" && c.spendingContext >= 0.9) cand.push({ key: "cheaperForBudget", strength: 0.8 });
-  if (ctx.halalPreference && anyIncludes(text, HALAL_POSITIVE_TOKENS)) cand.push({ key: "halalFriendly", strength: 0.6 });
+  if (ctx.halalPreference && VERIFIED_HALAL_STATES.includes(p.halalStatus ?? "")) cand.push({ key: "halalFriendly", strength: 0.6 });
   const reasons = cand.sort((a, b) => b.strength - a.strength).slice(0, 3).map((r) => r.key);
 
   // Isyarat negatif JUJUR.
   const neg: string[] = [];
   if (p.priceLevel <= 0) neg.push("price_estimated");
   if (!Array.isArray(p.openingPeriods) || p.openingPeriods.length === 0) neg.push("hours_unverified");
-  if (ctx.halalPreference && !anyIncludes(text, HALAL_POSITIVE_TOKENS)) neg.push("halal_status_unknown");
+  if (ctx.halalPreference && !VERIFIED_HALAL_STATES.includes(p.halalStatus ?? "")) neg.push("halal_status_unknown");
   if (ctx.allergies.length > 0) neg.push("allergy_data_unknown"); // konflik jelas sudah ditapis keras
   if (p.distanceKm > ctx.preferredDistanceKm) neg.push("beyond_preferred_distance");
   if (ctx.recentMealPlaceIds.includes(p.placeId)) neg.push("similar_to_recent");

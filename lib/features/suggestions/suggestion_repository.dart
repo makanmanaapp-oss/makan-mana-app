@@ -13,6 +13,8 @@ class HomeSuggestion {
     this.alternatives = const [],
     this.source,
     this.sessionId,
+    this.suggestionId,
+    this.contextHash,
     this.isSample = false,
     this.isEmpty = false,
     this.isUnavailable = false,
@@ -23,6 +25,8 @@ class HomeSuggestion {
   final List<PlaceSummary> alternatives;
   final String? source;
   final String? sessionId;
+  final String? suggestionId;
+  final String? contextHash;
 
   /// true = data contoh/sampel (bukan cadangan live).
   final bool isSample;
@@ -124,6 +128,8 @@ final homeSuggestionProvider =
     alternatives: res.candidates,
     source: res.source,
     sessionId: res.sessionId,
+    suggestionId: res.suggestionId,
+    contextHash: res.contextHash,
     isSample: res.isSample,
   );
 });
